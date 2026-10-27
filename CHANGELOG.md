@@ -13,6 +13,12 @@ and new form. Provisional rows there may change without an entry.
   smoke build, and checks that two more bootstraps clone and download nothing
   (`harness/bootstrap_proof.py`, the harness's own CI tool). The job summary
   times each step.
+- The bootstrap proof covers every project whose file has a `[bootstrap]`
+  table, not only GUI.Forms. `bootstrap_proof.py matrix` skips a project, with
+  the reason in the summary, until its notes branch exists and its smoke
+  script is on its default branch. A product without a `harness.lock`
+  bootstraps with this harness. The downloaded Ubuntu packages are kept in an
+  Actions cache, because the Ubuntu mirror once took 34 minutes.
 - `docs/adopting.md`: the adoption guide a product's own session follows to
   become a harness instance (project file, `harness.lock`, CI, migration off
   GUI.Forms' shims, local work, the gate, a checklist and the pitfalls).

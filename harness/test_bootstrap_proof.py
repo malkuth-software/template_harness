@@ -1,6 +1,8 @@
 """Unit tests for bootstrap_proof.py: the log rules, the snapshot, and the workspace checks on local repositories."""
 from __future__ import annotations
+import argparse
 import contextlib
+import dataclasses
 import io
 import json
 import os
@@ -11,8 +13,10 @@ import unittest
 from unittest import mock
 
 import harness_testing
+import bootstrap
 import bootstrap_proof
 import lock
+import project
 import restore_local
 
 GIT_ENVIRONMENT: dict[str, str] = {
@@ -71,7 +75,7 @@ def replaced(log: tuple[str, ...], prefix: str, line: str) -> tuple[str, ...]:
 
 class LogTests(unittest.TestCase):
     def test_a_first_and_a_repeated_windows_run_pass(self) -> None:
-        self.assertEqual(bootstrap_proof.first_failures(list(FIRST_WINDOWS_LOG), 'windows-x64', NOTES_BRANCH), [])
+        self.assertEqual(bootstrap_proof.first_failures(list(FIRST_WINDOWS_LOG), 'windows-x64', NOTES_BRANCH, True), [])
         self.assertEqual(again('windows-x64', AGAIN_WINDOWS_LOG), ([], []))
 
     def test_a_dependency_fetch_in_the_smoke_build_is_not_a_harness_fetch(self) -> None:
@@ -113,7 +117,7 @@ class LogTests(unittest.TestCase):
 
     def test_an_unpublished_cache_satisfies_both_runs(self) -> None:
         first: tuple[str, ...] = replaced(FIRST_WINDOWS_LOG, 'Restored the cache', 'No published gui-forms-cache-x')
-        self.assertEqual(bootstrap_proof.first_failures(list(first), 'windows-x64', NOTES_BRANCH), [])
+        self.assertEqual(bootstrap_proof.first_failures(list(first), 'windows-x64', NOTES_BRANCH, True), [])
         repeated: tuple[str, ...] = replaced(AGAIN_WINDOWS_LOG, 'The cache of ', 'No published gui-forms-cache-x')
         self.assertEqual(again('windows-x64', repeated), ([], []))
 
@@ -135,6 +139,121 @@ class LogTests(unittest.TestCase):
 
     def test_the_cache_record_is_restore_locals(self) -> None:
         self.assertEqual(bootstrap_proof.CACHE_RECORD, restore_local.CACHE_RECORD)
+        self.assertEqual(bootstrap_proof.PYTHON_ARGUMENT, bootstrap.PYTHON_ARGUMENT)
+
+    def test_an_unlocked_product_says_so_instead_of_cloning_a_harness(self) -> None:
+        unlocked: tuple[str, ...] = replaced(FIRST_WINDOWS_LOG, 'Cloning ',
+                                             'harness: the product has no harness.lock; using this harness, H')
+        self.assertEqual(bootstrap_proof.first_failures(list(unlocked), 'windows-x64', NOTES_BRANCH, False), [])
+        self.assertEqual(bootstrap_proof.first_failures(list(unlocked), 'windows-x64', NOTES_BRANCH, True),
+                         ['the log has no line starting ' + repr(bootstrap_proof.HARNESS_CLONED.pattern)])
+        unpinned: bootstrap_proof.Before = bootstrap_proof.Before(product='aaaa', harness=None, cache=CACHE)
+        moves: list[str] = []
+        failures: list[str] = bootstrap_proof.again_failures(list(AGAIN_WINDOWS_LOG), 'windows-x64', NOTES_BRANCH,
+                                                             unpinned, None, moves)
+        self.assertEqual((failures, moves), ([], []))
+
+
+class FakeGitHub(bootstrap_proof.GitHub):
+    """Answers from fixed sets instead of gh."""
+
+    def __init__(self, paths: set[str], branches: set[str]) -> None:
+        self.paths: set[str] = paths
+        self.branches: set[str] = branches
+
+    def answer(self, endpoint: str, query: str) -> str | None:
+        raise AssertionError('no gh in tests: ' + endpoint)
+
+    def default_branch(self, repository: str) -> str | None:
+        branch: str | None = None if repository.endswith('/private') else 'main'
+        return branch
+
+    def has_path(self, repository: str, path: str, ref: str) -> bool:
+        found: bool = repository + ':' + ref + ':' + path in self.paths
+        return found
+
+    def has_branch(self, repository: str, branch: str) -> bool:
+        found: bool = repository + ':' + branch in self.branches
+        return found
+
+
+class MatrixTests(unittest.TestCase):
+    def test_the_smoke_paths_follow_the_command_form(self) -> None:
+        self.assertEqual(bootstrap_proof.smoke_paths(('{python}', 'scripts/smoke-build.py')),
+                         ['scripts/smoke-build.py'])
+        self.assertEqual(bootstrap_proof.smoke_paths(('{python}', '-B', 'tools/x.py', '--smoke')), ['tools/x.py'])
+        self.assertEqual(bootstrap_proof.smoke_paths(
+            ('{python}', '-B', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_publication.py')),
+            ['tests/test_publication.py'])
+        self.assertEqual(bootstrap_proof.smoke_paths(('{python}', '-m', 'unittest', 'discover', '-p', 'test_*.py')),
+                         [])
+        self.assertEqual(bootstrap_proof.smoke_paths(('{python}', '-m', 'compileall', 'src')), [])
+        self.assertEqual(bootstrap_proof.smoke_paths(('sh', 'build.sh', 'all')), ['build.sh'])
+        self.assertEqual(bootstrap_proof.smoke_paths(()), [])
+
+    def test_a_project_waits_for_its_notes_branch_and_smoke_script(self) -> None:
+        reference: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
+        # The smoke runs gui_forms/tools/ci_build.py from the workspace: tools/ci_build.py in the repository.
+        script: str = 'tools/ci_build.py'
+        ready: FakeGitHub = FakeGitHub({reference.repository + ':main:' + script},
+                                       {'malkuth-software/notes:gui_forms'})
+        self.assertIsNone(bootstrap_proof.readiness(reference, ready))
+        no_script: FakeGitHub = FakeGitHub(set(), {'malkuth-software/notes:gui_forms'})
+        self.assertEqual(bootstrap_proof.readiness(reference, no_script),
+                         'its smoke script ' + script + ' is not on ' + reference.repository + ' main yet')
+        no_notes: FakeGitHub = FakeGitHub({reference.repository + ':main:' + script}, set())
+        self.assertEqual(bootstrap_proof.readiness(reference, no_notes),
+                         'malkuth-software/notes has no branch gui_forms yet')
+        assert reference.bootstrap is not None
+        silent: project.Project = dataclasses.replace(
+            reference, bootstrap=dataclasses.replace(reference.bootstrap, smoke=()))
+        self.assertEqual(bootstrap_proof.readiness(silent, ready), 'its [bootstrap] table names no smoke command yet')
+        hidden: project.Project = dataclasses.replace(reference, repository='owner/private')
+        self.assertEqual(bootstrap_proof.readiness(hidden, ready), 'owner/private cannot be read (missing or private)')
+
+    def test_smoke_paths_are_read_relative_to_the_product_checkout(self) -> None:
+        reference: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
+        self.assertEqual(bootstrap_proof.repository_path(reference, 'gui_forms/tools/ci_build.py'), 'tools/ci_build.py')
+        self.assertIsNone(bootstrap_proof.repository_path(reference, 'template_harness/harness/x.py'))
+        root: project.Project = dataclasses.replace(reference, source_dir='.')
+        self.assertEqual(bootstrap_proof.repository_path(root, 'scripts/smoke-build.py'), 'scripts/smoke-build.py')
+
+    def test_the_matrix_has_each_host_of_each_ready_project(self) -> None:
+        reference: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
+        waiting: project.Project = dataclasses.replace(reference, name='waiting', repository='owner/waiting')
+        unbooted: project.Project = dataclasses.replace(reference, name='plain', bootstrap=None)
+        github: FakeGitHub = FakeGitHub({reference.repository + ':main:tools/ci_build.py'},
+                                        {'malkuth-software/notes:gui_forms'})
+        entries: list[dict[str, str]]
+        skipped: list[str]
+        entries, skipped = bootstrap_proof.matrix_entries([reference, waiting, unbooted], github)
+        self.assertEqual(len(entries), len(bootstrap_proof.HOSTS))
+        self.assertEqual(entries[0], {'project': 'gui_forms', 'runner': 'windows-2022', 'platform': 'windows-x64',
+                                      'checkout': 'gui_forms', 'notes_branch': 'gui_forms'})
+        self.assertEqual(skipped, ['waiting: skipped, because its smoke script tools/ci_build.py is not on '
+                                   'owner/waiting main yet'])
+
+    def test_plan_writes_the_matrix_and_the_summary(self) -> None:
+        directory: tempfile.TemporaryDirectory[str] = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        output: Path = Path(directory.name) / 'output'
+        summary: Path = Path(directory.name) / 'summary'
+        projects: Path = harness_testing.REPOSITORY / 'projects'
+        github: FakeGitHub = FakeGitHub({'malkuth-software/gui_forms:main:tools/ci_build.py'},
+                                        {'malkuth-software/notes:gui_forms'})
+        arguments: argparse.Namespace = argparse.Namespace(projects=projects, output=output, summary=summary,
+                                                           only=['gui_forms', 'plan-paint'])
+        printed: io.StringIO = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            status: int = bootstrap_proof.plan(arguments, github)
+        self.assertEqual(status, 0)
+        lines: list[str] = output.read_text(encoding='utf-8').splitlines()
+        self.assertEqual(lines[1], 'count=' + str(len(bootstrap_proof.HOSTS)))
+        matrix: dict[str, list[dict[str, str]]] = json.loads(lines[0][len('matrix='):])
+        self.assertEqual(matrix['include'][0]['project'], 'gui_forms')
+        self.assertIn('- plan-paint: skipped, because malkuth-software/notes has no branch plan-paint yet',
+                      summary.read_text(encoding='utf-8'))
+        self.assertIn('::notice title=Bootstrap proof::plan-paint: skipped', printed.getvalue())
 
 
 class WorkspaceTests(unittest.TestCase):
