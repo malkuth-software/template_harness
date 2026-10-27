@@ -1,9 +1,15 @@
 name: Example app
-# The harness's own consumer: example_app/ builds against the GUI.Forms SDK
-# pinned in example_app/gui_forms.lock, through the reusable workflows a
-# product calls (harness-*.yml), on each host GUI.Forms supports. Here the
-# harness is its own product: both checkouts are template_harness/, and the
-# project file is projects/example_app.toml.
+# The harness's own consumer: example_app/ builds against the GUI.Forms
+# source SDK pinned in example_app/gui_forms.lock, through the reusable
+# workflows a product calls (harness-*.yml), on each host GUI.Forms
+# supports. Here the harness is its own product: both checkouts are
+# template_harness/, and the project file is projects/example_app.toml.
+#
+# Each job builds GUI.Forms from the pinned source archive for its host
+# (example_app/fetch_sdk.py) into .harness-cache/gui-forms-<version>-<target>/,
+# kept in an Actions cache keyed by the lock (which pins the archive digest)
+# and the compiler identity, with ccache under it. CI lets that build fetch
+# the network inputs the SDK manifest lists.
 on:
   push:
     branches: [main]
@@ -42,8 +48,13 @@ jobs:
       harness_path: template_harness
       project: template_harness/projects/example_app.toml
       linux_profile: consumer
-      configure_command: python3 template_harness/example_app/ci_build.py --configure-only
+      configure_command: python3 template_harness/example_app/ci_build.py --configure-only --allow-network-inputs
       build_dir: .build/native-linux-x64/example-app
+      timeout_minutes: 90
+      install_cache_paths: |
+        .harness-cache/gui-forms-[0-9]*
+        !.harness-cache/*.work
+      install_cache_key_files: template_harness/example_app/gui_forms.lock
   native:
     strategy:
       fail-fast: false
@@ -70,5 +81,9 @@ jobs:
       harness_path: template_harness
       project: template_harness/projects/example_app.toml
       linux_profile: consumer
-      build_command: python template_harness/example_app/ci_build.py --jobs 4
-      timeout_minutes: 30
+      build_command: python template_harness/example_app/ci_build.py --jobs 4 --allow-network-inputs
+      timeout_minutes: 90
+      install_cache_paths: |
+        .harness-cache/gui-forms-[0-9]*
+        !.harness-cache/*.work
+      install_cache_key_files: template_harness/example_app/gui_forms.lock

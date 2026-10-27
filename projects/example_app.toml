@@ -1,9 +1,10 @@
 # The example app's project file (harness/project.py reads it).
 #
-# The example builds no toolkit of its own: it consumes the GUI.Forms SDK
-# pinned in example_app/gui_forms.lock, with the toolchain that SDK was built
-# with. So the Windows toolchain comes from GUI.Forms' releases, and the
-# names below are the example's own, apart from that toolchain.
+# The example consumes the GUI.Forms source SDK pinned in
+# example_app/gui_forms.lock, built from source for the host with the
+# toolchain GUI.Forms itself uses. So the Windows toolchain comes from
+# GUI.Forms' releases, and the names below are the example's own, apart from
+# that toolchain.
 
 schema = 1
 
@@ -33,12 +34,13 @@ asset_prefix = "gui-forms-toolchain-"
 areas_file = "test_areas.json"
 name_prefixes = []
 
-# consumer: what building and starting the example needs on Ubuntu 24.04:
-# LLVM 22, the X11 libraries GUI.Forms' Linux host links, and a virtual
-# display for the start test.
+# consumer: what building GUI.Forms from its source SDK (its Linux host and
+# CPU Skia, with gn) and building and starting the example need on Ubuntu
+# 24.04: LLVM 22, the X11 and accessibility libraries the Linux host links,
+# and a virtual display for the start test.
 [linux_packages.consumer]
 packages = [
-    "cmake", "ninja-build", "ccache", "clang-22", "pkg-config",
+    "cmake", "ninja-build", "ccache", "clang-22", "generate-ninja", "pkg-config",
     "libx11-dev", "libxext-dev", "libxrandr-dev", "libxcursor-dev", "libxfixes-dev", "libxi-dev",
     "libatk1.0-dev", "libatk-bridge2.0-dev",
     "xvfb", "xauth",

@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""Build and test the example app against the pinned GUI.Forms SDK.
+"""Build and test the example app against the pinned GUI.Forms source SDK.
 
-    python3 template_harness/example_app/ci_build.py [--configure-only] [--jobs N]
+    python3 template_harness/example_app/ci_build.py [--configure-only] [--jobs N] [--target T]
+        [--cache DIR] [--allow-network-inputs]
 
 Run from the workspace root (the directory that holds template_harness/),
 with LLVM 22.1.8, CMake and Ninja on PATH: the harness's native workflow
 provides them (the Windows CLANG64 toolchain GUI.Forms publishes, Homebrew's
 llvm@22 with the harness-built macOS runtimes, apt.llvm.org's clang-22).
 
-1. fetch_sdk.py fetches the SDK pinned in gui_forms.lock into the cache
-   (--cache, else RUNNER_TEMP/harness-cache in CI, else the user cache).
-2. CMake configures example_app/ with the SDK's prefix and the harness's
-   harness/cmake/llvm22.cmake into .build/native-<platform>/example-app/.
+1. fetch_sdk.py fetches the source SDK pinned in gui_forms.lock and builds
+   and installs GUI.Forms from it for the target (default: this host) in the
+   cache (--cache, else HARNESS_CACHE, else RUNNER_TEMP/harness-cache in CI,
+   else the user cache), or reuses an install built from the same archive
+   with the same toolchain. --allow-network-inputs lets that build download
+   what the SDK manifest says it still downloads.
+2. CMake configures example_app/ with the installed prefix and the harness's
+   harness/cmake/llvm22.cmake into .build/native-<target>/example-app/.
    On macOS the toolchain file needs the LLVM runtime prefix (in
    <HARNESS_ENV_PREFIX>_LLVM_RUNTIME, else HARNESS_LLVM_RUNTIME): the
    environment's, else the one the SDK carries (llvm-runtime/).
@@ -63,18 +68,24 @@ def main() -> int:
     parser.add_argument('--configure-only', action='store_true')
     parser.add_argument('--jobs', type=int, default=4)
     parser.add_argument('--cache', type=Path)
+    parser.add_argument('--target', choices=fetch_sdk.PLATFORMS, help='default: this host')
+    parser.add_argument('--allow-network-inputs', action='store_true')
     args: argparse.Namespace = parser.parse_args()
-    platform: str = fetch_sdk.running_platform()
     cache: Path
     if args.cache is not None:
         cache = args.cache
+    elif os.environ.get('HARNESS_CACHE', ''):
+        cache = Path(os.environ['HARNESS_CACHE'])
     elif os.environ.get('RUNNER_TEMP', ''):
         cache = Path(os.environ['RUNNER_TEMP']) / 'harness-cache'
     else:
         cache = fetch_sdk.default_cache()
+    platform: str
     try:
+        platform = args.target or fetch_sdk.running_platform()
         lock: fetch_sdk.Lock = fetch_sdk.read_lock(fetch_sdk.LOCK_PATH)
-        lines: list[str] = fetch_sdk.fetch_command(lock, platform, fetch_sdk.checked_cache(cache))
+        lines: list[str] = fetch_sdk.fetch_command(lock, platform, fetch_sdk.checked_cache(cache), args.jobs,
+                                                   args.allow_network_inputs)
     except fetch_sdk.FetchError as error:
         print('ci_build: ' + str(error), file=sys.stderr)
         return 1

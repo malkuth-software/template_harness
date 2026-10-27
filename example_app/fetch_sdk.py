@@ -1,35 +1,61 @@
 #!/usr/bin/env python3
-"""Fetch the GUI.Forms SDK pinned in gui_forms.lock, or pin a release.
+"""Fetch the GUI.Forms source SDK pinned in gui_forms.lock and build it, or pin a release.
 
-    python3 example_app/fetch_sdk.py fetch [--platform P] [--cache DIR]
-    python3 example_app/fetch_sdk.py prefix [--platform P] [--cache DIR]
+    python3 example_app/fetch_sdk.py fetch [--target T] [--cache DIR] [--jobs N] [--allow-network-inputs]
+    python3 example_app/fetch_sdk.py prefix [--target T] [--cache DIR]
     python3 example_app/fetch_sdk.py pin TAG
 
-fetch downloads the running platform's SDK archive from the pinned release,
-checks its SHA-256 against the lock before unpacking anything, unpacks it
-into <cache>/gui-forms-sdk/<tag>/<platform>/ and prints `prefix=<path>` (the
-CMAKE_PREFIX_PATH) and, when the SDK carries the macOS LLVM runtime,
-`llvm_runtime=<path>`. An SDK already unpacked for the same digest is reused
-without a download. With GITHUB_OUTPUT set, the same lines are appended
-there. prefix prints the same lines for an SDK already fetched, without the
-network.
+GUI.Forms releases its SDK as source: one gui-forms-sdk-<version>-source.tar.gz
+holding gui-forms-sdk-<version>/, the release tree with its pinned
+third-party sources and SDK_MANIFEST.json. The manifest's "build" key names
+the SDK's build entry point (tools/build_sdk.py), which builds GUI.Forms
+for one target and installs it:
+
+    <build> --target <platform> --prefix <dir> --jobs N --work <dir>
+
+fetch, for one target (default: this host; a target other than the host is
+refused until cross builds are admitted):
+1. Reuses <cache>/gui-forms-<version>-<target>/ when its build record
+   names the pinned archive digest, the target and this toolchain's
+   identity; nothing is downloaded or built.
+2. Otherwise downloads the pinned archive, checks its SHA-256 against the
+   lock before unpacking anything, and unpacks it into
+   <cache>/gui-forms-sdk/<tag>/source/ (reused while its digest matches).
+3. Stops, listing them, when the manifest names inputs the build still
+   downloads (network_inputs), unless --allow-network-inputs is given.
+4. Runs the build entry point with the harness toolchain into the install
+   directory (its build tree is <install>.work/, kept for the next build),
+   then writes the build record.
+It prints `prefix=<install>` (the CMAKE_PREFIX_PATH) and, when the install
+carries the macOS LLVM runtime, `llvm_runtime=<path>`; with GITHUB_OUTPUT
+set, the same lines are appended there. prefix prints the same lines for a
+build already recorded, without the network or a build.
+
+The toolchain identity is HARNESS_TOOLCHAIN_IDENTITY when set (CI passes
+harness/compiler_identity.py's, so the record matches the Actions cache
+key), else a digest of the clang binary, its version, the host machine, the
+macOS SDK version and harness/cmake/llvm22.cmake.
+
+On macOS, GUI.Forms' own toolchain file reads GUI_FORMS_LLVM_RUNTIME; when
+that is unset, the build gets the harness's runtime prefix
+(<HARNESS_ENV_PREFIX>_LLVM_RUNTIME, else HARNESS_LLVM_RUNTIME).
 
 pin reads a release's asset list and its SHA256SUMS.txt (no archive is
-downloaded) and rewrites the lock's [sdk] table with every platform's
-archive named by the lock's sdk_asset pattern: the digest SHA256SUMS.txt
-records, which must agree with the digest GitHub publishes for the asset
-when it publishes one. It prints each archive's size.
+downloaded) and rewrites the lock's tag and [source] table with the source
+archive named by the lock's source_asset pattern and the digest
+SHA256SUMS.txt records, which must agree with the digest GitHub publishes
+for the asset when it publishes one. It prints the archive's size.
 
 The cache is outside the source tree: --cache, else HARNESS_CACHE, else
 %LOCALAPPDATA%/template_harness/cache on Windows and
 ${XDG_CACHE_HOME:-~/.cache}/template_harness elsewhere. A cache inside the
 repository is refused, so a fetched SDK never shows up as a source change.
 
-Unpacking is all or nothing: the archive is extracted into a temporary
-directory beside the destination and renamed into place, so an interrupted
-fetch leaves no partial SDK (at most a temporary directory, removed by the
-next fetch). An archive member that would land outside its directory, or a
-link, is refused.
+Failures: unpacking is all or nothing (into a temporary directory beside
+the destination, then renamed), so an interrupted fetch leaves no partial
+source tree. A failed build leaves its install directory without a build
+record; the next fetch removes it and builds again. An archive member that
+would land outside its directory, or a link pointing outside, is refused.
 """
 from __future__ import annotations
 import argparse
@@ -40,6 +66,7 @@ import os
 from pathlib import Path, PurePosixPath
 import platform as host_platform
 import shutil
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -52,68 +79,77 @@ import zipfile
 HERE: Path = Path(__file__).resolve().parent
 REPOSITORY_ROOT: Path = HERE.parent
 LOCK_PATH: Path = HERE / 'gui_forms.lock'
+HARNESS_TOOLCHAIN_FILE: Path = REPOSITORY_ROOT / 'harness' / 'cmake' / 'llvm22.cmake'
 PLATFORMS: tuple[str, ...] = ('windows-x64', 'macos-arm64', 'linux-x64', 'linux-arm64')
-ARCHIVE_SUFFIXES: tuple[str, ...] = ('.tar.gz', '.zip')
 # The release's checksum list: `<sha256>  <asset name>` per line.
 CHECKSUMS_ASSET: str = 'SHA256SUMS.txt'
+MANIFEST_NAME: str = 'SDK_MANIFEST.json'
+DEFAULT_BUILD_ENTRY: str = 'tools/build_sdk.py'
 # The file that marks a complete unpack, holding the archive's digest.
-COMPLETE_MARKER: str = '.fetched-sha256'
+UNPACKED_MARKER: str = '.fetched-sha256'
+# The file that marks a complete build: the archive digest, target and toolchain identity.
+BUILD_RECORD: str = '.harness-build.json'
+IDENTITY_VARIABLE: str = 'HARNESS_TOOLCHAIN_IDENTITY'
 CHUNK_BYTES: int = 1 << 20
 
 
 class FetchError(Exception):
-    """A fetch or pin that cannot proceed; the message says why and nothing was changed."""
+    """A fetch or pin that cannot proceed; the message says why and what was left."""
 
 
 @dataclass(frozen=True)
-class Asset:
-    """One platform's pinned SDK archive."""
-    platform: str
+class Source:
+    """The pinned source archive."""
     name: str
     sha256: str
 
 
 @dataclass(frozen=True)
 class Lock:
-    """gui_forms.lock: the release and each platform's archive."""
+    """gui_forms.lock: the release and its source archive (None until pinned)."""
     repository: str
     tag: str
-    sdk_asset: str
-    assets: dict[str, Asset]
+    source_asset: str
+    source: Source | None
+
+    def version(self) -> str:
+        result: str = self.tag[1:] if self.tag.startswith('v') else self.tag
+        return result
+
+
+def is_digest(value: Any) -> bool:
+    result: bool = type(value) is str and len(value) == 64 and all(c in '0123456789abcdef' for c in value)
+    return result
 
 
 def read_lock(path: Path) -> Lock:
     with path.open('rb') as stream:
         document: dict[str, Any] = tomllib.load(stream)
-    if document.get('schema') != 1:
-        raise FetchError(str(path) + ': schema must be 1')
+    if document.get('schema') != 2:
+        raise FetchError(str(path) + ': schema must be 2')
     release: Any = document.get('release')
     if type(release) is not dict:
         raise FetchError(str(path) + ': [release] is missing')
     fields: list[str] = []
     key: str
-    for key in ('repository', 'tag', 'sdk_asset'):
+    for key in ('repository', 'tag', 'source_asset'):
         value: Any = release.get(key)
         if type(value) is not str or not value:
             raise FetchError(str(path) + ': release.' + key + ' must be a non-empty string')
         fields.append(value)
-    table: Any = document.get('sdk', {})
-    if type(table) is not dict:
-        raise FetchError(str(path) + ': [sdk] must be a table')
-    assets: dict[str, Asset] = {}
-    name: str
-    for name in table:
-        entry: Any = table[name]
-        if name not in PLATFORMS or type(entry) is not dict:
-            raise FetchError(str(path) + ': [sdk.' + name + '] is not a known platform table')
-        asset_name: Any = entry.get('name')
-        digest: Any = entry.get('sha256')
-        if type(asset_name) is not str or not asset_name.endswith(ARCHIVE_SUFFIXES):
-            raise FetchError(str(path) + ': sdk.' + name + '.name must name a .tar.gz or .zip archive')
-        if type(digest) is not str or len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest):
-            raise FetchError(str(path) + ': sdk.' + name + '.sha256 must be 64 lowercase hex digits')
-        assets[name] = Asset(name, asset_name, digest)
-    result: Lock = Lock(fields[0], fields[1], fields[2], assets)
+    source: Source | None = None
+    table: Any = document.get('source')
+    if table is not None:
+        if type(table) is not dict:
+            raise FetchError(str(path) + ': [source] must be a table')
+        name: Any = table.get('name')
+        digest: Any = table.get('sha256')
+        if type(name) is not str or not name.endswith('.tar.gz') or not safe_member(name) or '/' in name:
+            raise FetchError(str(path) + ': source.name must name a .tar.gz release asset')
+        if not is_digest(digest):
+            raise FetchError(str(path) + ': source.sha256 must be 64 lowercase hex digits')
+        source = Source(name, digest)
+    result: Lock = Lock(fields[0], fields[1], fields[2], source)
     return result
 
 
@@ -129,7 +165,7 @@ def running_platform() -> str:
     if system == 'Linux':
         result: str = 'linux-arm64' if arm else 'linux-x64'
         return result
-    raise FetchError('GUI.Forms publishes no SDK for ' + system + ' ' + machine)
+    raise FetchError('GUI.Forms builds for no ' + system + ' ' + machine + ' target')
 
 
 def default_cache() -> Path:
@@ -153,8 +189,13 @@ def checked_cache(cache: Path) -> Path:
     return resolved
 
 
-def destination_of(cache: Path, lock: Lock, platform: str) -> Path:
-    result: Path = cache / 'gui-forms-sdk' / lock.tag / platform
+def install_of(cache: Path, lock: Lock, target: str) -> Path:
+    result: Path = cache / ('gui-forms-' + lock.version() + '-' + target)
+    return result
+
+
+def source_dir_of(cache: Path, lock: Lock) -> Path:
+    result: Path = cache / 'gui-forms-sdk' / lock.tag / 'source'
     return result
 
 
@@ -214,15 +255,77 @@ def extract(archive: Path, name: str, into: Path) -> None:
             bundle.extractall(into)
 
 
-def sdk_prefix(root: Path) -> Path:
-    """The install prefix inside an unpacked SDK: the directory above lib/cmake/GUIForms."""
-    configs: list[Path] = sorted(root.rglob('GUIFormsConfig.cmake'))
-    if len(configs) != 1:
-        raise FetchError(str(root) + ' holds ' + str(len(configs)) + ' GUIFormsConfig.cmake files; expected one')
-    package_dir: Path = configs[0].parent
-    if package_dir.name != 'GUIForms' or package_dir.parent.name != 'cmake':
-        raise FetchError(str(configs[0]) + ' is not under <prefix>/<libdir>/cmake/GUIForms')
-    result: Path = package_dir.parent.parent.parent
+def source_root(unpacked: Path) -> Path:
+    """The SDK's top directory: the one directory under unpacked holding SDK_MANIFEST.json."""
+    manifests: list[Path] = sorted(unpacked.glob('*/' + MANIFEST_NAME))
+    if len(manifests) != 1:
+        raise FetchError(str(unpacked) + ' holds ' + str(len(manifests)) + ' top directories with '
+                         + MANIFEST_NAME + '; expected one')
+    result: Path = manifests[0].parent
+    return result
+
+
+def read_manifest(root: Path) -> dict[str, Any]:
+    try:
+        document: Any = json.loads((root / MANIFEST_NAME).read_text(encoding='utf-8'))
+    except ValueError as error:
+        raise FetchError(str(root / MANIFEST_NAME) + ' is not JSON: ' + str(error)) from error
+    if type(document) is not dict:
+        raise FetchError(str(root / MANIFEST_NAME) + ' is not a JSON object')
+    return document
+
+
+def build_entry(root: Path, manifest: dict[str, Any]) -> Path:
+    """The build entry point the manifest names, inside the source tree."""
+    named: Any = manifest.get('build', DEFAULT_BUILD_ENTRY)
+    if type(named) is not str or not named or not safe_member(named):
+        raise FetchError(MANIFEST_NAME + ': build must be a relative path inside the SDK')
+    entry: Path = root / named
+    if not entry.is_file():
+        raise FetchError(MANIFEST_NAME + ' names the build entry ' + named + ', which the SDK does not hold')
+    return entry
+
+
+def network_inputs(manifest: dict[str, Any]) -> list[str]:
+    """What the build still downloads, one description each (the manifest's network_inputs)."""
+    listed: Any = manifest.get('network_inputs', [])
+    if type(listed) is not list:
+        raise FetchError(MANIFEST_NAME + ': network_inputs must be a list')
+    described: list[str] = []
+    item: Any
+    for item in listed:
+        if type(item) is dict:
+            parts: list[str] = []
+            key: str
+            for key in sorted(item):
+                parts.append(key + '=' + str(item[key]))
+            described.append(', '.join(parts))
+        else:
+            described.append(str(item))
+    return described
+
+
+def toolchain_identity() -> str:
+    """HARNESS_TOOLCHAIN_IDENTITY, else a digest of the compiler and the harness toolchain file."""
+    named: str = os.environ.get(IDENTITY_VARIABLE, '')
+    if named:
+        return named
+    compiler: str | None = shutil.which('clang')
+    if compiler is None:
+        raise FetchError('clang is not on PATH; the build needs the harness toolchain (LLVM 22.1.8)')
+    values: list[str] = [file_sha256(Path(compiler)), host_platform.machine(), file_sha256(HARNESS_TOOLCHAIN_FILE)]
+    values.append(subprocess.check_output(['clang', '--version'], text=True))
+    if host_platform.system() == 'Darwin':
+        values.append(subprocess.check_output(['xcrun', '--show-sdk-version'], text=True))
+    result: str = hashlib.sha256('\n'.join(values).encode('utf-8')).hexdigest()
+    return result
+
+
+def harness_runtime() -> str:
+    """The macOS runtime prefix harness/cmake/llvm22.cmake reads, or '' when unset."""
+    prefix: str = os.environ.get('HARNESS_ENV_PREFIX', '')
+    variable: str = prefix + '_LLVM_RUNTIME' if prefix else 'HARNESS_LLVM_RUNTIME'
+    result: str = os.environ.get(variable, '')
     return result
 
 
@@ -238,60 +341,121 @@ def report(prefix: Path) -> list[str]:
     return lines
 
 
-def pinned_asset(lock: Lock, platform: str) -> Asset:
-    asset: Asset | None = lock.assets.get(platform)
-    if asset is None:
-        raise FetchError(LOCK_PATH.name + ' pins no SDK archive for ' + platform + ' in ' + lock.tag
-                         + '; pin a release that publishes SDK archives (fetch_sdk.py pin TAG)')
-    return asset
+def pinned_source(lock: Lock) -> Source:
+    if lock.source is None:
+        raise FetchError(LOCK_PATH.name + ' pins no source archive in ' + lock.tag
+                         + '; pin a release that publishes the source SDK (fetch_sdk.py pin TAG)')
+    return lock.source
 
 
-def fetch_command(lock: Lock, platform: str, cache: Path) -> list[str]:
-    asset: Asset = pinned_asset(lock, platform)
-    destination: Path = destination_of(cache, lock, platform)
-    marker: Path = destination / COMPLETE_MARKER
-    if marker.is_file() and marker.read_text(encoding='utf-8').strip() == asset.sha256:
-        reused: list[str] = report(sdk_prefix(destination))
+def checked_target(target: str) -> str:
+    host: str = running_platform()
+    if target != host:
+        raise FetchError('building for ' + target + ' on a ' + host + ' host is not supported yet; '
+                         'build on a ' + target + ' host')
+    return target
+
+
+def build_record(source: Source, target: str, identity: str) -> dict[str, str]:
+    result: dict[str, str] = {'archive_sha256': source.sha256, 'target': target, 'toolchain': identity}
+    return result
+
+
+def recorded(install: Path) -> dict[str, Any] | None:
+    path: Path = install / BUILD_RECORD
+    if not path.is_file():
+        return None
+    try:
+        document: Any = json.loads(path.read_text(encoding='utf-8'))
+    except ValueError:
+        return None
+    result: dict[str, Any] | None = document if type(document) is dict else None
+    return result
+
+
+def unpacked_source(lock: Lock, source: Source, cache: Path) -> Path:
+    """The unpacked source tree's top directory, downloading and unpacking it when needed."""
+    destination: Path = source_dir_of(cache, lock)
+    marker: Path = destination / UNPACKED_MARKER
+    if marker.is_file() and marker.read_text(encoding='utf-8').strip() == source.sha256:
+        reused: Path = source_root(destination)
         return reused
     destination.parent.mkdir(parents=True, exist_ok=True)
     stale: Path
-    for stale in destination.parent.glob('.' + platform + '-*'):
+    for stale in destination.parent.glob('.source-*'):
         shutil.rmtree(stale, ignore_errors=True)
-    work: Path = Path(tempfile.mkdtemp(prefix='.' + platform + '-', dir=destination.parent))
+    work: Path = Path(tempfile.mkdtemp(prefix='.source-', dir=destination.parent))
     try:
-        archive: Path = work / asset.name
-        url: str = 'https://github.com/' + lock.repository + '/releases/download/' + lock.tag + '/' + asset.name
+        archive: Path = work / source.name
+        url: str = 'https://github.com/' + lock.repository + '/releases/download/' + lock.tag + '/' + source.name
         print('downloading ' + url, file=sys.stderr, flush=True)
         download(url, archive)
         actual: str = file_sha256(archive)
-        if actual != asset.sha256:
-            raise FetchError(asset.name + ' has SHA-256 ' + actual + '; ' + LOCK_PATH.name + ' pins ' + asset.sha256)
-        unpacked: Path = work / 'sdk'
+        if actual != source.sha256:
+            raise FetchError(source.name + ' has SHA-256 ' + actual + '; ' + LOCK_PATH.name + ' pins ' + source.sha256)
+        unpacked: Path = work / 'source'
         unpacked.mkdir()
-        extract(archive, asset.name, unpacked)
-        sdk_prefix(unpacked)
-        (unpacked / COMPLETE_MARKER).write_text(asset.sha256 + '\n', encoding='utf-8')
+        extract(archive, source.name, unpacked)
+        source_root(unpacked)
+        (unpacked / UNPACKED_MARKER).write_text(source.sha256 + '\n', encoding='utf-8')
         if destination.exists():
             shutil.rmtree(destination)
         unpacked.rename(destination)
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    fetched: list[str] = report(sdk_prefix(destination))
-    return fetched
+    result: Path = source_root(destination)
+    return result
 
 
-def prefix_command(lock: Lock, platform: str, cache: Path) -> list[str]:
-    asset: Asset = pinned_asset(lock, platform)
-    destination: Path = destination_of(cache, lock, platform)
-    marker: Path = destination / COMPLETE_MARKER
-    if not marker.is_file() or marker.read_text(encoding='utf-8').strip() != asset.sha256:
-        raise FetchError('the pinned SDK for ' + platform + ' is not fetched into ' + str(destination) + '; run fetch')
-    lines: list[str] = report(sdk_prefix(destination))
+def fetch_command(lock: Lock, target: str, cache: Path, jobs: int, allow_network_inputs: bool) -> list[str]:
+    source: Source = pinned_source(lock)
+    checked_target(target)
+    identity: str = toolchain_identity()
+    wanted: dict[str, str] = build_record(source, target, identity)
+    install: Path = install_of(cache, lock, target)
+    if recorded(install) == wanted:
+        reused: list[str] = report(install)
+        return reused
+    root: Path = unpacked_source(lock, source, cache)
+    manifest: dict[str, Any] = read_manifest(root)
+    entry: Path = build_entry(root, manifest)
+    downloads: list[str] = network_inputs(manifest)
+    if downloads and not allow_network_inputs:
+        raise FetchError('the SDK build still downloads: ' + '; '.join(downloads)
+                         + '. Rerun with --allow-network-inputs to let it.')
+    if install.exists():
+        shutil.rmtree(install)
+    work: Path = install.with_name(install.name + '.work')
+    environment: dict[str, str] = dict(os.environ)
+    runtime: str = harness_runtime()
+    if target.startswith('macos') and runtime and not environment.get('GUI_FORMS_LLVM_RUNTIME', ''):
+        environment['GUI_FORMS_LLVM_RUNTIME'] = runtime
+    command: list[str] = [sys.executable, str(entry), '--target', target, '--prefix', str(install),
+                          '--jobs', str(jobs), '--work', str(work)]
+    print('+ ' + ' '.join(command), file=sys.stderr, flush=True)
+    completed: subprocess.CompletedProcess[bytes] = subprocess.run(command, cwd=root, env=environment)
+    if completed.returncode != 0:
+        raise FetchError('the SDK build failed (exit ' + str(completed.returncode) + '); ' + str(install)
+                         + ' has no build record and is rebuilt next time')
+    if not (install / 'lib' / 'cmake' / 'GUIForms' / 'GUIFormsConfig.cmake').is_file():
+        raise FetchError('the SDK build installed no lib/cmake/GUIForms/GUIFormsConfig.cmake into ' + str(install))
+    (install / BUILD_RECORD).write_text(json.dumps(wanted, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+    built: list[str] = report(install)
+    return built
+
+
+def prefix_command(lock: Lock, target: str, cache: Path) -> list[str]:
+    source: Source = pinned_source(lock)
+    install: Path = install_of(cache, lock, target)
+    found: dict[str, Any] | None = recorded(install)
+    if found is None or found.get('archive_sha256') != source.sha256 or found.get('target') != target:
+        raise FetchError('the pinned SDK is not built for ' + target + ' into ' + str(install) + '; run fetch')
+    lines: list[str] = report(install)
     return lines
 
 
 def release_assets(repository: str, tag: str) -> list[dict[str, Any]]:
-    """A release's asset list from the GitHub API (names and digests only)."""
+    """A release's asset list from the GitHub API (names, sizes and digests only)."""
     url: str = 'https://api.github.com/repos/' + repository + '/releases/tags/' + tag
     headers: dict[str, str] = {'Accept': 'application/vnd.github+json', 'User-Agent': 'template_harness-fetch-sdk'}
     token: str = os.environ.get('GH_TOKEN', '') or os.environ.get('GITHUB_TOKEN', '')
@@ -323,16 +487,17 @@ def parse_checksums(text: str) -> dict[str, str]:
             continue
         digest: str = fields[0].lower()
         name: str = fields[1].strip().lstrip('*')
-        if len(digest) == 64 and all(c in '0123456789abcdef' for c in digest):
+        if is_digest(digest):
             digests[name] = digest
     return digests
 
 
 def pin_command(lock: Lock, tag: str) -> list[str]:
     version: str = tag[1:] if tag.startswith('v') else tag
+    name: str = lock.source_asset.replace('{version}', version)
     listed: list[dict[str, Any]] = release_assets(lock.repository, tag)
-    published: dict[str, str] = {}
     sizes: dict[str, int] = {}
+    published: dict[str, str] = {}
     entry: dict[str, Any]
     for entry in listed:
         entry_name: str = str(entry.get('name'))
@@ -340,45 +505,30 @@ def pin_command(lock: Lock, tag: str) -> list[str]:
         published_digest: str = str(entry.get('digest') or '')
         if published_digest.startswith('sha256:'):
             published[entry_name] = published_digest[len('sha256:'):]
+    if name not in sizes:
+        raise FetchError(tag + ' publishes no ' + name)
     if CHECKSUMS_ASSET not in sizes:
         raise FetchError(tag + ' publishes no ' + CHECKSUMS_ASSET)
-    recorded: dict[str, str] = parse_checksums(release_checksums(lock.repository, tag))
-    pinned: list[Asset] = []
-    platform: str
-    for platform in PLATFORMS:
-        stem: str = lock.sdk_asset.replace('{version}', version).replace('{platform}', platform)
-        found: str = ''
-        suffix: str
-        for suffix in ARCHIVE_SUFFIXES:
-            if stem + suffix in sizes:
-                found = stem + suffix
-                break
-        if not found:
-            raise FetchError(tag + ' publishes no ' + stem + '.tar.gz or .zip')
-        if found not in recorded:
-            raise FetchError(tag + "'s " + CHECKSUMS_ASSET + ' records no digest for ' + found)
-        if found in published and published[found] != recorded[found]:
-            raise FetchError(found + ': ' + CHECKSUMS_ASSET + ' records ' + recorded[found]
-                             + ' but GitHub publishes ' + published[found])
-        pinned.append(Asset(platform, found, recorded[found]))
+    sums: dict[str, str] = parse_checksums(release_checksums(lock.repository, tag))
+    if name not in sums:
+        raise FetchError(tag + "'s " + CHECKSUMS_ASSET + ' records no digest for ' + name)
+    if name in published and published[name] != sums[name]:
+        raise FetchError(name + ': ' + CHECKSUMS_ASSET + ' records ' + sums[name]
+                         + ' but GitHub publishes ' + published[name])
     text: str = LOCK_PATH.read_text(encoding='utf-8')
-    head: str = text.split('\n[sdk]', 1)[0]
+    head: str = text.split('\n[source]', 1)[0]
     head = head.replace('tag = "' + lock.tag + '"', 'tag = "' + tag + '"', 1)
-    lines: list[str] = [head.rstrip('\n'), '', '[sdk]']
-    asset: Asset
-    for asset in pinned:
-        lines.append('')
-        lines.append('[sdk.' + asset.platform + ']')
-        lines.append('name = "' + asset.name + '"')
-        lines.append('sha256 = "' + asset.sha256 + '"')
+    lines: list[str] = [head.rstrip('\n'), '', '[source]', 'name = "' + name + '"', 'sha256 = "' + sums[name] + '"']
     replacement: str = '\n'.join(lines) + '\n'
     staged: Path = LOCK_PATH.with_suffix('.lock.new')
     staged.write_text(replacement, encoding='utf-8', newline='\n')
-    read_lock(staged)
+    try:
+        read_lock(staged)
+    except FetchError:
+        staged.unlink(missing_ok=True)
+        raise
     staged.replace(LOCK_PATH)
-    result: list[str] = ['pinned ' + tag]
-    for asset in pinned:
-        result.append(asset.name + ' ' + str(sizes[asset.name]) + ' bytes')
+    result: list[str] = ['pinned ' + tag, name + ' ' + str(sizes[name]) + ' bytes']
     return result
 
 
@@ -387,8 +537,11 @@ def main() -> int:
                                                               formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('command', choices=('fetch', 'prefix', 'pin'))
     parser.add_argument('tag', nargs='?', help='pin: the release tag to pin')
-    parser.add_argument('--platform', choices=PLATFORMS, help='default: this host')
+    parser.add_argument('--target', choices=PLATFORMS, help='default: this host')
     parser.add_argument('--cache', type=Path, help='default: HARNESS_CACHE, else the user cache directory')
+    parser.add_argument('--jobs', type=int, default=4)
+    parser.add_argument('--allow-network-inputs', action='store_true',
+                        help='let the SDK build download the inputs its manifest lists')
     args: argparse.Namespace = parser.parse_args()
     try:
         lock: Lock = read_lock(LOCK_PATH)
@@ -398,12 +551,12 @@ def main() -> int:
                 raise FetchError('pin needs a release tag')
             lines = pin_command(lock, args.tag)
         else:
-            platform: str = args.platform or running_platform()
+            target: str = args.target or running_platform()
             cache: Path = checked_cache(args.cache or default_cache())
             if args.command == 'fetch':
-                lines = fetch_command(lock, platform, cache)
+                lines = fetch_command(lock, target, cache, args.jobs, args.allow_network_inputs)
             else:
-                lines = prefix_command(lock, platform, cache)
+                lines = prefix_command(lock, target, cache)
     except FetchError as error:
         print('fetch_sdk: ' + str(error), file=sys.stderr)
         return 1

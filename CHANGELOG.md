@@ -21,8 +21,19 @@ and new form. Provisional rows there may change without an entry.
   under `CCACHE_BASEDIR`, the checkpoint tool and the bootstrap (both
   provisional). `docs/contract.md` notes that GUI.Forms keeps
   `tools/sanitizer/lsan.supp`.
+- `example_app/`: a GUI.Forms window app built against the pinned GUI.Forms
+  source SDK, which `example_app/fetch_sdk.py` fetches, verifies and builds
+  for the host into a cache outside the source tree.
+- Reusable workflows (`on: workflow_call`) in `.github/workflows/`:
+  `harness-native.yml` (one host's toolchain, packages or macOS runtimes,
+  compiler cache, cached source-built installs and the product's build
+  command), `harness-house-style.yml` and `harness-state-machines.yml`;
+  `example.yml` runs them over `example_app/`. A product pins the harness
+  in its `harness.lock` (`[harness] repository, commit`).
 
 ### Changed
+- `harness/windows_toolchain.py restore` reads the project's `[toolchain]
+  repository`, falling back to `GITHUB_REPOSITORY` when it is empty.
 - `checkpoint/checkpoint.py` reads its settings from `project.Project`
   instead of parsing `[checkpoint]` itself. The command line is unchanged.
 

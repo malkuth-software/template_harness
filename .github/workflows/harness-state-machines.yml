@@ -55,17 +55,32 @@ on:
         description: The project file's [linux_packages.<profile>] the configure step needs
         type: string
         default: toolkit
+      timeout_minutes:
+        type: number
+        default: 30
+      install_cache_paths:
+        description: >-
+          Installs the configure command makes under HARNESS_CACHE (.harness-cache/ at the workspace root) and
+          reuses while their inputs match, such as a dependency built from source; actions/cache paths,
+          relative to the workspace root, one per line. Empty caches none.
+        type: string
+        default: ''
+      install_cache_key_files:
+        description: One hashFiles pattern naming those installs' inputs (for example a lock file)
+        type: string
+        default: ''
 permissions:
   contents: read
 jobs:
   state-machines:
     name: state-machine-gate
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: ${{ inputs.timeout_minutes }}
     env:
       HARNESS_WORKSPACE: ${{ github.workspace }}
       HARNESS_PROJECT: ${{ github.workspace }}/${{ inputs.project }}
       HARNESS_ROOT: ${{ github.workspace }}/${{ inputs.harness_path }}
+      HARNESS_CACHE: ${{ github.workspace }}/.harness-cache
       BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
     steps:
       # The whole history, so the changed paths come from the merge base.
@@ -122,10 +137,22 @@ jobs:
         env:
           PROFILE: ${{ inputs.linux_profile }}
         run: sh "$HARNESS_ROOT/harness/install_linux_ci_packages.sh" "$PROFILE" "$RUNNER_TEMP/apt-archives"
+      # As in harness-native.yml: an install the configure command builds
+      # from source is reused while its inputs and the compiler match.
+      - name: Identify the compiler
+        id: compiler
+        if: steps.scope.outputs.scope != 'none' && inputs.install_cache_paths != ''
+        run: python3 "$HARNESS_ROOT/harness/compiler_identity.py"
+      - uses: actions/cache@v4
+        if: steps.scope.outputs.scope != 'none' && inputs.install_cache_paths != ''
+        with:
+          path: ${{ inputs.install_cache_paths }}
+          key: state-machines-installs-v1-${{ runner.arch }}-${{ steps.compiler.outputs.identity }}-${{ hashFiles(inputs.install_cache_key_files) }}
       - name: Configure the tree
         if: steps.scope.outputs.scope != 'none'
         env:
           CONFIGURE_COMMAND: ${{ inputs.configure_command }}
+          HARNESS_TOOLCHAIN_IDENTITY: ${{ steps.compiler.outputs.identity }}
         run: sh -c "$CONFIGURE_COMMAND"
       - name: Check the state machines
         if: steps.scope.outputs.scope != 'none'

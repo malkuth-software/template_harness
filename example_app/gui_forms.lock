@@ -1,27 +1,21 @@
 # The GUI.Forms SDK the example app builds against (owner decision 4: a
-# pinned v0.2.N release). fetch_sdk.py downloads the running platform's
-# archive from this release, checks its SHA-256 against this file and unpacks
-# it into a cache outside the source tree; `fetch_sdk.py pin TAG` rewrites
-# this file from a release's published digests.
+# pinned v0.2.N release). GUI.Forms releases its SDK as source, for any
+# target: gui-forms-sdk-<version>-source.tar.gz, holding
+# gui-forms-sdk-<version>/ (the release tree, its pinned third-party sources
+# and SDK_MANIFEST.json), with its digest in the release's SHA256SUMS.txt.
 #
-# Each platform's archive is gui-forms-sdk-<version>-<platform>.tar.gz
-# (.zip on Windows), published with each release since GUI.Forms PR #406,
-# with its digest in the release's SHA256SUMS.txt. It holds one directory,
-# gui-forms-sdk-<version>-<platform>/, the `cmake --install` prefix:
-# include/, lib/ (and bin/ for the Windows DLLs), lib/cmake/GUIForms/,
-# cmake/llvm22.cmake, share/GUIForms/fonts/, share/licenses/GUIForms/ and,
-# on macOS, llvm-runtime/ (the LLVM runtime its binaries need). The example
-# configures with the harness's own harness/cmake/llvm22.cmake. Until a
-# release carrying the archives is pinned, the [sdk] table is empty and a
-# fetch stops with that reason.
-schema = 1
+# fetch_sdk.py downloads that archive, checks its SHA-256 against this file,
+# unpacks it into a cache outside the source tree, and builds and installs
+# GUI.Forms from it for one target with the harness toolchain (through the
+# build entry point the manifest names). `fetch_sdk.py pin TAG` rewrites the
+# tag and the [source] table from a release's SHA256SUMS.txt.
+#
+# Until a release carrying the source archive is pinned, there is no
+# [source] table and a fetch stops with that reason.
+schema = 2
 
 [release]
 repository = "malkuth-software/gui_forms"
 tag = "v0.2.1298"
-# The archive name for `pin`, before its .tar.gz or .zip suffix.
-sdk_asset = "gui-forms-sdk-{version}-{platform}"
-
-# [sdk.<platform>] name = "<asset name>", sha256 = "<hex digest>", for
-# windows-x64, macos-arm64, linux-x64 and linux-arm64.
-[sdk]
+# The source archive's name; pin substitutes the release's version.
+source_asset = "gui-forms-sdk-{version}-source.tar.gz"
