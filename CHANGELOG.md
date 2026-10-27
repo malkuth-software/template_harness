@@ -36,6 +36,36 @@ and new form. Provisional rows there may change without an entry.
   `tools/sanitizer/lsan.supp`.
 
 ### Changed
+- A product may be the workspace root (`source_dir = "."`, File Manager's
+  layout): `project.ROOT_SOURCE_DIR`, `Project.at_workspace_root()`, and
+  `source_root()` is the workspace itself. The bootstrap clones such a
+  product into `DIR` itself and warns about each of `template_harness/`,
+  `notes/`, `notes-<branch>/`, `projects/`, `.build/`, `.ccache/` and `.ci/`
+  the checkout does not ignore; `checkpoint init` with `tree = "."` clones
+  into the workspace in place beside the harness (removing its `.git` again
+  if an entry would be overwritten); `lock.py checkout` and the
+  harness-checkout action (`product-path: .`) put the harness inside the
+  checkout. Other `source_dir` values may no longer hold `.`, `..` or empty
+  parts. Tests: `harness/test_root_layout.py`, `harness/test_bootstrap_root.py`,
+  the root-layout checkpoint and lock tests.
+- Optional project-file fields: `ci.cache_asset_prefix`,
+  `ci.pinned_cache_revisions`, `tests.areas_file` and the `[state_machines]`
+  table (`Project.has_state_machines`). A tool that needs a missing one
+  raises `project.MissingField`, "project <name> has no <field>"; every tool
+  still imports (`windows_toolchain.CACHE_NAME` is None without caches), and
+  the bootstrap skips the cache restore. `test_project_prefixes` skips an
+  absent prefix. GUI.Forms' names are unchanged (`test_project_names`).
+- `ci.native_job` may be a template with `{platform}` that a job's whole name
+  must equal (`"{platform}"` for a matrix job named by its platform);
+  without `{platform}` it is the job-name prefix as before.
+  `Project.native_job_matches(job_name, platform)` is what `ci_reuse.py`
+  uses.
+- `docs/adopting.md`: the root layout in sections 1, 3, 5 and 6; section 5's
+  harness placement for a submodule consumer (always inside its checkout),
+  `package_programs.py` needing no harness, `HARNESS_PROJECT` set per call;
+  the interim route to GUI.Forms' Windows toolchain before PR #1
+  (`GITHUB_REPOSITORY=malkuth-software/gui_forms`); the optional fields and
+  both `native_job` forms. `docs/contract.md` rows follow.
 - `checkpoint/checkpoint.py` reads its settings from `project.Project`
   instead of parsing `[checkpoint]` itself. The command line is unchanged.
 - `projects/gui_forms.toml`: `harness.lock` and `tools/harness_link.py` join

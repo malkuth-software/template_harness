@@ -12,7 +12,7 @@ product.
 
 | Tool | What products use |
 |---|---|
-| `harness/project.py` | The project file (TOML, `schema = 1`), found through `HARNESS_PROJECT` or `harness.toml` at the workspace root (`HARNESS_WORKSPACE`, else the current directory). Commands: `show`, `linux-packages <profile>`, `variable <NAME>`. Imported: `current()` and `load(path)`. |
+| `harness/project.py` | The project file (TOML, `schema = 1`), found through `HARNESS_PROJECT` or `harness.toml` at the workspace root (`HARNESS_WORKSPACE`, else the current directory). Commands: `show`, `linux-packages <profile>`, `variable <NAME>`. Imported: `current()` and `load(path)`. `source_dir = "."` puts the product at the workspace root (`Project.at_workspace_root()`). `ci.cache_asset_prefix`, `ci.pinned_cache_revisions`, `tests.areas_file` and the `[state_machines]` table are optional: a tool that needs one raises `project.MissingField` ("project <name> has no <field>"). `ci.native_job` is a job-name prefix or a template with `{platform}` (`Project.native_job_matches(job_name, platform)`). |
 | `harness/ci_build_steps.py` | Imported by a product's build driver: `configure_tree(toolkit, configure)`, `sanitizer_options(host, lsan_suppressions, debug_info='lines')`, and `SANITIZER_LINK_FLAGS` (a string of linker flags; GUI.Forms' `ci_build.SANITIZER_LINK_FLAGS` before the move). |
 | `harness/windows_toolchain.py` | `restore`, run with `GITHUB_REPOSITORY` set: restores the published Windows CLANG64 toolchain. |
 | `harness/compiler_identity.py` | Run as a script: identifies and verifies the LLVM release compiler. |
@@ -24,11 +24,11 @@ product.
 | `harness/check_house_style.py` | Run with the directories to check. |
 | `harness/check_lifetime_rules.py` | Run with the directories to check. |
 | `harness/cmake/llvm22.cmake` | The CMake toolchain file for LLVM 22. On macOS it reads the runtime prefix from `<HARNESS_ENV_PREFIX>_LLVM_RUNTIME`, else `HARNESS_LLVM_RUNTIME`. |
-| The workspace layout | The workspace root holds the product checkout `<source_dir>/` beside its build trees `.build/native-<platform>/<build_name>/` (`-sanitize` for the sanitized tree), and is `CCACHE_BASEDIR`, with `CCACHE_DIR=<workspace>/.ccache` and `CCACHE_COMPILERCHECK=content`. A compiler cache hits only for a product built in this layout; `project.Project.build_tree(platform, sanitize)` names the trees. |
-| `checkpoint/checkpoint.py` | **Provisional**: may change without a breaking entry until it is marked stable here. `init [--from URL]`, `fold <clone>:<branch> ... [--title [N=]TEXT]`, `verify`, `push [--dry-run]`, `after-merge`; settings in the project file's `[checkpoint]` table. |
+| The workspace layout | The workspace root holds the product checkout `<source_dir>/` beside its build trees `.build/native-<platform>/<build_name>/` (`-sanitize` for the sanitized tree), and is `CCACHE_BASEDIR`, with `CCACHE_DIR=<workspace>/.ccache` and `CCACHE_COMPILERCHECK=content`. A compiler cache hits only for a product built in this layout; `project.Project.build_tree(platform, sanitize)` names the trees. With `source_dir = "."` the product's checkout is the workspace root itself, holding `template_harness/`, `.build/`, `.ccache/` and `.ci/`, which it must ignore. |
+| `checkpoint/checkpoint.py` | **Provisional**: may change without a breaking entry until it is marked stable here. `init [--from URL]`, `fold <clone>:<branch> ... [--title [N=]TEXT]`, `verify`, `push [--dry-run]`, `after-merge`; settings in the project file's `[checkpoint]` table; `tree = "."` is the workspace root, which `init` clones into in place. |
 | `harness/lock.py` and a product's `harness.lock` | The pin (owner decision 2): `[harness] repository = "owner/name"`, `commit = "<40 hex>"` on one line each. Commands: `show`, `checkout DIR` (the exact commit, detached; refuses a dirty DIR), `bump [--to REF]`; options `--lock PATH`, `--github-base URL`. |
-| `.github/actions/harness-checkout` | A composite action: inputs `product-path` (holding `harness.lock`) and `path` (default `template_harness`); outputs `repository` and `commit`. It checks the locked commit out beside the product and verifies it. |
-| `bootstrap.sh`, `bootstrap.ps1`, `harness/bootstrap.py`, `harness/restore_local.py` | **Provisional**, as above. `bootstrap.sh --workspace DIR --project NAME [--in-house] [--dry-run] [--platform P] [--no-restore] [--no-smoke]`; settings in the project file's `[bootstrap]` table. |
+| `.github/actions/harness-checkout` | A composite action: inputs `product-path` (holding `harness.lock`) and `path` (default `template_harness`); outputs `repository` and `commit`. It checks the locked commit out beside the product and verifies it; with `product-path: .` the harness lands inside a root-layout product at `template_harness/`. |
+| `bootstrap.sh`, `bootstrap.ps1`, `harness/bootstrap.py`, `harness/restore_local.py` | **Provisional**, as above. `bootstrap.sh --workspace DIR --project NAME [--in-house] [--dry-run] [--platform P] [--no-restore] [--no-smoke]`; settings in the project file's `[bootstrap]` table. With `source_dir = "."` the product is cloned into `DIR` itself and the bootstrap warns about any of its entries the checkout does not ignore. |
 
 The names a project file produces are part of the contract too: a product's
 caches, receipts, artifacts and toolchain releases carry them.
@@ -36,7 +36,9 @@ caches, receipts, artifacts and toolchain releases carry them.
 
 GUI.Forms keeps its own contract for what stays there, such as
 `tools/package_programs.py`'s `WINDOWS_SYSTEM_DLLS` and
-`WINDOWS_FORBIDDEN_RUNTIME_DLL`, its `tools/ci_build.py` driver, and
+`WINDOWS_FORBIDDEN_RUNTIME_DLL` (File Manager imports them;
+`package_programs.py` imports nothing from the harness, so they import
+without one, while `tools/ci_build.py` needs it), its `tools/ci_build.py` driver, and
 `tools/sanitizer/lsan.supp`, the LeakSanitizer suppressions File Manager
 passes to `sanitizer_options`: they name the system libraries GUI.Forms'
 hosts load and must never name a GUI.Forms frame, so they stay with

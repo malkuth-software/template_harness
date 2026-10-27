@@ -53,6 +53,21 @@ for a product built in it:
 <workspace>/.ccache, .ci        CCACHE_DIR (CCACHE_BASEDIR is the workspace) and CI state
 ```
 
+A product can instead be the workspace root itself (`source_dir = "."`).
+File Manager is built this way. The harness, the build trees, the CI state
+and the bootstrap's notes then all sit inside the product's checkout, so
+its `.gitignore` must list them:
+
+```text
+<workspace>/                    the product checkout (source_dir ".")
+<workspace>/template_harness    inside the checkout: ignored
+<workspace>/.build, .ccache, .ci   inside the checkout: ignored
+<workspace>/notes, notes-<branch>  the bootstrap's notes, inside the checkout: ignored
+```
+
+Choose the layout once, like the names in section 2: moving a product
+between layouts changes every compiler-cache path, so nothing hits.
+
 ## 2. Writing `projects/<product>.toml`
 
 The project file lives in this repository. Add it in a harness PR, which
@@ -70,24 +85,46 @@ new history of caches and receipts, so choose the names once.
 | `schema` | `1` | yes |
 | `[project] name` | The bootstrap's `--project NAME`, the default notes branch, and the reusable workflows' cache-key prefix | yes |
 | `[project] repository` | `owner/name`; the bootstrap clones it and the manifests record it | yes |
-| `[project] source_dir` | The checkout under the workspace root; relative, without a trailing slash | yes |
+| `[project] source_dir` | The checkout under the workspace root: a relative directory without `.`, `..` or a trailing slash, or `"."` for a product that is the workspace root (section 1) | yes |
 | `[project] build_name` | The build tree `.build/native-<platform>/<build_name>` | yes |
 | `[project] env_prefix` | Every environment variable the tools read or set: `<env_prefix>_LLVM_RUNTIME`, `_PLATFORM`, `_COMPILER_ID`, `_RUNNER`, `_SANITIZER_DEBUG_INFO`, `_PACKAGE_WINDOWS_TOOLCHAIN` | yes |
 | `[ci] artifact_prefix` | Every workflow artifact: `<prefix>validated-…`, `inputs-…`, `tree-…`, `sanitize-ccache-…` | yes |
-| `[ci] cache_asset_prefix` | The compiler-cache release asset `<prefix><platform>.tar.gz` | yes |
-| `[ci] native_workflow`, `native_job` | The workflow file and job whose runs may produce receipts and caches; reuse trusts no other | yes |
-| `[ci] pinned_cache_revisions` | A JSON file under the source root of cache releases the pruner keeps | yes (the file is read only by `prune_cache_releases.py`) |
+| `[ci] cache_asset_prefix` | The compiler-cache release asset `<prefix><platform>.tar.gz` | no: leave it out if you publish no compiler caches (the bootstrap then restores none) |
+| `[ci] native_workflow`, `native_job` | The workflow file and job whose runs may produce receipts and caches; reuse trusts no other. `native_job` has two forms, described below | yes |
+| `[ci] pinned_cache_revisions` | A JSON file under the source root listing the cache releases the pruner keeps | no; only `prune_cache_releases.py` reads it |
 | `[toolchain] repository` | The Windows toolchain's publisher, and where `restore_local.py` reads it from | yes |
 | `[toolchain] asset_prefix` | `<prefix><platform>.tar.zst` and its manifest | yes |
-| `[tests] areas_file` | The test-area rules `change_selection.py` reads | yes (read only by change selection) |
+| `[tests] areas_file` | The test-area rules `change_selection.py` reads | no; only change selection reads it |
 | `[tests] name_prefixes` | `tests/X.cpp` names the tests `X` and `<prefix>X` | yes, may be `[]` |
 | `[linux_packages.<profile>] packages`, `extends` | The package sets `install_linux_ci_packages.sh <profile>` installs; `extends` names one other profile, one level deep | the table is required; define the profiles your jobs use |
-| `[state_machines] first_party_dirs`, `vocabulary_headers`, `areas`, `full_tree_triggers` | The state-machine checker's scope, its atom vocabulary, `[prefix, area]` ownership pairs (most specific first), and the paths whose change widens a changed-code run to the full tree | yes, lists may be empty |
+| `[state_machines] first_party_dirs`, `vocabulary_headers`, `areas`, `full_tree_triggers` | The state-machine checker's scope, its atom vocabulary, `[prefix, area]` ownership pairs (most specific first), and the paths whose change widens a changed-code run to the full tree | no: without the table, `check_state_machines.py` refuses to run; with it, all four are required and the lists may be empty |
 | `[build] configure_variables` | Your own variables, without the prefix, that change what a configure records | yes, may be `[]` |
 | `[cache_manifest] profile`, `native_options` | What `cache-manifest.json` records beside each cache | yes |
 | `[cache_manifest.platform_options.<platform>]` | Per-platform overrides; each key must already be in `native_options` | no |
 | `[checkpoint]` | Section 6; `tree` and `verify` are required, while `base` (`main`), `remote` (`origin`), `branch_prefix` (`checkpoint/`) and `merge_method` (`merge`) have defaults | no |
 | `[bootstrap]` | Section 6; every field has a default | no |
+
+An optional field is only needed by the tools that read it. A tool that
+needs a field your file leaves out stops with `project <name> has no
+<field>` (for example `project file_manager has no ci.cache_asset_prefix`).
+Every other tool still imports and runs.
+
+**`native_job`, two forms.** `ci_reuse.py lookup` trusts a receipt only
+from a run of `native_workflow` with exactly one job matching
+`native_job` for the platform (`project.Project.native_job_matches`):
+
+- **A prefix** (GUI.Forms: `"native"`). It matches a job named
+  `<native_job> (<matrix values>)`, optionally followed by ` / <job>`,
+  whose matrix values include `, <platform>,`. For example
+  `native (ubuntu-24.04, linux-x64, bash) / build`.
+- **A template containing `{platform}`.** The job's whole name must equal
+  the template with the platform substituted. A matrix job named by its
+  platform (`name: ${{ matrix.label || matrix.platform }}`) is
+  `"{platform}"`, which matches `linux-x64`. The same job inside a called
+  workflow is `"<calling job> / {platform}"`. The platform is the one the
+  product passes to `ci_reuse.py identity --platform`. A matrix entry
+  whose label is not its platform therefore never matches; such an entry
+  produces no receipts.
 
 Put `harness.lock` and every file that forwards to the harness in
 `full_tree_triggers`. A harness bump can change any verdict, so it must
@@ -115,13 +152,29 @@ another. Follow these rules:
 The compiler-cache release tag `build-<commit>` is shared by design. The
 asset names inside it carry the prefix.
 
-**The toolchain.** On harness main, CI's `windows_toolchain.py restore`
-reads the running repository's releases. A product that builds on Windows
-must therefore publish the toolchain there once: run the native workflow
-with packaging requested (`<env_prefix>_PACKAGE_WINDOWS_TOOLCHAIN`), as
-GUI.Forms' `native.yml` does through its `package_windows_toolchain` input. With PR #1, `restore` reads the project's
-`[toolchain] repository` instead. Setting it to `malkuth-software/gui_forms`
-then reuses GUI.Forms' published toolchain without republishing it.
+`harness/test_project_prefixes.py` holds these rules for every file in
+`projects/`, and skips a prefix a file leaves out. The one shared name it
+allows is a Windows toolchain: two projects may share one only when they
+name exactly the same `[toolchain] repository` and `asset_prefix`.
+
+**The toolchain.** A product that builds on Windows can reuse GUI.Forms'
+published CLANG64 toolchain instead of publishing its own:
+
+- Set `[toolchain] repository = "malkuth-software/gui_forms"` and
+  `asset_prefix = "gui-forms-toolchain-"`.
+- **Until PR #1 lands**, CI's `windows_toolchain.py restore` reads the
+  running repository's releases, so name GUI.Forms' repository for that
+  one call. The asset names come from your `[toolchain] asset_prefix`:
+
+  ```sh
+  GITHUB_REPOSITORY=malkuth-software/gui_forms python template_harness/harness/windows_toolchain.py restore
+  ```
+
+- **With PR #1**, `restore` reads the project's `[toolchain] repository`,
+  so the override goes.
+
+`restore_local.py`, which the bootstrap runs, already reads
+`[toolchain] repository`.
 
 ## 3. `harness.lock`
 
@@ -173,9 +226,19 @@ so CI validates it afresh.
   one line.
 
 Either way, check the product out under its `source_dir` (`path:
-<source_dir>`), so that the harness lands beside it. A job that checks the
-product out at the workspace root gets the harness inside the checkout.
-GUI.Forms' stx jobs do this deliberately, with `product-path: .`.
+<source_dir>`), so that the harness lands beside it.
+
+**A product at the workspace root** (`source_dir = "."`) gets the
+harness inside its checkout, at `<product root>/template_harness`:
+
+- **In CI**, check the product out at the workspace root (no `path:`)
+  first. `actions/checkout` cleans the directory it checks out into, so it
+  must come before anything else. Then run the harness-checkout step with
+  `product-path: .`. GUI.Forms' stx jobs work this way.
+- **Locally**, from the product root:
+  `python3 template_harness/harness/lock.py checkout template_harness`
+  (`--lock` defaults to `./harness.lock`). The harness is its own clone,
+  which the product's `.gitignore` must list (`/template_harness/`).
 
 ## 4. CI
 
@@ -249,18 +312,28 @@ are forwarding shims (`tools/harness_link.py` lists them):
   `gui_forms/harness.lock` pins.
 
 `tools/ci_build.py` is not a shim. It still exports `configure_tree`,
-`sanitizer_options` and `SANITIZER_LINK_FLAGS`, but importing it needs the
-harness too.
+`sanitizer_options` and `SANITIZER_LINK_FLAGS`, but it now imports
+`tools/harness_link.py`, so importing it needs the harness too.
+`tools/package_programs.py` is GUI.Forms' own and imports nothing from
+the harness. `WINDOWS_SYSTEM_DLLS` and `WINDOWS_FORBIDDEN_RUNTIME_DLL`
+therefore import without one, before and after the bump.
 
 **Bumping the submodule past #408** needs the harness beside the
 submodule:
 
 - **Place it at `<submodule's parent>/template_harness`.** The shims look
-  there (`harness_link.WORKSPACE` is the submodule's parent directory).
-  With the product checked out at the workspace root and the submodule at
-  `./gui_forms`, that is `<workspace>/template_harness`. With the product
-  at `<workspace>/<product>`, it is inside your checkout, so add it to
-  `.gitignore`.
+  there: `harness_link.WORKSPACE` is the submodule's parent directory.
+  That directory always lies inside your checkout, so add the harness to
+  your `.gitignore` (`/template_harness/`):
+  - **The product at the workspace root** (File Manager, submodule at
+    `./gui_forms`): `<workspace>/template_harness`. It is the same place
+    your own harness checkout goes (section 3), so one checkout serves
+    both.
+  - **The product at `<workspace>/<product>`**:
+    `<workspace>/<product>/template_harness`. This is not where your own
+    harness checkout goes (`<workspace>/template_harness`), so while you
+    use the shims you need both. Moving off the shims (below) removes the
+    second.
 - **Check it out at the submodule's pin:**
   `lock.py --lock <submodule>/harness.lock checkout <that directory>`.
   In CI, use `uses: ./<submodule>/.github/actions/harness-checkout` with
@@ -268,9 +341,15 @@ submodule:
   shims do not verify the commit; a CI step that compares the harness's
   HEAD with the submodule's lock catches a mismatch.
 - **The names:** unless `HARNESS_PROJECT` is set, the shims use
-  GUI.Forms' project file and names (`gui-…`) in your repository, and
-  default `HARNESS_WORKSPACE` to the submodule's parent. Set both
-  explicitly in every job.
+  GUI.Forms' project file and names (`gui-…`) in your repository. They
+  also default `HARNESS_WORKSPACE` to the submodule's parent. Set
+  `HARNESS_WORKSPACE` once for the job. Set `HARNESS_PROJECT` per call,
+  to the file whose names that call reads or writes:
+  - **the provider's file** for the provider's artifacts. For example, a
+    toolchain restore reading `gui-forms-toolchain-*` assets can use
+    `template_harness/projects/gui_forms.toml`, or your own file if its
+    `[toolchain]` names them (section 2);
+  - **your own file** for your artifacts, receipts and caches.
 - **The apt cache key:** if it hashes
   `gui_forms/tools/install_linux_ci_packages.sh`, it now hashes a shim
   and no longer follows package changes. Hash the harness script and the
@@ -313,8 +392,18 @@ It runs these steps:
    `DIR/template_harness` and runs the remaining steps from it;
 2. clones the notes, with the notes branch as a worktree;
 3. clones the private projects repository, with `--in-house` only;
-4. restores the toolchain and the newest usable compiler cache;
+4. restores the toolchain and the newest usable compiler cache. The cache
+   is skipped when the project has no `ci.cache_asset_prefix`;
 5. runs the smoke command from `DIR`.
+
+With `source_dir = "."`, step 1 clones the product into `DIR` itself.
+`DIR` must be empty or missing, or already that clone, which a re-run
+updates. Steps 1 to 3 then put `template_harness/`, `notes/`,
+`notes-<branch>/` and `projects/` inside the product's checkout, and the
+tools later add `.build/`, `.ccache/` and `.ci/` there. After the clones,
+the bootstrap asks git whether the checkout ignores each of these
+(`git check-ignore`) and prints one warning naming any that are not.
+List them in the product's `.gitignore`.
 
 It runs `bootstrap.ps1` from PowerShell. Re-running it updates; it never
 resets.
@@ -349,7 +438,11 @@ python3 template_harness/checkpoint/checkpoint.py push --dry-run
 In `[checkpoint]`:
 
 - `tree` is the integration clone (`init` marks it, and every other
-  command refuses an unmarked tree);
+  command refuses an unmarked tree). For a product at the workspace root
+  it is `"."`, the integration workspace itself. `init` then clones in
+  place, beside the harness already there. If an entry there would be
+  overwritten, it stops and removes the `.git` it made. An existing clone
+  at the root is adopted as usual;
 - `verify` is your whole local verification, run from the workspace root
   with `HARNESS_CHECKPOINT_TREE` set. GUI.Forms uses `["sh", "build.sh",
   "all"]`, a script in its integration workspace that builds the tree and
@@ -384,13 +477,15 @@ A product has adopted the harness when all three of these hold:
 
 ## 8. Checklist
 
+- [ ] The layout chosen once: `<workspace>/<source_dir>`, or the product at the workspace root (`source_dir = "."`, section 1).
 - [ ] `projects/<name>.toml` merged in the harness, with prefixes per section 2 and the names test (section 7).
 - [ ] `harness.lock` in the product, pinning a commit that contains the project file.
 - [ ] `harness.lock` and every forwarding file listed in `[state_machines] full_tree_triggers`, and in your own change selection.
-- [ ] Every CI job checks the product out at `<source_dir>`, then the harness beside it, then calls harness paths.
+- [ ] Every CI job checks the product out at `<source_dir>` (at the root for `"."`), then the harness, then calls harness paths.
+- [ ] At the workspace root: `.gitignore` lists `template_harness/`, `notes/`, `notes-*/`, `projects/`, `.build/`, `.ccache/` and `.ci/`; the bootstrap warns about any it misses.
 - [ ] Any `uses: …@<commit>` pin equals `harness.lock`.
 - [ ] Cache keys hash harness files and the project file, never shims.
-- [ ] Windows: a published toolchain release the restore can read (section 2).
+- [ ] Windows: a published toolchain release the restore can read, your own or GUI.Forms' (section 2).
 - [ ] Release and packaging jobs updated too, including ones no PR run reaches.
 - [ ] Anything shipped to consumers runs without the harness.
 - [ ] Bootstrap on a clean machine; smoke command passes.
