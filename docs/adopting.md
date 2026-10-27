@@ -471,6 +471,7 @@ else `D:/malkuth` on Windows and `~/malkuth` elsewhere.
 | Path under the root | What |
 |---|---|
 | `gui_forms_lockstep/gui_forms/` | the clone, detached at the lockstep commit |
+| `gui_forms_lockstep/template_harness/` | the harness, at the commit in the clone's `harness.lock` |
 | `gui_forms_lockstep/.build/native-<target>/` | the build trees, reused from commit to commit |
 | `cache/ccache/` | the compiler cache every local build may share |
 | `cache/lockstep/gui-forms-<commit>-<target>/` | one install per built commit; older ones stay |
@@ -497,6 +498,13 @@ python3 template_harness/harness/lockstep.py status
 trees that already have them, so the first build downloads nothing.
 GUI.Forms' fetch scripts still fetch any pinned revision that the seeds do
 not have.
+
+`init` and `advance` also check template_harness out at
+`gui_forms_lockstep/template_harness/`, beside the clone, at the commit in
+the clone's `harness.lock`. They use `harness/lock.py`'s checkout, and
+`--github-base` replaces `https://github.com`. GUI.Forms' own
+`tools/ci_build.py` imports from that checkout. `build` and `prefix` refuse
+when it is missing or at another commit; `init` puts it back.
 
 `build` always runs `tools/build_sdk.py --features all`. On top of the
 default (Audio with the stx Vorbis decoder, the HarfBuzz/FreeType text
@@ -539,6 +547,7 @@ file `cache/lockstep/current-<target>.json`:
 | `prefix` | the install: `CMAKE_PREFIX_PATH` |
 | `package_dir` | `<prefix>/lib/cmake/GUIForms`: `GUIForms_DIR` |
 | `source` | the lockstep clone: the toolchain file, `tools/ci_build.py`'s `configure_tree`, the sanitizer options and `tools/sanitizer/lsan.supp` come from here, and `git -C <source> rev-parse HEAD` is `commit` |
+| `harness` | the template_harness commit checked out beside `source` (`<ccache_basedir>/template_harness`), taken from `source`'s `harness.lock`; `""` for a GUI.Forms commit without one |
 | `toolchain_file` | `<source>/cmake/llvm22.cmake`, the toolchain file the prefix was built with |
 | `font_dir` | `<prefix>/share/GUIForms/fonts`: `GUI_FORMS_FONT_DIR` |
 | `llvm_runtime` | the build's `GUI_FORMS_LLVM_RUNTIME` on macOS, else `""` |

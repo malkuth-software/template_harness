@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The local lockstep GUI.Forms: one clone on this machine, built once per commit, that every product builds against.
 
-    python3 harness/lockstep.py init [--reference DIR] [--seed DIR ...]
-    python3 harness/lockstep.py advance --to REF [--from REMOTE]
+    python3 harness/lockstep.py init [--reference DIR] [--seed DIR ...] [--github-base URL]
+    python3 harness/lockstep.py advance --to REF [--from REMOTE] [--github-base URL]
     python3 harness/lockstep.py build [--target T] [--jobs N]
     python3 harness/lockstep.py prefix [--target T] [--json]
     python3 harness/lockstep.py status [--target T]
@@ -12,6 +12,7 @@ on Windows and ~/malkuth elsewhere). Under the root:
 
     gui_forms_lockstep/              the lockstep workspace (CCACHE_BASEDIR)
         gui_forms/                   the clone, detached at the lockstep commit
+        template_harness/            the harness at the clone's harness.lock commit
         .build/native-<target>/      build_sdk.py's work trees, reused across commits
     cache/ccache/                    the compiler cache every local build shares
     cache/lockstep/gui-forms-<commit>-<target>/   one install per built commit
@@ -34,9 +35,14 @@ init      clones the repository (--repository, default
           build fetches nothing; GUI.Forms' fetch scripts still fetch a
           revision the clone pins and the seed lacks. Re-running init on an
           initialised tree only seeds what is missing.
-advance   moves the clone to REF (fetched from --from, default origin) and
-          leaves it detached. It is the coordinator's command; it refuses a
-          clone with changes to tracked files, and waits for a running build.
+          init and advance also check template_harness out beside the clone
+          at the commit in the clone's harness.lock (harness/lock.py's
+          checkout; --github-base replaces https://github.com), because
+          GUI.Forms' own tools/ci_build.py imports from it there.
+advance   moves the clone to REF (fetched from --from, default origin),
+          leaves it detached, and moves the harness to the new lock. It is the
+          coordinator's command; it refuses a clone with changes to tracked
+          files, and waits for a running build.
 build     builds and installs the clone's HEAD for the target (default: this
           host) with tools/build_sdk.py --features all, once per (commit,
           target, toolchain identity, features), then writes the install's
@@ -45,7 +51,8 @@ build     builds and installs the clone's HEAD for the target (default: this
           link (GUIForms::TextMasks, GUIForms::AudioLoopTransport) to the
           default (Audio with the stx Vorbis decoder, the HarfBuzz/FreeType
           text engine, the host's Application), so one install serves every
-          product; a commit whose build_sdk.py has no --features is refused.
+          product. It refuses a commit whose build_sdk.py has no --features,
+          and a harness that is missing or not at harness.lock's commit.
           One build runs at a time; others wait on the lock, then find the
           record. A failed build leaves current-<target>.json as it was and no
           record in the install, which the next build replaces.
@@ -68,6 +75,9 @@ for product build drivers to read:
     prefix              the install: CMAKE_PREFIX_PATH
     package_dir         <prefix>/lib/cmake/GUIForms: GUIForms_DIR
     source              the lockstep clone (its HEAD is commit while current)
+    harness             the template_harness commit checked out beside it
+                        (<workspace>/template_harness) from its harness.lock;
+                        '' for a GUI.Forms commit without harness.lock
     toolchain_file      <source>/cmake/llvm22.cmake, the toolchain file used
     font_dir            <prefix>/share/GUIForms/fonts: GUI_FORMS_FONT_DIR
     llvm_runtime        GUI_FORMS_LLVM_RUNTIME of the build (macOS), else ''
@@ -77,6 +87,7 @@ for product build drivers to read:
 """
 from __future__ import annotations
 import argparse
+import contextlib
 from dataclasses import dataclass
 import hashlib
 import json
@@ -89,11 +100,16 @@ import sys
 import time
 from typing import Any, BinaryIO
 
+import lock as harness_lock
+
 DEFAULT_REPOSITORY: str = 'https://github.com/malkuth-software/gui_forms.git'
 ROOT_VARIABLE: str = 'HARNESS_LOCKSTEP_ROOT'
 IDENTITY_VARIABLE: str = 'HARNESS_TOOLCHAIN_IDENTITY'
 WORKSPACE_NAME: str = 'gui_forms_lockstep'
 SOURCE_NAME: str = 'gui_forms'
+# The harness beside the clone, where GUI.Forms' tools look for it.
+HARNESS_NAME: str = 'template_harness'
+HARNESS_LOCK_NAME: str = 'harness.lock'
 MARKER_NAME: str = '.lockstep-tree'
 RECORD_NAME: str = '.lockstep-build.json'
 LOCK_NAME: str = '.lockstep.lock'
@@ -124,6 +140,7 @@ class Layout:
     root: Path
     workspace: Path
     source: Path
+    harness: Path
     marker: Path
     cache: Path
     ccache: Path
@@ -135,8 +152,8 @@ def layout_of(root: Path) -> Layout:
     workspace: Path = root / WORKSPACE_NAME
     cache: Path = root / 'cache'
     installs: Path = cache / 'lockstep'
-    result: Layout = Layout(root, workspace, workspace / SOURCE_NAME, workspace / MARKER_NAME, cache,
-                            cache / 'ccache', installs, installs / LOCK_NAME)
+    result: Layout = Layout(root, workspace, workspace / SOURCE_NAME, workspace / HARNESS_NAME,
+                            workspace / MARKER_NAME, cache, cache / 'ccache', installs, installs / LOCK_NAME)
     return result
 
 
@@ -267,7 +284,49 @@ def seed_sources(layout: Layout, seeds: list[Path]) -> list[str]:
     return missing
 
 
-def init_command(layout: Layout, repository: str, reference: Path | None, seeds: list[Path]) -> list[str]:
+def locked_harness(layout: Layout) -> harness_lock.Lock | None:
+    """The clone's harness.lock, or None for a GUI.Forms commit without one."""
+    path: Path = layout.source / HARNESS_LOCK_NAME
+    if not path.is_file():
+        return None
+    try:
+        result: harness_lock.Lock = harness_lock.load(path)
+    except harness_lock.LockError as error:
+        raise LockstepError(str(error)) from error
+    return result
+
+
+def place_harness(layout: Layout, github: str) -> str:
+    """Check template_harness out beside the clone at its harness.lock commit; that commit, or ''."""
+    locked: harness_lock.Lock | None = locked_harness(layout)
+    if locked is None:
+        return ''
+    try:
+        # lock.py reports progress on standard output, which carries this tool's key=value lines.
+        with contextlib.redirect_stdout(sys.stderr):
+            harness_lock.checkout(locked, layout.harness, github)
+    except harness_lock.LockError as error:
+        raise LockstepError('placing the harness: ' + str(error)) from error
+    return locked.commit
+
+
+def checked_harness(layout: Layout) -> str:
+    """The harness commit beside the clone, raising unless it is harness.lock's; '' without a lock."""
+    locked: harness_lock.Lock | None = locked_harness(layout)
+    if locked is None:
+        return ''
+    if not (layout.harness / '.git').exists():
+        raise LockstepError('no template_harness at ' + layout.harness.as_posix() + ', which the clone\'s '
+                            'harness.lock pins at ' + locked.commit + '; run lockstep.py init')
+    head: str = git(layout.harness, 'rev-parse', 'HEAD')
+    if head != locked.commit:
+        raise LockstepError(layout.harness.as_posix() + ' is at ' + head + ' but the clone\'s harness.lock pins '
+                            + locked.commit + '; run lockstep.py init')
+    return head
+
+
+def init_command(layout: Layout, repository: str, reference: Path | None, seeds: list[Path],
+                 github: str) -> list[str]:
     layout.ccache.mkdir(parents=True, exist_ok=True)
     layout.installs.mkdir(parents=True, exist_ok=True)
     if not layout.marker.is_file():
@@ -287,13 +346,15 @@ def init_command(layout: Layout, repository: str, reference: Path | None, seeds:
         git(layout.source, 'checkout', '--quiet', '--detach')
         layout.marker.write_text('lockstep clone of ' + repository + '\n', encoding='utf-8')
     missing: list[str] = seed_sources(layout, seeds)
-    lines: list[str] = ['source=' + layout.source.as_posix(), 'commit=' + head_commit(layout)]
+    harness: str = place_harness(layout, github)
+    lines: list[str] = ['source=' + layout.source.as_posix(), 'commit=' + head_commit(layout),
+                        'harness=' + harness]
     if missing:
         lines.append('unseeded=' + ','.join(missing))
     return lines
 
 
-def advance_command(layout: Layout, ref: str, remote: str) -> list[str]:
+def advance_command(layout: Layout, ref: str, remote: str, github: str) -> list[str]:
     checked_tree(layout)
     with TreeLock(layout.lock_file):
         refuse_tracked_changes(layout)
@@ -301,7 +362,8 @@ def advance_command(layout: Layout, ref: str, remote: str) -> list[str]:
         git(layout.source, 'fetch', '--quiet', remote, ref)
         git(layout.source, 'checkout', '--quiet', '--detach', 'FETCH_HEAD')
         after: str = head_commit(layout)
-    lines: list[str] = ['from=' + before, 'commit=' + after]
+        harness: str = place_harness(layout, github)
+    lines: list[str] = ['from=' + before, 'commit=' + after, 'harness=' + harness]
     return lines
 
 
@@ -426,7 +488,7 @@ def hits_and_compilations(before: dict[str, int], after: dict[str, int]) -> tupl
     return result
 
 
-def full_record(layout: Layout, commit: str, target: str, identity: str, compiler: Path,
+def full_record(layout: Layout, commit: str, harness: str, target: str, identity: str, compiler: Path,
                 environment: dict[str, str]) -> dict[str, Any]:
     prefix: Path = install_of(layout, commit, target)
     record: dict[str, Any] = {
@@ -434,7 +496,7 @@ def full_record(layout: Layout, commit: str, target: str, identity: str, compile
         'features': FEATURES,
         'compiler': compiler.as_posix(), 'prefix': prefix.as_posix(),
         'package_dir': (prefix / 'lib' / 'cmake' / 'GUIForms').as_posix(),
-        'source': layout.source.as_posix(), 'toolchain_file': (layout.source / 'cmake' / 'llvm22.cmake').as_posix(),
+        'source': layout.source.as_posix(), 'harness': harness, 'toolchain_file': (layout.source / 'cmake' / 'llvm22.cmake').as_posix(),
         'font_dir': (prefix / 'share' / 'GUIForms' / 'fonts').as_posix(),
         'llvm_runtime': environment.get('GUI_FORMS_LLVM_RUNTIME', '') if target.startswith('macos') else '',
         'ccache_dir': layout.ccache.as_posix(), 'ccache_basedir': layout.workspace.as_posix(),
@@ -451,13 +513,17 @@ def build_command(layout: Layout, target: str, jobs: int) -> list[str]:
     with TreeLock(layout.lock_file):
         refuse_tracked_changes(layout)
         commit: str = head_commit(layout)
+        harness: str = checked_harness(layout)
         environment: dict[str, str] = build_environment(layout, target)
-        wanted: dict[str, Any] = full_record(layout, commit, target, identity, compiler, environment)
+        wanted: dict[str, Any] = full_record(layout, commit, harness, target, identity, compiler, environment)
         prefix: Path = install_of(layout, commit, target)
         recorded: dict[str, Any] | None = read_record(prefix / RECORD_NAME)
-        if same_build(recorded, wanted) and recorded is not None:
-            if not same_build(read_record(current_of(layout, target)), wanted):
-                write_record(current_of(layout, target), recorded)
+        if same_build(recorded, wanted):
+            # The same build: refresh the fields the key does not cover, such as one added since.
+            if recorded != wanted:
+                write_record(prefix / RECORD_NAME, wanted)
+            if read_record(current_of(layout, target)) != wanted:
+                write_record(current_of(layout, target), wanted)
             up_to_date: list[str] = ['prefix=' + prefix.as_posix(), 'built=already']
             return up_to_date
         entry: Path = layout.source / 'tools' / 'build_sdk.py'
@@ -504,6 +570,10 @@ def active_record(layout: Layout, target: str) -> dict[str, Any]:
     if current.get('commit') != commit:
         raise LockstepError('the lockstep clone is at ' + commit + ' but the build for ' + target + ' is of '
                             + str(current.get('commit')) + '; run lockstep.py build')
+    harness: str = checked_harness(layout)
+    if current.get('harness', '') != harness:
+        raise LockstepError('the record for ' + target + ' names harness ' + str(current.get('harness', ''))
+                            + ' but ' + layout.harness.as_posix() + ' is at ' + harness + '; run lockstep.py build')
     return current
 
 
@@ -542,9 +612,11 @@ def main(argv: list[str] | None = None) -> int:
     init_parser.add_argument('--repository', default=DEFAULT_REPOSITORY)
     init_parser.add_argument('--reference', type=Path, default=None)
     init_parser.add_argument('--seed', type=Path, action='append', default=[])
+    init_parser.add_argument('--github-base', default=harness_lock.GITHUB)
     advance_parser: argparse.ArgumentParser = commands.add_parser('advance')
     advance_parser.add_argument('--to', required=True)
     advance_parser.add_argument('--from', dest='remote', default='origin')
+    advance_parser.add_argument('--github-base', default=harness_lock.GITHUB)
     build_parser: argparse.ArgumentParser = commands.add_parser('build')
     build_parser.add_argument('--target', choices=TARGETS, default=None)
     build_parser.add_argument('--jobs', type=int, default=os.cpu_count() or 4)
@@ -559,9 +631,9 @@ def main(argv: list[str] | None = None) -> int:
     lines: list[str]
     try:
         if args.command == 'init':
-            lines = init_command(layout, args.repository, args.reference, args.seed)
+            lines = init_command(layout, args.repository, args.reference, args.seed, args.github_base)
         elif args.command == 'advance':
-            lines = advance_command(layout, args.to, args.remote)
+            lines = advance_command(layout, args.to, args.remote, args.github_base)
         elif args.command == 'build':
             if args.jobs < 1:
                 parser.error('--jobs must be positive')
