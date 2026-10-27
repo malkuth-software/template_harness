@@ -87,7 +87,7 @@ class PlanPaintProjectTests(unittest.TestCase):
             self.assertEqual(bootstrap.notes_repository, 'malkuth-software/notes')
             self.assertEqual(bootstrap.notes_branch, 'plan-paint')
             self.assertEqual(bootstrap.projects_repository, 'malkuth-software/projects')
-            self.assertEqual(bootstrap.smoke, ())
+            self.assertEqual(bootstrap.smoke, ('{python}', 'scripts/smoke-build.py'))
 
 
 if __name__ == '__main__':

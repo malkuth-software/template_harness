@@ -65,9 +65,13 @@ cxx_standard = 20
 bundled_tiff = true
 
 # harness/bootstrap.py: the notes clone with the plan-paint side branch as
-# the worktree notes-plan-paint, and the in-house projects repository. The
-# smoke command arrives with the SDK build driver (phase P2).
+# the worktree notes-plan-paint, the in-house projects repository, and the
+# smoke build: scripts/smoke-build.py configures PLAN_PAINT_SMOKE (the
+# codec-free warp kernel and its test, without image codecs or GUI.Forms)
+# in .build/native-<platform>/plan-paint-smoke, builds it and runs
+# paint-warp. {python} is the interpreter running the bootstrap.
 [bootstrap]
 notes_repository = "malkuth-software/notes"
 notes_branch = "plan-paint"
 projects_repository = "malkuth-software/projects"
+smoke = ["{python}", "scripts/smoke-build.py"]
