@@ -44,6 +44,29 @@ class StateMachineArea:
 
 
 @dataclass(frozen=True)
+class CheckpointTable:
+    """[checkpoint], for checkpoint/checkpoint.py (its docstring explains each field)."""
+    # The integration tree, relative to the workspace root or absolute.
+    tree: str
+    verify: tuple[str, ...]
+    base: str
+    remote: str
+    branch_prefix: str
+    merge_method: str
+
+
+@dataclass(frozen=True)
+class BootstrapTable:
+    """[bootstrap], for harness/bootstrap.py: the notes and projects repositories and the smoke build."""
+    notes_repository: str
+    # The notes side branch checked out as a worktree beside notes/ (default: the project name).
+    notes_branch: str
+    projects_repository: str
+    # Run from the workspace root; the argument {python} becomes the running interpreter.
+    smoke: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Project:
     """One product's names, as read from its project file (see projects/gui_forms.toml)."""
     path: Path
@@ -90,6 +113,9 @@ class Project:
     cache_profile: str
     native_options: dict[str, str | int | bool]
     platform_native_options: dict[str, dict[str, str | int | bool]]
+    # The optional [checkpoint] and [bootstrap] tables; None when absent.
+    checkpoint: CheckpointTable | None
+    bootstrap: BootstrapTable | None
 
     def variable(self, name: str) -> str:
         """The environment variable <env_prefix>_<name>."""
@@ -229,6 +255,52 @@ def platform_option_tables(value: Any, shared: dict[str, str | int | bool]) -> d
     return tables
 
 
+MERGE_METHODS: tuple[str, ...] = ('merge', 'squash', 'rebase')
+
+
+def named_text(table: dict[str, Any], key: str, where: str, default: str) -> str:
+    value: Any = table.get(key, default)
+    if type(value) is not str or not value:
+        raise ValueError(where + '.' + key + ' must be a non-empty string')
+    return value
+
+
+def checkpoint_table(value: Any) -> CheckpointTable | None:
+    if value is None:
+        return None
+    if type(value) is not dict:
+        raise ValueError('[checkpoint] must be a table')
+    verify: tuple[str, ...] = text_list(value, 'verify', 'checkpoint')
+    if not verify:
+        raise ValueError('checkpoint.verify must be a non-empty list of strings')
+    merge_method: str = named_text(value, 'merge_method', 'checkpoint', 'merge')
+    if merge_method not in MERGE_METHODS:
+        raise ValueError('checkpoint.merge_method must be one of ' + ', '.join(MERGE_METHODS))
+    table: CheckpointTable = CheckpointTable(
+        tree=text_field(value, 'tree', 'checkpoint'), verify=verify,
+        base=named_text(value, 'base', 'checkpoint', 'main'), remote=named_text(value, 'remote', 'checkpoint', 'origin'),
+        branch_prefix=named_text(value, 'branch_prefix', 'checkpoint', 'checkpoint/'), merge_method=merge_method)
+    return table
+
+
+def bootstrap_table(value: Any, name: str, repository: str) -> BootstrapTable | None:
+    """Defaults: <owner>/notes, the project name as the notes branch, <owner>/projects, no smoke build."""
+    if value is None:
+        return None
+    if type(value) is not dict:
+        raise ValueError('[bootstrap] must be a table')
+    owner: str = repository.partition('/')[0]
+    smoke: tuple[str, ...] = ()
+    if 'smoke' in value:
+        smoke = text_list(value, 'smoke', 'bootstrap')
+    table: BootstrapTable = BootstrapTable(
+        notes_repository=named_text(value, 'notes_repository', 'bootstrap', owner + '/notes'),
+        notes_branch=named_text(value, 'notes_branch', 'bootstrap', name),
+        projects_repository=named_text(value, 'projects_repository', 'bootstrap', owner + '/projects'),
+        smoke=smoke)
+    return table
+
+
 def parse(document: dict[str, Any], path: Path) -> Project:
     """Validate a parsed project file whole before building the record."""
     if document.get('schema') != SCHEMA:
@@ -269,7 +341,10 @@ def parse(document: dict[str, Any], path: Path) -> Project:
         configure_variable_names=text_list(build, 'configure_variables', 'build'),
         cache_profile=text_field(cache, 'profile', 'cache_manifest'),
         native_options=native_options,
-        platform_native_options=platform_option_tables(cache.get('platform_options', {}), native_options))
+        platform_native_options=platform_option_tables(cache.get('platform_options', {}), native_options),
+        checkpoint=checkpoint_table(document.get('checkpoint')),
+        bootstrap=bootstrap_table(document.get('bootstrap'), text_field(product, 'name', 'project'),
+                                  text_field(product, 'repository', 'project')))
     return project
 
 

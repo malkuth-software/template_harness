@@ -40,7 +40,8 @@ after-merge
           <base> would change nothing), and prints the `git branch -D`
           commands for the contained ones. It never deletes anything.
 
-The [checkpoint] table (projects/gui_forms.toml has GUI.Forms' values):
+The [checkpoint] table, read by harness/project.py (projects/gui_forms.toml has
+GUI.Forms' values):
 
     tree          the integration tree, relative to the workspace root
     verify        the verification command, a list of arguments
@@ -63,7 +64,6 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
-import tomllib
 from typing import Any
 
 HARNESS: Path = Path(__file__).resolve().parents[1] / 'harness'
@@ -79,7 +79,6 @@ FOLD_RECORD: str = 'fold.json'
 FOLD_LOG: str = 'fold-log.md'
 VERIFICATION_RECORD: str = 'verification.json'
 PUSH_RECORD: str = 'push.json'
-MERGE_METHODS: tuple[str, ...] = ('merge', 'squash', 'rebase')
 # Bounded search for a free branch name on one day.
 MAXIMUM_BRANCHES_PER_DAY: int = 999
 SHORT_SHA: int = 12
@@ -109,44 +108,31 @@ class Topic:
     branch: str
 
 
-def text_value(table: dict[str, Any], key: str, default: str | None) -> str:
-    value: Any = table.get(key, default)
-    if type(value) is not str or not value:
-        raise ValueError('checkpoint.' + key + ' must be a non-empty string')
-    return value
-
-
 def parse_settings(table: Any, workspace: Path, repository: str) -> Settings:
-    """Validate a [checkpoint] table whole before building the record."""
-    if type(table) is not dict:
+    """A [checkpoint] table (validated by project.checkpoint_table), with the tree resolved against workspace."""
+    parsed: project.CheckpointTable | None = project.checkpoint_table(table)
+    if parsed is None:
         raise ValueError('[checkpoint] is missing from the project file')
-    verify: Any = table.get('verify')
-    if type(verify) is not list or not verify:
-        raise ValueError('checkpoint.verify must be a non-empty list of strings')
-    argument: Any
-    for argument in verify:
-        if type(argument) is not str:
-            raise ValueError('checkpoint.verify must be a non-empty list of strings')
-    merge_method: str = text_value(table, 'merge_method', 'merge')
-    if merge_method not in MERGE_METHODS:
-        raise ValueError('checkpoint.merge_method must be one of ' + ', '.join(MERGE_METHODS))
-    tree: Path = Path(text_value(table, 'tree', None))
+    settings: Settings = settings_from(parsed, workspace, repository)
+    return settings
+
+
+def settings_from(table: project.CheckpointTable, workspace: Path, repository: str) -> Settings:
+    tree: Path = Path(table.tree)
     if not tree.is_absolute():
         tree = workspace / tree
     settings: Settings = Settings(
-        tree=tree.resolve(), verify=tuple(verify), base=text_value(table, 'base', 'main'),
-        remote=text_value(table, 'remote', 'origin'), branch_prefix=text_value(table, 'branch_prefix', 'checkpoint/'),
-        merge_method=merge_method, repository=repository)
+        tree=tree.resolve(), verify=table.verify, base=table.base, remote=table.remote,
+        branch_prefix=table.branch_prefix, merge_method=table.merge_method, repository=repository)
     return settings
 
 
 def load_settings() -> Settings:
     """The current project's [checkpoint] table (project.current())."""
     product: project.Project = project.current()
-    stream: Any
-    with product.path.open('rb') as stream:
-        document: dict[str, Any] = tomllib.load(stream)
-    settings: Settings = parse_settings(document.get('checkpoint'), product.workspace_root(), product.repository)
+    if product.checkpoint is None:
+        raise ValueError('[checkpoint] is missing from ' + str(product.path))
+    settings: Settings = settings_from(product.checkpoint, product.workspace_root(), product.repository)
     return settings
 
 

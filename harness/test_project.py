@@ -102,6 +102,23 @@ class ProjectFileTests(unittest.TestCase):
         self.assertEqual(loaded.native_options_for('linux-x64')['skia'], True)
         self.assertEqual(loaded.native_options['skia'], True)
 
+    def test_the_optional_checkpoint_and_bootstrap_tables(self) -> None:
+        loaded: project.Project = parsed(MINIMAL)
+        self.assertIsNone(loaded.checkpoint)
+        self.assertIsNone(loaded.bootstrap)
+        tables: str = (MINIMAL + '[checkpoint]\ntree = "tree"\nverify = ["make"]\n'
+                       '[bootstrap]\nsmoke = ["{python}", "smoke.py"]\n')
+        loaded = parsed(tables)
+        self.assertEqual((loaded.checkpoint.tree, loaded.checkpoint.verify, loaded.checkpoint.merge_method),
+                         ('tree', ('make',), 'merge'))
+        self.assertEqual((loaded.bootstrap.notes_repository, loaded.bootstrap.notes_branch,
+                          loaded.bootstrap.projects_repository, loaded.bootstrap.smoke),
+                         ('owner/notes', 'example', 'owner/projects', ('{python}', 'smoke.py')))
+        with self.assertRaisesRegex(ValueError, 'merge_method'):
+            parsed(tables.replace('verify = ["make"]', 'verify = ["make"]\nmerge_method = "fast"'))
+        with self.assertRaisesRegex(ValueError, 'checkpoint.verify'):
+            parsed(tables.replace('verify = ["make"]', 'verify = []'))
+
     def test_the_workspace_and_default_project_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root: Path = Path(directory)
