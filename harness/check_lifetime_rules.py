@@ -1,6 +1,6 @@
-"""Report breaches of two mechanical house-style rules (sections 5 and 9).
+"""Report breaches of two mechanical house-style rules (sections 1 and 2).
 
-borrow-refuses-temporaries (section 5): a function that returns a pointer or
+borrow-refuses-temporaries (section 1): a function that returns a pointer or
 reference borrowed from a container or snapshot argument must delete its
 rvalue overload, so a borrow of a temporary cannot compile. The check finds
 functions whose return type is a pointer or reference to the argument's
@@ -8,7 +8,7 @@ element type (or anything, for a *Snapshot argument) taken as `const T&`,
 and looks for a deleted overload of the same name taking `&&` in the same
 file.
 
-foreign-type-from-declaration (section 9): a function pointer obtained by
+foreign-type-from-declaration (section 2): a function pointer obtained by
 name (GetProcAddress, dlsym) must have a type taken from the function's
 declaration: an alias spelled with `decltype`, or a
 `static_assert(std::is_same_v<Alias, decltype(...)>)` in the same file. The
