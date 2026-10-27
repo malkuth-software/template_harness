@@ -24,11 +24,12 @@ outsider) clones this repository first.
 A product describes itself in TOML (see `projects/gui_forms.toml` and the
 `Project` record in `harness/project.py`): its checkout directory, build
 directory name, environment-variable prefix, artifact and cache-asset name
-prefixes, toolchain release repository, Ubuntu package profiles and the
-state-machine checker's areas. The tools load the file named by
-`HARNESS_PROJECT`, or `harness.toml` at the workspace root. The workspace
-root is `HARNESS_WORKSPACE`, or the current directory, and holds the
-product's checkout.
+prefixes, the Windows toolchain's asset prefix and publisher, Ubuntu package
+profiles, its own configure variables, the native options its cache
+manifest records and the state-machine checker's areas. The tools load the
+file named by `HARNESS_PROJECT`, or `harness.toml` at the workspace root.
+The workspace root is `HARNESS_WORKSPACE`, or the current directory, and
+holds the product's checkout.
 
 Python 3.11 or later is required (`tomllib`); CI uses 3.12 and 3.14.
 
@@ -36,7 +37,9 @@ Python 3.11 or later is required (`tomllib`); CI uses 3.12 and 3.14.
 
     python -B -m unittest discover -s harness -p "test_*.py"
 
-The tests use `projects/gui_forms.toml` as their reference project.
+The tests use `projects/gui_forms.toml` as their reference project and a
+temporary workspace whose `gui_forms/` checkout is a one-commit git
+repository (`harness/harness_testing.py`).
 
 ## License
 
