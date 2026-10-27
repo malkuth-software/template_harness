@@ -1,0 +1,25 @@
+# The GUI.Forms SDK the example app builds against (owner decision 4: a
+# pinned v0.2.N release). GUI.Forms releases its SDK as source, for any
+# target: gui-forms-sdk-<version>-source.tar.gz, holding
+# gui-forms-sdk-<version>/ (the release tree, its pinned third-party sources
+# and SDK_MANIFEST.json), with its digest in the release's SHA256SUMS.txt.
+#
+# fetch_sdk.py downloads that archive, checks its SHA-256 against this file,
+# unpacks it into a cache outside the source tree, and builds and installs
+# GUI.Forms from it for one target with the harness toolchain (through the
+# build entry point the manifest names). `fetch_sdk.py pin TAG` rewrites the
+# tag and the [source] table from a release's SHA256SUMS.txt.
+#
+# Until a release carrying the source archive is pinned, there is no
+# [source] table and a fetch stops with that reason.
+schema = 2
+
+[release]
+repository = "malkuth-software/gui_forms"
+tag = "v0.2.1308"
+# The source archive's name; pin substitutes the release's version.
+source_asset = "gui-forms-sdk-{version}-source.tar.gz"
+
+[source]
+name = "gui-forms-sdk-0.2.1308-source.tar.gz"
+sha256 = "5901371ff1dca728c89d1a05ee555a4dfcabf281d628546e0fe7a2fac3f85170"

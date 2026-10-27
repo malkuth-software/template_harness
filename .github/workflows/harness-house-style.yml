@@ -1,0 +1,89 @@
+name: Harness house style
+# The house-style spelling check (harness/check_house_style.py) over a
+# product's first-party directories, and optionally the lifetime-rule check
+# (harness/check_lifetime_rules.py). Both fail on any finding. Paths are
+# relative to the product checkout and separated by spaces:
+#
+#   jobs:
+#     house-style:
+#       uses: malkuth-software/template_harness/.github/workflows/harness-house-style.yml@<commit>
+#       with:
+#         product_path: my_product
+#         paths: include src tests tools
+#
+# The checks cover spelling only; ownership, lifetime, initialisation and
+# naming still need review against the house-style document.
+on:
+  workflow_call:
+    inputs:
+      product_path:
+        description: The product's checkout directory under the workspace root
+        type: string
+        required: true
+      paths:
+        description: Directories and files for the spelling check, relative to the product checkout
+        type: string
+        required: true
+      lifetime_paths:
+        description: Directories and files for the lifetime-rule check; empty skips it
+        type: string
+        default: ''
+      harness_path:
+        description: The harness checkout directory under the workspace root
+        type: string
+        default: template_harness
+      harness_lock:
+        description: The harness pin, relative to the product checkout
+        type: string
+        default: harness.lock
+permissions:
+  contents: read
+jobs:
+  house-style:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HARNESS_ROOT: ${{ github.workspace }}/${{ inputs.harness_path }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ${{ inputs.product_path }}
+      - name: Read the harness pin
+        id: pin
+        if: inputs.harness_path != inputs.product_path
+        env:
+          LOCK: ${{ inputs.product_path }}/${{ inputs.harness_lock }}
+        run: |
+          python3 - "$LOCK" <<'EOF'
+          import os, sys, tomllib
+          with open(sys.argv[1], 'rb') as handle:
+              pin = tomllib.load(handle)['harness']
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('repository=' + pin['repository'] + '\n')
+              output.write('commit=' + pin['commit'] + '\n')
+          EOF
+      - uses: actions/checkout@v4
+        if: inputs.harness_path != inputs.product_path
+        with:
+          repository: ${{ steps.pin.outputs.repository }}
+          ref: ${{ steps.pin.outputs.commit }}
+          path: ${{ inputs.harness_path }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      # The path lists are split into words on purpose.
+      - name: Check the house-style spelling
+        working-directory: ${{ inputs.product_path }}
+        env:
+          CHECK_PATHS: ${{ inputs.paths }}
+        run: |
+          # shellcheck disable=SC2086
+          python3 -B "$HARNESS_ROOT/harness/check_house_style.py" $CHECK_PATHS
+      - name: Check the lifetime rules
+        if: inputs.lifetime_paths != ''
+        working-directory: ${{ inputs.product_path }}
+        env:
+          CHECK_PATHS: ${{ inputs.lifetime_paths }}
+        run: |
+          # shellcheck disable=SC2086
+          python3 -B "$HARNESS_ROOT/harness/check_lifetime_rules.py" $CHECK_PATHS

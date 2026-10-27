@@ -14,7 +14,7 @@ product.
 |---|---|
 | `harness/project.py` | The project file (TOML, `schema = 1`), found through `HARNESS_PROJECT` or `harness.toml` at the workspace root (`HARNESS_WORKSPACE`, else the current directory). Commands: `show`, `linux-packages <profile>`, `variable <NAME>`. Imported: `current()` and `load(path)`. `source_dir = "."` puts the product at the workspace root (`Project.at_workspace_root()`). `ci.cache_asset_prefix`, `ci.pinned_cache_revisions`, `tests.areas_file` and the `[state_machines]` table are optional: a tool that needs one raises `project.MissingField` ("project <name> has no <field>"). `ci.native_job` is a job-name prefix or a template with `{platform}` (`Project.native_job_matches(job_name, platform)`). |
 | `harness/ci_build_steps.py` | Imported by a product's build driver: `configure_tree(toolkit, configure)`, `sanitizer_options(host, lsan_suppressions, debug_info='lines')`, and `SANITIZER_LINK_FLAGS` (a string of linker flags; GUI.Forms' `ci_build.SANITIZER_LINK_FLAGS` before the move). |
-| `harness/windows_toolchain.py` | `restore`, run with `GITHUB_REPOSITORY` set: restores the published Windows CLANG64 toolchain. |
+| `harness/windows_toolchain.py` | `restore`: restores the published Windows CLANG64 toolchain from the project's `[toolchain] repository` (else `GITHUB_REPOSITORY`). |
 | `harness/compiler_identity.py` | Run as a script: identifies and verifies the LLVM release compiler. |
 | `harness/install_linux_ci_packages.sh` | `<profile> <archive directory>`: installs one of the project file's Ubuntu package profiles. |
 | `harness/macos_runtime_manifest.py` | Run with a runtime prefix; imported: `verify(prefix)`. |

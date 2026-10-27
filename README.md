@@ -17,9 +17,9 @@ outsider) clones this repository first.
 | `CHANGELOG.md` | The release notes; contract changes are recorded under "Breaking changes". | here |
 | `bootstrap.(sh\|ps1)` | Clone or update the product and its notes (and, `--in-house`, the projects repository), restore the toolchain and caches (`harness/restore_local.py`), run the smoke build: `sh bootstrap.sh --workspace DIR --project NAME [--dry-run]` (`harness/bootstrap.py` has the options). Settings: `[bootstrap]`. | here |
 | `checkpoint/` | The local checkpoint tool (`checkpoint/checkpoint.py`): `init` marks a dedicated integration tree, `fold` squashes each worker branch into one commit on `origin/main`, `verify` runs the project's verification and records it against the tree, `push` opens one auto-merging PR from a verified tree, `after-merge` lists the folded branches main now contains. Settings: the project file's `[checkpoint]` table. | here |
-| `workflows/` | Reusable GitHub workflows: native build per host, docs, house style, state machines. | later |
+| `workflows/` | Reusable GitHub workflows (`on: workflow_call`) a product calls: `harness-native.yml` (one host's build: the Windows CLANG64 toolchain, the project's Linux packages or the macOS runtimes, the compiler cache, then the product's build command), `harness-house-style.yml` and `harness-state-machines.yml`. GitHub runs reusable workflows only from `.github/workflows/`, so they live there; `example.yml` is the harness's own use of them. Docs are not yet covered. | here |
 | `agents/` | Agent configuration: hats, worker counts, brief, verification layers, merge and line-ending rules. | later |
-| `example_app/` | A small GUI.Forms window app that consumes the installed package. | later |
+| `example_app/` | A small GUI.Forms window app (a label, a text box, a button and a list) built with `find_package(GUIForms)` against the GUI.Forms source SDK. `gui_forms.lock` pins the release and its source archive's digest; `fetch_sdk.py` downloads and verifies the archive into a cache outside the source tree and builds and installs GUI.Forms from it for a target (today the host) with the harness toolchain, reusing the install while the archive, target and toolchain match; `ci_build.py` builds and tests the app; `projects/example_app.toml` is its project file. | here |
 
 ## The project file
 
@@ -39,6 +39,7 @@ Python 3.11 or later is required (`tomllib`); CI uses 3.12 and 3.14.
 
     python -B -m unittest discover -s harness -p "test_*.py"
     python -B -m unittest discover -s checkpoint -p "test_*.py"
+    python -B -m unittest discover -s example_app -p "test_*.py"
 
 The tests use `projects/gui_forms.toml` as their reference project and a
 temporary workspace whose `gui_forms/` checkout is a one-commit git

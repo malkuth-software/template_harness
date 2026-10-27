@@ -1,0 +1,66 @@
+# The example app's project file (harness/project.py reads it).
+#
+# The example consumes the GUI.Forms source SDK pinned in
+# example_app/gui_forms.lock, built from source for the host with the
+# toolchain GUI.Forms itself uses. So the Windows toolchain comes from
+# GUI.Forms' releases, and the names below are the example's own, apart from
+# that toolchain.
+
+schema = 1
+
+[project]
+name = "example_app"
+repository = "malkuth-software/template_harness"
+# The harness checkout sits at template_harness/ under the workspace root.
+source_dir = "template_harness/example_app"
+build_name = "example-app"
+# EXAMPLE_APP_LLVM_RUNTIME (macOS) and the other variables.
+env_prefix = "EXAMPLE_APP"
+
+[ci]
+artifact_prefix = "example-app-"
+cache_asset_prefix = "example-app-cache-"
+native_workflow = ".github/workflows/example.yml"
+native_job = "native"
+# The example publishes no caches; the path is recorded for the record's shape.
+pinned_cache_revisions = "pinned_cache_revisions.json"
+
+[toolchain]
+# The Windows CLANG64 toolchain GUI.Forms publishes and built the SDK with.
+repository = "malkuth-software/gui_forms"
+asset_prefix = "gui-forms-toolchain-"
+
+[tests]
+areas_file = "test_areas.json"
+name_prefixes = []
+
+# consumer: what building GUI.Forms from its source SDK (its Linux host and
+# CPU Skia, with gn) and building and starting the example need on Ubuntu
+# 24.04: LLVM 22, the X11 and accessibility libraries the Linux host links,
+# and a virtual display for the start test.
+[linux_packages.consumer]
+packages = [
+    "cmake", "ninja-build", "ccache", "clang-22", "generate-ninja", "pkg-config",
+    "libx11-dev", "libxext-dev", "libxrandr-dev", "libxcursor-dev", "libxfixes-dev", "libxi-dev",
+    "libatk1.0-dev", "libatk-bridge2.0-dev",
+    "xvfb", "xauth",
+]
+
+[state_machines]
+first_party_dirs = ["src", "tests"]
+vocabulary_headers = []
+areas = [
+    ["src/", "example_app"],
+    ["tests/", "tests"],
+]
+full_tree_triggers = []
+
+[build]
+configure_variables = []
+
+[cache_manifest]
+profile = "example app against the pinned GUI.Forms SDK"
+
+[cache_manifest.native_options]
+build_type = "Release"
+cxx_standard = 20

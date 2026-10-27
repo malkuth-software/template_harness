@@ -162,19 +162,23 @@ published CLANG64 toolchain instead of publishing its own:
 
 - Set `[toolchain] repository = "malkuth-software/gui_forms"` and
   `asset_prefix = "gui-forms-toolchain-"`.
-- **Until PR #1 lands**, CI's `windows_toolchain.py restore` reads the
-  running repository's releases, so name GUI.Forms' repository for that
-  one call. The asset names come from your `[toolchain] asset_prefix`:
+- The current harness reads the toolchain from the project's
+  `[toolchain] repository`, through CI's `windows_toolchain.py restore`
+  and the bootstrap's `restore_local.py` alike. An empty `repository`
+  falls back to the running repository (`GITHUB_REPOSITORY`).
+- **A harness pinned before PR #1** (before main 7f773d9) reads only the
+  running repository's releases in CI. With such a pin, name GUI.Forms'
+  repository for that one call. The asset names still come from your
+  `[toolchain] asset_prefix`:
 
   ```sh
   GITHUB_REPOSITORY=malkuth-software/gui_forms python template_harness/harness/windows_toolchain.py restore
   ```
 
-- **With PR #1**, `restore` reads the project's `[toolchain] repository`,
-  so the override goes.
+  Bumping `harness.lock` past PR #1 removes the need for it.
 
-`restore_local.py`, which the bootstrap runs, already reads
-`[toolchain] repository`.
+Reading another repository's releases needs a token that can read them.
+The job's own `GITHUB_TOKEN` reads a public repository's releases.
 
 ## 3. `harness.lock`
 
@@ -244,7 +248,7 @@ harness inside its checkout, at `<product root>/template_harness`:
 
 There are two ways to run the harness in CI.
 
-**The reusable workflows** land with PR #1 (branch `example-app`):
+**The reusable workflows**, in this repository since PR #1:
 
 - `harness-native.yml`: one host's build per call, with inputs `runner`,
   `platform`, `shell`, `product_path`, `project` and `build_command`.
@@ -264,7 +268,7 @@ Call each one as
 `uses: malkuth-software/template_harness/.github/workflows/<file>@<commit>`,
 with the lock's commit. The workflows read `harness.lock` for their own
 harness checkout, so keep the two pins equal and bump them together.
-`example.yml` on that branch calls all three. This is the path for a new
+`example.yml` calls all three over `example_app/`. This is the path for a new
 product.
 
 **Your own workflows, calling the tools directly.** GUI.Forms works this
