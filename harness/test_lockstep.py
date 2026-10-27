@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -24,10 +26,10 @@ GIT_ENVIRONMENT: dict[str, str] = {
 # installs a package configuration and a font directory into --prefix.
 BUILD_SCRIPT: str = '''import argparse, json, os, pathlib, sys, time
 parser = argparse.ArgumentParser()
-for name in ('--target', '--prefix', '--jobs', '--work'):
+for name in ('--target', '--prefix', '--jobs', '--work', '--features'):
     parser.add_argument(name, required=True)
 args = parser.parse_args()
-record = {'cwd': pathlib.Path.cwd().name, 'work': pathlib.Path(args.work).as_posix(),
+record = {'cwd': pathlib.Path.cwd().name, 'work': pathlib.Path(args.work).as_posix(), 'features': args.features,
           'basedir': os.environ.get('CCACHE_BASEDIR', ''), 'lang': os.environ.get('LANG', '')}
 with open(os.environ['FAKE_BUILD_LOG'], 'a', encoding='utf-8') as log:
     log.write(json.dumps(record) + '\\n')
@@ -61,6 +63,17 @@ def commit_file(repository: Path, name: str, text: str) -> str:
     return result
 
 
+def harness_lock_text(commit: str) -> str:
+    text: str = '[harness]\nrepository = "malkuth-software/template_harness"\ncommit = "' + commit + '"\n'
+    return text
+
+
+def writable_then_remove(function: Any, path: str, failure: Any) -> None:
+    """shutil.rmtree's error handler: git's object files are read-only on Windows."""
+    os.chmod(path, stat.S_IWRITE)
+    function(path)
+
+
 class Fixture:
     """An upstream repository, a lockstep root and the environment the commands see."""
 
@@ -70,6 +83,13 @@ class Fixture:
         git(self.upstream, 'init', '-q', '-b', 'main')
         commit_file(self.upstream, 'cmake/llvm22.cmake', '# toolchain\n')
         self.first: str = commit_file(self.upstream, 'tools/build_sdk.py', BUILD_SCRIPT)
+        # A stand-in for https://github.com: <github>/<owner>/<name>.git, as harness/lock.py addresses it.
+        self.github: Path = directory / 'github'
+        self.harness_repository: Path = self.github / 'malkuth-software' / 'template_harness.git'
+        self.harness_repository.mkdir(parents=True)
+        git(self.harness_repository, 'init', '-q', '-b', 'main')
+        self.harness_commits: list[str] = [commit_file(self.harness_repository, 'README.md', 'harness one\n'),
+                                           commit_file(self.harness_repository, 'README.md', 'harness two\n')]
         self.root: Path = directory / 'root'
         self.layout: lockstep.Layout = lockstep.layout_of(self.root)
         self.log: Path = directory / 'build.log'
@@ -85,9 +105,10 @@ class Fixture:
                 mock.patch.object(lockstep, 'ccache_counters', return_value={}):
             if command == 'init':
                 result: list[str] = lockstep.init_command(self.layout, str(self.upstream), None,
-                                                          [Path(argument) for argument in arguments])
+                                                          [Path(argument) for argument in arguments],
+                                                          self.github.as_uri())
             elif command == 'advance':
-                result = lockstep.advance_command(self.layout, arguments[0], 'origin')
+                result = lockstep.advance_command(self.layout, arguments[0], 'origin', self.github.as_uri())
             elif command == 'build':
                 result = lockstep.build_command(self.layout, self.target, 2)
             else:
@@ -116,20 +137,21 @@ class LockstepTests(unittest.TestCase):
             run: dict[str, str] = fixture.builds()[0]
             expected_lang: str = 'en_US.UTF-8' if fixture.target.startswith('windows') else 'caller'
             self.assertEqual(run, {
-                'cwd': 'gui_forms', 'basedir': fixture.layout.workspace.as_posix(), 'lang': expected_lang,
+                'features': 'all', 'cwd': 'gui_forms', 'basedir': fixture.layout.workspace.as_posix(), 'lang': expected_lang,
                 'work': (fixture.layout.workspace / '.build' / ('native-' + fixture.target)).as_posix()})
             self.assertEqual(fixture.run('prefix'), [first_prefix.as_posix()])
             record: dict[str, Any] = json.loads(fixture.run('prefix', 'json')[0])
             self.assertEqual(record['commit'], fixture.first)
+            self.assertEqual(record['features'], 'all')
             self.assertEqual(record['package_dir'], (first_prefix / 'lib/cmake/GUIForms').as_posix())
             self.assertEqual(record['font_dir'], (first_prefix / 'share/GUIForms/fonts').as_posix())
             self.assertEqual(record['source'], fixture.layout.source.as_posix())
             self.assertEqual(record['toolchain_file'], (fixture.layout.source / 'cmake/llvm22.cmake').as_posix())
             self.assertEqual(sorted(record), sorted([
-                'schema', 'commit', 'target', 'toolchain_identity', 'compiler', 'prefix', 'package_dir', 'source',
+                'schema', 'commit', 'target', 'toolchain_identity', 'features', 'compiler', 'prefix', 'package_dir', 'source', 'harness',
                 'toolchain_file', 'font_dir', 'llvm_runtime', 'ccache_dir', 'ccache_basedir', 'lang']))
             second: str = commit_file(fixture.upstream, 'src/one.cpp', 'int one();\n')
-            self.assertEqual(fixture.run('advance', 'main'), ['from=' + fixture.first, 'commit=' + second])
+            self.assertEqual(fixture.run('advance', 'main'), ['from=' + fixture.first, 'commit=' + second, 'harness='])
             with self.assertRaisesRegex(lockstep.LockstepError, 'lockstep clone is at ' + second):
                 fixture.run('prefix')
             second_prefix: Path = lockstep.install_of(fixture.layout, second, fixture.target)
@@ -197,6 +219,63 @@ class LockstepTests(unittest.TestCase):
             (other.layout.source / 'file').write_text('x\n', encoding='utf-8')
             with self.assertRaisesRegex(lockstep.LockstepError, 'not a lockstep clone'):
                 other.run('init')
+
+    def test_a_commit_without_sdk_features_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture: Fixture = Fixture(Path(directory))
+            commit_file(fixture.upstream, 'tools/build_sdk.py', BUILD_SCRIPT.replace(", '--features'", ''))
+            fixture.run('init')
+            with self.assertRaisesRegex(lockstep.LockstepError, 'has no --features'):
+                fixture.run('build')
+            self.assertEqual(fixture.builds(), [])
+
+    def test_the_harness_follows_the_clone_and_build_checks_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture: Fixture = Fixture(Path(directory))
+            first_harness: str = fixture.harness_commits[0]
+            second_harness: str = fixture.harness_commits[1]
+            locked: str = commit_file(fixture.upstream, 'harness.lock', harness_lock_text(first_harness))
+            self.assertEqual(fixture.run('init')[1:3], ['commit=' + locked, 'harness=' + first_harness])
+            self.assertEqual(git(fixture.layout.harness, 'rev-parse', 'HEAD'), first_harness)
+            fixture.run('build')
+            record: dict[str, Any] = json.loads(fixture.run('prefix', 'json')[0])
+            self.assertEqual(record['harness'], first_harness)
+            bumped: str = commit_file(fixture.upstream, 'harness.lock', harness_lock_text(second_harness))
+            self.assertEqual(fixture.run('advance', 'main'), ['from=' + locked, 'commit=' + bumped,
+                                                              'harness=' + second_harness])
+            self.assertEqual(git(fixture.layout.harness, 'rev-parse', 'HEAD'), second_harness)
+            fixture.run('build')
+            self.assertEqual(json.loads(fixture.run('prefix', 'json')[0])['harness'], second_harness)
+            # Moved by hand: build and prefix refuse until init puts it back.
+            with mock.patch.dict('os.environ', fixture.environment):
+                git(fixture.layout.harness, 'checkout', '-q', '--detach', first_harness)
+            with self.assertRaisesRegex(lockstep.LockstepError, 'harness.lock pins ' + second_harness):
+                fixture.run('build')
+            with self.assertRaisesRegex(lockstep.LockstepError, 'harness.lock pins ' + second_harness):
+                fixture.run('prefix')
+            self.assertEqual(fixture.run('init')[2], 'harness=' + second_harness)
+            self.assertEqual(fixture.run('build')[1], 'built=already')
+            shutil.rmtree(fixture.layout.harness, onerror=writable_then_remove)
+            with self.assertRaisesRegex(lockstep.LockstepError, 'no template_harness'):
+                fixture.run('build')
+            self.assertEqual(len(fixture.builds()), 2)
+
+    def test_a_record_without_a_newer_field_is_refreshed_without_a_build(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture: Fixture = Fixture(Path(directory))
+            fixture.run('init')
+            fixture.run('build')
+            current: Path = lockstep.current_of(fixture.layout, fixture.target)
+            record: dict[str, Any] = json.loads(current.read_text(encoding='utf-8'))
+            del record['harness']
+            lockstep.write_record(current, record)
+            prefix: Path = Path(record['prefix'])
+            lockstep.write_record(prefix / lockstep.RECORD_NAME, record)
+            self.assertEqual(fixture.run('build')[1], 'built=already')
+            self.assertEqual(json.loads(current.read_text(encoding='utf-8'))['harness'], '')
+            self.assertEqual(lockstep.read_record(prefix / lockstep.RECORD_NAME),
+                             lockstep.read_record(current))
+            self.assertEqual(len(fixture.builds()), 1)
 
     def test_changes_to_tracked_files_stop_build_and_advance(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

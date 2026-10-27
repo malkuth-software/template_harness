@@ -21,7 +21,7 @@ and new form. Provisional rows there may change without an entry.
   Actions cache, because the Ubuntu mirror once took 34 minutes.
 - `harness/lockstep.py`: the local lockstep GUI.Forms. One clone under
   `D:/malkuth` (or `HARNESS_LOCKSTEP_ROOT`) is built once per (commit,
-  target, toolchain) with `tools/build_sdk.py` into
+  target, toolchain, features) with `tools/build_sdk.py --features all` into
   `cache/lockstep/gui-forms-<commit>-<target>/`, with one shared ccache in
   CI's layout, and `current-<target>.json` records the active install for
   product builds. `example_app/ci_build.py --gui-forms-prefix DIR` builds

@@ -85,7 +85,15 @@ skia = true
 [cache_manifest.platform_options."windows-x64"]
 skia = false
 
+# harness/bootstrap.py: the notes clone (main, plus the books side branch as
+# the worktree notes-books), the in-house projects repository, and the smoke
+# build: scripts/smoke-build.py configures .build/native-<platform>/books-smoke
+# with GAMES_BUILD_APPLICATION=OFF (no GUI.Forms, runtime assets or library
+# data), builds the library core with the harness toolchain file and runs
+# dogfood, paper_engine and pocketlibrary_library (books PR #4 adds it).
+# {python} is the interpreter running the bootstrap.
 [bootstrap]
 notes_repository = "malkuth-software/notes"
 notes_branch = "books"
 projects_repository = "malkuth-software/projects"
+smoke = ["{python}", "scripts/smoke-build.py"]
