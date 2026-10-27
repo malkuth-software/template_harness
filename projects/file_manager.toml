@@ -1,0 +1,74 @@
+# File Manager's project file (harness/project.py reads it).
+#
+# File Manager consumes GUI.Forms as a source submodule (gui_forms/) and
+# builds it with GUI.Forms' own tools/ci_build.py. Its checkout is therefore
+# the workspace root: from .build/native-<platform>/gui-forms/ the toolkit
+# source must be ../../../gui_forms, as in GUI.Forms' CI, or none of
+# GUI.Forms' published compiler-cache entries can hit. File Manager reuses
+# GUI.Forms' Windows toolchain and publishes no compiler caches of its own.
+# harness/test_file_manager_names.py checks the derived names.
+
+schema = 1
+
+[project]
+name = "file_manager"
+repository = "malkuth-software/file_manager"
+# The checkout is the workspace root; template_harness/, notes/ and .build/
+# sit inside it and are ignored by its .gitignore.
+source_dir = "."
+# The frontend's build trees: .build/native-<platform>/frontend (-sanitize).
+build_name = "frontend"
+# FILE_MANAGER_LLVM_RUNTIME, ... File Manager also sets GUI_FORMS_LLVM_RUNTIME
+# to the same path for GUI.Forms' cmake/llvm22.cmake and ci_build.py.
+env_prefix = "FILE_MANAGER"
+
+[ci]
+# file-manager-validated-, file-manager-inputs-, file-manager-tree-.
+artifact_prefix = "file-manager-"
+# No compiler-cache publication: cache_asset_prefix and
+# pinned_cache_revisions are left out.
+native_workflow = ".github/workflows/native-builds.yml"
+# Matrix jobs named by their platform (linux-x64, macos-arm64, windows-x64).
+native_job = "{platform}"
+
+[toolchain]
+# GUI.Forms' published Windows CLANG64 toolchain, reused as published.
+repository = "malkuth-software/gui_forms"
+asset_prefix = "gui-forms-toolchain-"
+
+[tests]
+# frontend/tests/X.cpp names the test file_manager_X.
+name_prefixes = ["file_manager_"]
+
+# native: what building GUI.Forms (its Linux host, CPU Skia and text stack),
+# building and testing the frontend under Xvfb, and packaging need on Ubuntu
+# 24.04. The first list is GUI.Forms' toolkit profile at the pinned harness;
+# keep it equal on each harness bump. patchelf gives packaged GUI.Forms
+# libraries an $ORIGIN RUNPATH.
+[linux_packages.native]
+packages = [
+    "cmake", "ninja-build", "ccache", "clang-22", "generate-ninja", "pkg-config",
+    "libx11-dev", "libxext-dev", "libxrandr-dev", "libxcursor-dev", "libxfixes-dev", "libxi-dev",
+    "libatk1.0-dev", "libatk-bridge2.0-dev",
+    "xvfb", "xauth", "xcompmgr", "weston", "xwayland", "xdg-utils", "dbus", "at-spi2-core",
+    "python3-gi", "gir1.2-atspi-2.0",
+    "patchelf",
+]
+
+[build]
+configure_variables = []
+
+[cache_manifest]
+profile = "File Manager frontend against the pinned GUI.Forms source"
+
+[cache_manifest.native_options]
+build_type = "Release"
+cxx_standard = 20
+
+# harness/bootstrap.py: the notes, projects and notes branch take their
+# defaults (malkuth-software/notes, branch file_manager). The smoke build,
+# tools/build_native.py --smoke, restores GUI.Forms' published compiler cache,
+# builds the toolkit with GUI.Forms' ci_build.py and the frontend, and runs
+# the frontend model test only; it installs and packages nothing.
+[bootstrap]
+smoke = ["{python}", "tools/build_native.py", "--smoke"]
