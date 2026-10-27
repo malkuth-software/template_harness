@@ -2,7 +2,7 @@
 """Build and test the example app against the pinned GUI.Forms source SDK.
 
     python3 template_harness/example_app/ci_build.py [--configure-only] [--jobs N] [--target T]
-        [--cache DIR] [--allow-network-inputs]
+        [--cache DIR] [--allow-network-inputs] [--gui-forms-prefix DIR]
 
 Run from the workspace root (the directory that holds template_harness/),
 with LLVM 22.1.8, CMake and Ninja on PATH: the harness's native workflow
@@ -22,6 +22,10 @@ llvm@22 with the harness-built macOS runtimes, apt.llvm.org's clang-22).
    environment's, else the one the SDK carries (llvm-runtime/).
 3. The tree is built, and ctest runs its tests (the form's test, and the
    start test when the SDK has a native host; on Linux it needs DISPLAY).
+
+--gui-forms-prefix DIR replaces step 1: the build uses the GUI.Forms
+installed at DIR, such as the local lockstep build's
+(`harness/lockstep.py prefix`), and fetches and builds nothing.
 
 --configure-only stops after step 2, for the state-machine checker, which
 reads the tree's compile commands.
@@ -70,6 +74,8 @@ def main() -> int:
     parser.add_argument('--cache', type=Path)
     parser.add_argument('--target', choices=fetch_sdk.PLATFORMS, help='default: this host')
     parser.add_argument('--allow-network-inputs', action='store_true')
+    parser.add_argument('--gui-forms-prefix', type=Path, default=None,
+                        help='an installed GUI.Forms to build against instead of the pinned SDK')
     args: argparse.Namespace = parser.parse_args()
     cache: Path
     if args.cache is not None:
@@ -81,11 +87,19 @@ def main() -> int:
     else:
         cache = fetch_sdk.default_cache()
     platform: str
+    lines: list[str] = []
     try:
         platform = args.target or fetch_sdk.running_platform()
-        lock: fetch_sdk.Lock = fetch_sdk.read_lock(fetch_sdk.LOCK_PATH)
-        lines: list[str] = fetch_sdk.fetch_command(lock, platform, fetch_sdk.checked_cache(cache), args.jobs,
-                                                   args.allow_network_inputs)
+        if args.gui_forms_prefix is not None:
+            package: Path = args.gui_forms_prefix / 'lib' / 'cmake' / 'GUIForms' / 'GUIFormsConfig.cmake'
+            if not package.is_file():
+                raise fetch_sdk.FetchError('--gui-forms-prefix ' + args.gui_forms_prefix.as_posix()
+                                           + ' has no lib/cmake/GUIForms/GUIFormsConfig.cmake')
+            lines = ['prefix=' + args.gui_forms_prefix.resolve().as_posix()]
+        else:
+            lock: fetch_sdk.Lock = fetch_sdk.read_lock(fetch_sdk.LOCK_PATH)
+            lines = fetch_sdk.fetch_command(lock, platform, fetch_sdk.checked_cache(cache), args.jobs,
+                                            args.allow_network_inputs)
     except fetch_sdk.FetchError as error:
         print('ci_build: ' + str(error), file=sys.stderr)
         return 1

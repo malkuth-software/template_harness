@@ -404,7 +404,8 @@ With `source_dir = "."`, step 1 clones the product into `DIR` itself.
 `DIR` must be empty or missing, or already that clone, which a re-run
 updates. Steps 1 to 3 then put `template_harness/`, `notes/`,
 `notes-<branch>/` and `projects/` inside the product's checkout, and the
-tools later add `.build/`, `.ccache/` and `.ci/` there. After the clones,
+tools later add `.build/`, `.ccache/`, `.ci/`, `.toolchain/` (the Windows
+toolchain) and `.bootstrap/` (downloads) there. After the clones,
 the bootstrap asks git whether the checkout ignores each of these
 (`git check-ignore`) and prints one warning naming any that are not.
 List them in the product's `.gitignore`.
@@ -453,6 +454,93 @@ In `[checkpoint]`:
   runs the whole ctest suite;
 - `push` refuses unless `verify` passed on exactly the current tree.
 
+### Local lockstep builds
+
+On a development machine, every product builds against one local GUI.Forms:
+the lockstep clone, which `harness/lockstep.py` builds once per commit into
+an installed prefix. GUI.Forms is then compiled once for all the products
+instead of once per product. The coordinator advances the clone, either to
+GUI.Forms main or to a checkpoint fold head, and builds it. Product workers
+only read the prefix. Pushing a product change that needs a GUI.Forms change
+therefore waits until that GUI.Forms change is merged. The product PR then
+pins that commit. CI still builds each product's pinned, pushed GUI.Forms.
+
+Everything lives under one root: `--root`, else `HARNESS_LOCKSTEP_ROOT`,
+else `D:/malkuth` on Windows and `~/malkuth` elsewhere.
+
+| Path under the root | What |
+|---|---|
+| `gui_forms_lockstep/gui_forms/` | the clone, detached at the lockstep commit |
+| `gui_forms_lockstep/.build/native-<target>/` | the build trees, reused from commit to commit |
+| `cache/ccache/` | the compiler cache every local build may share |
+| `cache/lockstep/gui-forms-<commit>-<target>/` | one install per built commit; older ones stay |
+| `cache/lockstep/current-<target>.json` | the record of the active install |
+
+The workspace is laid out like CI's, with `gui_forms/` beside
+`.build/native-<target>/gui-forms` and `CCACHE_BASEDIR` at the workspace. On
+Windows, the clone checks out text with CRLF and the build runs with
+`LANG=en_US.UTF-8`, as CI's Windows jobs do. ccache keys every object on the
+bytes and paths it reads and on the locale, so these settings let the local
+cache match the per-commit caches that GUI.Forms publishes.
+
+The coordinator's commands:
+
+```sh
+python3 template_harness/harness/lockstep.py init --seed <a GUI.Forms checkout> [--seed <a source SDK>] [--reference <a clone>]
+python3 template_harness/harness/lockstep.py advance --to main            # or --to <branch> --from <a local clone>
+python3 template_harness/harness/lockstep.py build                        # with the pinned toolchain on PATH
+python3 template_harness/harness/lockstep.py status
+```
+
+`--seed` copies the untracked sources that a build reads
+(`third_party/harfbuzz`, `freetype`, `libunibreak` and `miniaudio`) from
+trees that already have them, so the first build downloads nothing.
+GUI.Forms' fetch scripts still fetch any pinned revision that the seeds do
+not have.
+
+`build` does nothing when the install already records the same commit,
+target and toolchain identity. When several product workers run it at once,
+one builds while the rest wait on `cache/lockstep/.lockstep.lock`, then find
+the record. A failed build leaves `current-<target>.json` as it was.
+
+**A product built with its own CMake** passes the prefix as
+`CMAKE_PREFIX_PATH`:
+
+```sh
+cmake -S . -B build -DCMAKE_PREFIX_PATH="$(python3 template_harness/harness/lockstep.py prefix)" ...
+python3 template_harness/example_app/ci_build.py --gui-forms-prefix "$(python3 template_harness/harness/lockstep.py prefix)"
+```
+
+`prefix` fails, naming the command to run, when the clone's HEAD has not
+been built. A product therefore never builds against a stale install by
+accident.
+
+**A product that builds GUI.Forms as a submodule** (File Manager builds it
+through `gui_forms/tools/ci_build.py`) needs an override that skips that
+build. Everything it would otherwise take from its submodule then comes from
+the record, which `lockstep.py prefix --json` prints. The record is also the
+file `cache/lockstep/current-<target>.json`:
+
+| Field | Meaning |
+|---|---|
+| `schema` | `1` |
+| `commit` | the GUI.Forms commit that was built; the clone's HEAD while it is current |
+| `target` | `windows-x64`, `macos-arm64`, `linux-x64` or `linux-arm64` |
+| `toolchain_identity` | `HARNESS_TOOLCHAIN_IDENTITY`, else a digest of the clang binary, its version and the host |
+| `compiler` | the clang that built it (absolute path); the product must use the same one |
+| `prefix` | the install: `CMAKE_PREFIX_PATH` |
+| `package_dir` | `<prefix>/lib/cmake/GUIForms`: `GUIForms_DIR` |
+| `source` | the lockstep clone: the toolchain file, `tools/ci_build.py`'s `configure_tree`, the sanitizer options and `tools/sanitizer/lsan.supp` come from here, and `git -C <source> rev-parse HEAD` is `commit` |
+| `toolchain_file` | `<source>/cmake/llvm22.cmake`, the toolchain file the prefix was built with |
+| `font_dir` | `<prefix>/share/GUIForms/fonts`: `GUI_FORMS_FONT_DIR` |
+| `llvm_runtime` | the build's `GUI_FORMS_LLVM_RUNTIME` on macOS, else `""` |
+| `ccache_dir` | the shared compiler cache, which the product may use too |
+| `ccache_basedir` | the lockstep workspace (a product sets its own `CCACHE_BASEDIR`) |
+| `lang` | the `LANG` the build ran with (`""` when it was left alone) |
+
+Before it uses a record, the override checks that `source`'s HEAD is
+`commit`. `prefix` makes the same check.
+
 ## 7. The gate for each product
 
 A product has adopted the harness when all three of these hold:
@@ -486,7 +574,7 @@ A product has adopted the harness when all three of these hold:
 - [ ] `harness.lock` in the product, pinning a commit that contains the project file.
 - [ ] `harness.lock` and every forwarding file listed in `[state_machines] full_tree_triggers`, and in your own change selection.
 - [ ] Every CI job checks the product out at `<source_dir>` (at the root for `"."`), then the harness, then calls harness paths.
-- [ ] At the workspace root: `.gitignore` lists `template_harness/`, `notes/`, `notes-*/`, `projects/`, `.build/`, `.ccache/` and `.ci/`; the bootstrap warns about any it misses.
+- [ ] At the workspace root: `.gitignore` lists `template_harness/`, `notes/`, `notes-*/`, `projects/`, `.build/`, `.ccache/`, `.ci/`, `.toolchain/` and `.bootstrap/`; the bootstrap warns about any it misses.
 - [ ] Any `uses: …@<commit>` pin equals `harness.lock`.
 - [ ] Cache keys hash harness files and the project file, never shims.
 - [ ] Windows: a published toolchain release the restore can read, your own or GUI.Forms' (section 2).
@@ -505,6 +593,20 @@ A product has adopted the harness when all three of these hold:
   harness's copy of the same file. Set your own `.gitattributes`, as the
   harness does; don't rely on the runner's git config. GUI.Forms has
   none yet, and computes its Skia archive identity on a Linux runner.
+- **Compiler-cache keys on Windows: line endings and locale.** ccache
+  keys every object on the exact bytes of every file the compile reads,
+  and on the locale. GUI.Forms' Windows CI checks its sources out with
+  CRLF (the runner's git has `core.autocrlf=true`) and runs under MSYS2
+  with `LANG=en_US.UTF-8`. A local build from LF sources with no `LANG`
+  produces byte-identical objects under different keys: it hit 3 of 526
+  compilations against CI's published cache. Matching both (CRLF sources
+  following git's rule and the tree's `.gitattributes`, plus
+  `LANG=en_US.UTF-8`) hit 525 of 526 (2026-10-27). So a local harness
+  that wants CI's caches checks out and builds exactly as CI does. The
+  lockstep clone does (`core.autocrlf=true`, the record's `lang`), and
+  `example_app/fetch_sdk.py` rewrites an unpacked source SDK to CRLF on
+  windows-x64. If a product's checkouts ever become LF everywhere, every
+  Windows cache restarts once.
 - **The Skia identity.** GUI.Forms' Windows Skia archive identity hashed
   `tools/windows_toolchain*.json`. These now come from the harness
   (`skia_archive.MOVED_INPUTS`) under their old names, so the identity

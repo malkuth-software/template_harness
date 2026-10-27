@@ -51,6 +51,10 @@ MACOS_RUNTIME: str = '.build/toolchain/llvm-22.1.8-macos14'
 # The Ubuntu package profile of GUI.Forms' native build, which a workspace installs when the
 # project has it (restore_toolchain); a project with one profile installs that one.
 LINUX_WORKSPACE_PROFILE: str = 'toolkit'
+# Under the workspace root: the extracted Windows toolchains (one per specification
+# digest) and the downloaded archives.
+TOOLCHAIN_DIRECTORY: str = '.toolchain'
+DOWNLOAD_DIRECTORY: str = '.bootstrap'
 PLATFORMS: tuple[str, ...] = ('windows-x64', 'linux-x64', 'linux-arm64', 'macos-arm64')
 
 
@@ -149,7 +153,7 @@ def restore_cache(product: project.Project, platform: str, dry_run: bool) -> str
         if record.get('tag') == tag and record.get('asset') == asset_name:
             print('The cache of ' + tag + ' is already restored', flush=True)
             return tag
-    download: Path = workspace / '.bootstrap'
+    download: Path = workspace / DOWNLOAD_DIRECTORY
     if dry_run:
         print('would run: ' + shlex.join(['gh', 'release', 'download', tag, '--repo', product.repository,
                                           '--pattern', asset_name, '--dir', str(download), '--clobber']), flush=True)
@@ -178,7 +182,7 @@ def restore_windows_toolchain(product: project.Project, dry_run: bool) -> Path |
     """The extracted msys64 root of the current specification, extracting the published archive when needed."""
     spec: dict[str, Any] = windows_toolchain.load_spec()
     digest: str = windows_toolchain.spec_digest(spec)
-    destination: Path = product.workspace_root() / '.toolchain' / digest
+    destination: Path = product.workspace_root() / TOOLCHAIN_DIRECTORY / digest
     msys_root: Path = destination / windows_toolchain.ARCHIVE_ROOT
     if (destination / windows_toolchain.COMPILER_MEMBER).is_file():
         print('The Windows toolchain ' + digest[:12] + ' is already at ' + str(msys_root), flush=True)
@@ -194,7 +198,7 @@ def restore_windows_toolchain(product: project.Project, dry_run: bool) -> Path |
         print('would download ' + windows_toolchain.ARCHIVE_NAME + ' from ' + found[0] + ' and extract it to '
               + str(msys_root), flush=True)
         return None
-    download: Path = product.workspace_root() / '.bootstrap'
+    download: Path = product.workspace_root() / DOWNLOAD_DIRECTORY
     download.mkdir(parents=True, exist_ok=True)
     archive: Path = windows_toolchain.download_release_archive(repository, found[0], found[1], download)
     destination.mkdir(parents=True, exist_ok=True)

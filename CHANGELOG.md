@@ -19,6 +19,14 @@ and new form. Provisional rows there may change without an entry.
   script is on its default branch. A product without a `harness.lock`
   bootstraps with this harness. The downloaded Ubuntu packages are kept in an
   Actions cache, because the Ubuntu mirror once took 34 minutes.
+- `harness/lockstep.py`: the local lockstep GUI.Forms. One clone under
+  `D:/malkuth` (or `HARNESS_LOCKSTEP_ROOT`) is built once per (commit,
+  target, toolchain) with `tools/build_sdk.py` into
+  `cache/lockstep/gui-forms-<commit>-<target>/`, with one shared ccache in
+  CI's layout, and `current-<target>.json` records the active install for
+  product builds. `example_app/ci_build.py --gui-forms-prefix DIR` builds
+  against such an install. See "Local lockstep builds" in
+  `docs/adopting.md`.
 - `docs/adopting.md`: the adoption guide a product's own session follows to
   become a harness instance (project file, `harness.lock`, CI, migration off
   GUI.Forms' shims, local work, the gate, a checklist and the pitfalls).
@@ -57,6 +65,10 @@ and new form. Provisional rows there may change without an entry.
   in its `harness.lock` (`[harness] repository, commit`).
 
 ### Changed
+- The bootstrap's warning for a root-layout product also checks that the
+  checkout ignores `.toolchain/` and `.bootstrap/`. restore_local creates
+  them for the Windows toolchain and its downloads
+  (`restore_local.TOOLCHAIN_DIRECTORY`, `DOWNLOAD_DIRECTORY`).
 - On Linux, `restore_local.py toolchain` (and so the bootstrap) prints the
   Ubuntu package command with `HARNESS_PROJECT=<project file>` in front,
   because `install_linux_ci_packages.sh` reads the package set from it.

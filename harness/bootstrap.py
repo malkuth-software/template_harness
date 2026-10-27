@@ -67,8 +67,10 @@ PYTHON_ARGUMENT: str = '{python}'
 # The pinned harness's directory in the workspace, beside the product (owner decision 2).
 HARNESS_DIRECTORY: str = 'template_harness'
 # What a product at the workspace root must ignore: the directories the
-# bootstrap and the tools put there (projects/ only with --in-house).
-ROOT_LAYOUT_ENTRIES: tuple[str, ...] = (HARNESS_DIRECTORY + '/', 'notes/', '.build/', '.ccache/', '.ci/')
+# bootstrap and the tools put there (projects/ only with --in-house), including
+# restore_local.py's TOOLCHAIN_DIRECTORY and DOWNLOAD_DIRECTORY.
+ROOT_LAYOUT_ENTRIES: tuple[str, ...] = (HARNESS_DIRECTORY + '/', 'notes/', '.build/', '.ccache/', '.ci/',
+                                        '.toolchain/', '.bootstrap/')
 # Written by restore_local.py (its TOOLCHAIN_PATH_RECORD).
 TOOLCHAIN_PATH_RECORD: str = '.ci/local-toolchain-path.txt'
 

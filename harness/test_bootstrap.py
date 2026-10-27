@@ -218,6 +218,12 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(environment['PATH'].split(os.pathsep)[:2], ['/toolchain/clang64/bin', '/toolchain/usr/bin'])
         self.assertEqual(environment['HARNESS_WORKSPACE'], str(self.workspace))
 
+    def test_a_root_layout_product_must_ignore_what_the_restore_creates(self) -> None:
+        directory: str
+        for directory in (restore_local.TOOLCHAIN_DIRECTORY, restore_local.DOWNLOAD_DIRECTORY,
+                          str(Path(restore_local.CACHE_RECORD).parent), Path(restore_local.MACOS_RUNTIME).parts[0]):
+            self.assertIn(directory + '/', bootstrap.ROOT_LAYOUT_ENTRIES)
+
     def test_a_locked_product_gets_its_pinned_harness(self) -> None:
         # A harness repository whose second commit carries the project file the steps must use.
         harness_seed: Path = make_remote(self.github, 'malkuth-software/template_harness', {'main': 'first.txt'})
