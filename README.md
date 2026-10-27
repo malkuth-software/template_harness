@@ -14,7 +14,7 @@ outsider) clones this repository first.
 | `projects/` | Project files. `projects/gui_forms.toml` reproduces GUI.Forms' names exactly, so its cache and reuse history stays valid. | here |
 | `docs/contract.md` | What consumers run or import, and how it may change. | here |
 | `bootstrap.(sh\|ps1)` | Clone the product and its notes, restore the toolchain and caches, smoke build. | later |
-| `checkpoint/` | The local checkpoint tool: fold workers' local branches into one verified PR. | later |
+| `checkpoint/` | The local checkpoint tool (`checkpoint/checkpoint.py`): `init` marks a dedicated integration tree, `fold` squashes each worker branch into one commit on `origin/main`, `verify` runs the project's verification and records it against the tree, `push` opens one auto-merging PR from a verified tree, `after-merge` lists the folded branches main now contains. Settings: the project file's `[checkpoint]` table. | here |
 | `workflows/` | Reusable GitHub workflows: native build per host, docs, house style, state machines. | later |
 | `agents/` | Agent configuration: hats, worker counts, brief, verification layers, merge and line-ending rules. | later |
 | `example_app/` | A small GUI.Forms window app that consumes the installed package. | later |
@@ -36,6 +36,7 @@ Python 3.11 or later is required (`tomllib`); CI uses 3.12 and 3.14.
 ## Tests
 
     python -B -m unittest discover -s harness -p "test_*.py"
+    python -B -m unittest discover -s checkpoint -p "test_*.py"
 
 The tests use `projects/gui_forms.toml` as their reference project and a
 temporary workspace whose `gui_forms/` checkout is a one-commit git
