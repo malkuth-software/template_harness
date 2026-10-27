@@ -7,6 +7,14 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Added
+- `harness/lockstep.py`: the local lockstep GUI.Forms. One clone under
+  `D:/malkuth` (or `HARNESS_LOCKSTEP_ROOT`) is built once per (commit,
+  target, toolchain) with `tools/build_sdk.py` into
+  `cache/lockstep/gui-forms-<commit>-<target>/`, with one shared ccache in
+  CI's layout, and `current-<target>.json` records the active install for
+  product builds. `example_app/ci_build.py --gui-forms-prefix DIR` builds
+  against such an install. See "Local lockstep builds" in
+  `docs/adopting.md`.
 - `docs/adopting.md`: the adoption guide a product's own session follows to
   become a harness instance (project file, `harness.lock`, CI, migration off
   GUI.Forms' shims, local work, the gate, a checklist and the pitfalls).
