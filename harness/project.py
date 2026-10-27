@@ -6,7 +6,14 @@ GUI.Forms'). The tools read it through current(), which loads the file named
 by HARNESS_PROJECT, or else harness.toml at the workspace root. The
 workspace root is HARNESS_WORKSPACE when set, else the current directory; it
 holds the product's checkout (source_dir) and the CI state (.ci/, .ccache/,
-.build/), as GitHub's workspace does today.
+.build/), as GitHub's workspace does today. With source_dir "." the
+product's checkout is the workspace root itself, and the harness and the CI
+state sit inside it (File Manager's layout).
+
+A few fields may be left out (ci.cache_asset_prefix, ci.pinned_cache_revisions,
+tests.areas_file, the [state_machines] table, and the [checkpoint] and
+[bootstrap] tables); a tool that needs one fails with MissingField, "project
+<name> has no <field>", and the others run.
 
 The names derived here are the names on disk and on GitHub: artifact and
 release asset names, environment variables, build directories. A product
@@ -34,6 +41,16 @@ PROJECT_VARIABLE: str = 'HARNESS_PROJECT'
 WORKSPACE_VARIABLE: str = 'HARNESS_WORKSPACE'
 DEFAULT_PROJECT_NAME: str = 'harness.toml'
 SCHEMA: int = 1
+# source_dir for a product whose checkout is the workspace root: the harness
+# (template_harness/), the notes and the CI state (.build/, .ccache/, .ci/)
+# then sit inside the checkout, which must ignore them.
+ROOT_SOURCE_DIR: str = '.'
+# In a native_job template, the platform (linux-x64, windows-x64, ...).
+PLATFORM_PLACEHOLDER: str = '{platform}'
+
+
+class MissingField(ValueError):
+    """A tool needs a project-file field that this product's file leaves out."""
 
 
 @dataclass(frozen=True)
@@ -73,7 +90,8 @@ class Project:
     name: str
     # The product's own repository (owner/name), recorded in manifests.
     repository: str
-    # The product's checkout, relative to the workspace root, without a slash.
+    # The product's checkout, relative to the workspace root, without a slash;
+    # "." when the product's checkout is the workspace root itself (ROOT_SOURCE_DIR).
     source_dir: str
     # The build tree's directory name under .build/native-<platform>/.
     build_name: str
@@ -81,9 +99,13 @@ class Project:
     env_prefix: str
     # Every workflow artifact name starts with it (gui-validated-..., gui-tree-...).
     artifact_prefix: str
-    # A compiler-cache archive is <cache_asset_prefix><platform>.tar.gz.
-    cache_asset_prefix: str
-    # The workflow whose runs may produce receipts and caches, and its native job's name.
+    # A compiler-cache archive is <cache_asset_prefix><platform>.tar.gz; None
+    # for a product that publishes no compiler caches (cache_asset fails).
+    cache_asset_prefix: str | None
+    # The workflow whose runs may produce receipts and caches, and its native
+    # job's name: a prefix ("native" matches "native (<runner>, <platform>, ...)")
+    # or a template with {platform} that a job's whole name must equal
+    # (native_job_matches).
     native_workflow: str
     native_job: str
     # The repository the Windows toolchain manifest records as its publisher.
@@ -91,16 +113,19 @@ class Project:
     toolchain_repository: str
     # A toolchain archive is <toolchain_asset_prefix><platform>.tar.zst.
     toolchain_asset_prefix: str
-    # Under the source root: the pinned cache revisions and the test-area rules.
-    pinned_cache_revisions: str
-    test_areas_file: str
+    # Under the source root: the pinned cache revisions and the test-area rules;
+    # None when the product has none (the tools that read them fail).
+    pinned_cache_revisions: str | None
+    test_areas_file: str | None
     # A test file's stem X names the tests X and <prefix>X for each prefix.
     test_name_prefixes: tuple[str, ...]
     # Ubuntu package profiles for install_linux_ci_packages.sh, in install order.
     linux_packages: dict[str, tuple[str, ...]]
     # check_state_machines.py: the first-party directories, the atom-vocabulary
     # headers, the area of each path prefix (most specific first), and the paths
-    # whose change widens a changed-code run to the full tree.
+    # whose change widens a changed-code run to the full tree. Without a
+    # [state_machines] table, has_state_machines is false and the lists are empty.
+    has_state_machines: bool
     first_party_dirs: tuple[str, ...]
     vocabulary_headers: tuple[str, ...]
     state_machine_areas: tuple[StateMachineArea, ...]
@@ -127,10 +152,50 @@ class Project:
         result: str = self.artifact_prefix + suffix
         return result
 
+    def missing(self, field: str) -> MissingField:
+        """The error a tool raises when it needs a field this project file leaves out."""
+        error: MissingField = MissingField('project ' + self.name + ' has no ' + field + ' (' + str(self.path) + ')')
+        return error
+
+    def require_cache_asset_prefix(self) -> str:
+        if self.cache_asset_prefix is None:
+            raise self.missing('ci.cache_asset_prefix')
+        return self.cache_asset_prefix
+
+    def require_pinned_cache_revisions(self) -> str:
+        if self.pinned_cache_revisions is None:
+            raise self.missing('ci.pinned_cache_revisions')
+        return self.pinned_cache_revisions
+
+    def require_test_areas_file(self) -> str:
+        if self.test_areas_file is None:
+            raise self.missing('tests.areas_file')
+        return self.test_areas_file
+
+    def require_state_machines(self) -> None:
+        if not self.has_state_machines:
+            raise self.missing('[state_machines]')
+
     def cache_asset(self, platform: str) -> str:
         """The compiler-cache archive's file and release asset name for a platform."""
-        result: str = self.cache_asset_prefix + platform + '.tar.gz'
+        result: str = self.require_cache_asset_prefix() + platform + '.tar.gz'
         return result
+
+    def native_job_matches(self, job_name: str, platform: str) -> bool:
+        """Whether a run's job is this project's native job for platform.
+
+        A native_job with {platform} is a template: the job's whole name must
+        equal it with the platform substituted ("{platform}" for a matrix job
+        named by its platform, "native / {platform}" for one inside a called
+        workflow). Otherwise native_job is the job's name before its matrix
+        values, which must list the platform: "native" matches
+        "native (ubuntu-24.04, linux-x64, bash) / build".
+        """
+        if PLATFORM_PLACEHOLDER in self.native_job:
+            expected: str = self.native_job.replace(PLATFORM_PLACEHOLDER, platform)
+            return job_name == expected
+        matched: bool = job_name.startswith(self.native_job + ' (') and ', ' + platform + ',' in job_name
+        return matched
 
     def configure_variables(self) -> tuple[str, ...]:
         """The product's configure variables with their prefix (GUI_FORMS_SYSTEM_BUILD_TOOLS)."""
@@ -151,8 +216,14 @@ class Project:
         result: Path = workspace_root()
         return result
 
+    def at_workspace_root(self) -> bool:
+        """Whether the product's checkout is the workspace root (source_dir "."), holding the harness and state."""
+        result: bool = self.source_dir == ROOT_SOURCE_DIR
+        return result
+
     def source_root(self) -> Path:
-        result: Path = workspace_root() / self.source_dir
+        """The product's checkout: the workspace root itself when source_dir is "."."""
+        result: Path = workspace_root() if self.at_workspace_root() else workspace_root() / self.source_dir
         return result
 
     def build_tree(self, platform: str, sanitize: bool = False) -> str:
@@ -172,6 +243,16 @@ def text_field(table: dict[str, Any], key: str, where: str) -> str:
     value: Any = table.get(key)
     if type(value) is not str:
         raise ValueError(where + '.' + key + ' must be a string')
+    return value
+
+
+def optional_text(table: dict[str, Any], key: str, where: str) -> str | None:
+    """A string field that may be left out (None); present, it must be a non-empty string."""
+    if key not in table:
+        return None
+    value: Any = table[key]
+    if type(value) is not str or not value:
+        raise ValueError(where + '.' + key + ' must be a non-empty string when present')
     return value
 
 
@@ -301,6 +382,11 @@ def bootstrap_table(value: Any, name: str, repository: str) -> BootstrapTable | 
     return table
 
 
+# The [state_machines] values of a project file that leaves the table out.
+EMPTY_STATE_MACHINES: dict[str, Any] = {
+    'first_party_dirs': [], 'vocabulary_headers': [], 'areas': [], 'full_tree_triggers': []}
+
+
 def parse(document: dict[str, Any], path: Path) -> Project:
     """Validate a parsed project file whole before building the record."""
     if document.get('schema') != SCHEMA:
@@ -310,13 +396,18 @@ def parse(document: dict[str, Any], path: Path) -> Project:
     toolchain: dict[str, Any] = table_field(document, 'toolchain')
     tests: dict[str, Any] = table_field(document, 'tests')
     packages: dict[str, Any] = table_field(document, 'linux_packages')
-    machines: dict[str, Any] = table_field(document, 'state_machines')
+    # [state_machines] may be left out: check_state_machines.py then refuses to run.
+    has_state_machines: bool = 'state_machines' in document
+    machines: dict[str, Any] = table_field(document, 'state_machines') if has_state_machines else EMPTY_STATE_MACHINES
     cache: dict[str, Any] = table_field(document, 'cache_manifest')
     build: dict[str, Any] = table_field(document, 'build')
     native_options: dict[str, str | int | bool] = option_table(cache.get('native_options'), 'cache_manifest.native_options')
     source_dir: str = text_field(product, 'source_dir', 'project')
     if not source_dir or source_dir.endswith('/') or '\\' in source_dir:
         raise ValueError('project.source_dir must be a relative directory without a trailing slash')
+    parts: list[str] = source_dir.split('/')
+    if source_dir != ROOT_SOURCE_DIR and ('.' in parts or '..' in parts or '' in parts):
+        raise ValueError('project.source_dir must be "." or a directory under the workspace root, without . or ..')
     project: Project = Project(
         path=path,
         name=text_field(product, 'name', 'project'),
@@ -325,15 +416,16 @@ def parse(document: dict[str, Any], path: Path) -> Project:
         build_name=text_field(product, 'build_name', 'project'),
         env_prefix=text_field(product, 'env_prefix', 'project'),
         artifact_prefix=text_field(ci, 'artifact_prefix', 'ci'),
-        cache_asset_prefix=text_field(ci, 'cache_asset_prefix', 'ci'),
+        cache_asset_prefix=optional_text(ci, 'cache_asset_prefix', 'ci'),
         native_workflow=text_field(ci, 'native_workflow', 'ci'),
         native_job=text_field(ci, 'native_job', 'ci'),
         toolchain_repository=text_field(toolchain, 'repository', 'toolchain'),
         toolchain_asset_prefix=text_field(toolchain, 'asset_prefix', 'toolchain'),
-        pinned_cache_revisions=text_field(ci, 'pinned_cache_revisions', 'ci'),
-        test_areas_file=text_field(tests, 'areas_file', 'tests'),
+        pinned_cache_revisions=optional_text(ci, 'pinned_cache_revisions', 'ci'),
+        test_areas_file=optional_text(tests, 'areas_file', 'tests'),
         test_name_prefixes=text_list(tests, 'name_prefixes', 'tests'),
         linux_packages=package_profiles(packages),
+        has_state_machines=has_state_machines,
         first_party_dirs=text_list(machines, 'first_party_dirs', 'state_machines'),
         vocabulary_headers=text_list(machines, 'vocabulary_headers', 'state_machines'),
         state_machine_areas=state_machine_areas(machines.get('areas')),

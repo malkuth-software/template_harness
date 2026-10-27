@@ -20,6 +20,9 @@ def main() -> None:
     source: Path = product.source_root()
     workspace: Path = product.workspace_root()
     build: str = product.build_tree(sys.argv[1])
+    # A product at the workspace root (source_dir ".") is its own base directory.
+    basedir: str = ('workspace root, the product checkout' if product.at_workspace_root()
+                    else 'workspace root containing ' + product.source_dir + '/')
     revision_text: str = subprocess.check_output(
         ['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True)
     revision: str = revision_text.strip()
@@ -40,7 +43,7 @@ def main() -> None:
         'runner_image_version': os.environ.get('ImageVersion', ''),
         'architecture': platform.machine(),
         'layout': {'source': product.source_dir + '/', 'build': build + '/'},
-        'ccache': {'basedir': 'workspace root containing ' + product.source_dir + '/', 'compiler_check': 'content',
+        'ccache': {'basedir': basedir, 'compiler_check': 'content',
                    'version': subprocess.check_output(['ccache', '--version'], text=True)},
         'minimum_platform': '14.0' if sys.argv[1] == 'macos-arm64' else
                             ('Windows 10 (0x0A00)' if sys.argv[1] == 'windows-x64' else 'Ubuntu 24.04'),

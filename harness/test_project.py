@@ -133,6 +133,72 @@ class ProjectFileTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'No project file'):
                     project.project_path()
 
+    def test_a_product_at_the_workspace_root(self) -> None:
+        at_root: project.Project = parsed(MINIMAL.replace('source_dir = "example"', 'source_dir = "."'))
+        self.assertTrue(at_root.at_workspace_root())
+        self.assertFalse(parsed(MINIMAL).at_workspace_root())
+        with tempfile.TemporaryDirectory() as directory:
+            root: Path = Path(directory)
+            with mock.patch.dict(os.environ, {'HARNESS_WORKSPACE': str(root)}):
+                self.assertEqual(at_root.source_root(), root.resolve())
+                self.assertEqual(at_root.source_root() / 'harness.lock', root.resolve() / 'harness.lock')
+        self.assertEqual(at_root.build_tree('linux-x64'), '.build/native-linux-x64/example')
+        bad: str
+        for bad in ('./example', 'example/./x', '../example', 'example/../x', '/example', 'a//b'):
+            with self.assertRaisesRegex(ValueError, 'source_dir', msg=bad):
+                parsed(MINIMAL.replace('source_dir = "example"', 'source_dir = "' + bad + '"'))
+        self.assertEqual(parsed(MINIMAL.replace('source_dir = "example"', 'source_dir = "a/b"')).source_dir, 'a/b')
+
+    def test_the_optional_fields_fail_only_when_a_tool_needs_them(self) -> None:
+        text: str = MINIMAL
+        line: str
+        for line in ('cache_asset_prefix = "example-cache-"\n', 'pinned_cache_revisions = "packaging/pinned.json"\n',
+                     'areas_file = "tools/test_areas.json"\n'):
+            self.assertEqual(text.count(line), 1, line)
+            text = text.replace(line, '')
+        start: int = text.index('[state_machines]')
+        end: int = text.index('[build]')
+        text = text[:start] + text[end:]
+        bare: project.Project = parsed(text)
+        self.assertIsNone(bare.cache_asset_prefix)
+        self.assertIsNone(bare.pinned_cache_revisions)
+        self.assertIsNone(bare.test_areas_file)
+        self.assertFalse(bare.has_state_machines)
+        self.assertEqual((bare.first_party_dirs, bare.vocabulary_headers, bare.state_machine_areas,
+                          bare.full_tree_triggers), ((), (), (), ()))
+        with self.assertRaisesRegex(project.MissingField, '^project example has no ci.cache_asset_prefix '):
+            bare.cache_asset('linux-x64')
+        with self.assertRaisesRegex(project.MissingField, '^project example has no ci.pinned_cache_revisions '):
+            bare.require_pinned_cache_revisions()
+        with self.assertRaisesRegex(project.MissingField, '^project example has no tests.areas_file '):
+            bare.require_test_areas_file()
+        with self.assertRaisesRegex(project.MissingField, r'^project example has no \[state_machines\] '):
+            bare.require_state_machines()
+        full: project.Project = parsed(MINIMAL)
+        self.assertTrue(full.has_state_machines)
+        full.require_state_machines()
+        self.assertEqual(full.require_test_areas_file(), 'tools/test_areas.json')
+        with self.assertRaisesRegex(ValueError, 'ci.cache_asset_prefix'):
+            parsed(MINIMAL.replace('cache_asset_prefix = "example-cache-"', 'cache_asset_prefix = ""'))
+
+    def test_the_native_job_as_a_prefix_or_a_template(self) -> None:
+        prefix: project.Project = parsed(MINIMAL)
+        self.assertTrue(prefix.native_job_matches('native (ubuntu-24.04, linux-x64, bash) / build', 'linux-x64'))
+        self.assertFalse(prefix.native_job_matches('native (ubuntu-24.04-arm, linux-arm64, bash) / build',
+                                                   'linux-x64'))
+        self.assertFalse(prefix.native_job_matches('linux-x64', 'linux-x64'))
+        # A matrix job named by its platform (${{ matrix.label || matrix.platform }}).
+        matrix: project.Project = parsed(MINIMAL.replace('native_job = "native"', 'native_job = "{platform}"'))
+        self.assertTrue(matrix.native_job_matches('linux-x64', 'linux-x64'))
+        self.assertFalse(matrix.native_job_matches('linux-arm64', 'linux-x64'))
+        self.assertFalse(matrix.native_job_matches('linux-x64-sanitize', 'linux-x64'))
+        self.assertFalse(matrix.native_job_matches('native (ubuntu-24.04, linux-x64, bash) / build', 'linux-x64'))
+        # The same matrix job inside a called workflow: <caller job> / <job>.
+        called: project.Project = parsed(MINIMAL.replace('native_job = "native"',
+                                                         'native_job = "builds / {platform}"'))
+        self.assertTrue(called.native_job_matches('builds / windows-x64', 'windows-x64'))
+        self.assertFalse(called.native_job_matches('windows-x64', 'windows-x64'))
+
     def test_the_package_command_prints_a_profile(self) -> None:
         printed: io.StringIO = io.StringIO()
         with contextlib.redirect_stdout(printed):

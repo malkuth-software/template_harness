@@ -309,5 +309,78 @@ class SettingsTests(unittest.TestCase):
                 checkpoint.parse_topic(str(clone) + ':bad..name')
 
 
+
+# Writes the tree and the working directory the verification sees to verified.json there.
+RECORDING: tuple[str, ...] = (sys.executable, '-c',
+                              'import json, os; open("verified.json", "w").write(json.dumps('
+                              '[os.environ["HARNESS_CHECKPOINT_TREE"], os.getcwd()]))')
+
+
+class RootLayoutTests(unittest.TestCase):
+    """A product whose checkout is the workspace root: [checkpoint] tree = "."."""
+
+    def setUp(self) -> None:
+        environment: mock._patch_dict = mock.patch.dict(os.environ, GIT_ENVIRONMENT)
+        environment.start()
+        self.addCleanup(environment.stop)
+        directory: tempfile.TemporaryDirectory[str] = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root: Path = Path(directory.name).resolve()
+        self.origin: Path = self.root / 'origin.git'
+        seed: Path = self.root / 'seed'
+        subprocess.run(['git', 'init', '-q', '--bare', '-b', 'main', str(self.origin)], check=True)
+        subprocess.run(['git', 'init', '-q', '-b', 'main', str(seed)], check=True)
+        commit_file(seed, 'base.txt', 'one\n', 'Base')
+        commit_file(seed, '.gitignore', '/template_harness/\n/verified.json\n', 'Ignore the harness')
+        git(seed, 'push', '-q', str(self.origin), 'main')
+        self.worker: Path = make_worker(self.root, 'worker', 'topic/root', 'root.txt', 'Root topic')
+        # The integration workspace already holds the harness, as the bootstrap leaves it.
+        self.workspace: Path = self.root / 'integration'
+        (self.workspace / 'template_harness').mkdir(parents=True)
+        (self.workspace / 'template_harness' / 'marker.txt').write_text('harness\n', encoding='utf-8')
+        self.settings: checkpoint.Settings = checkpoint.parse_settings(
+            {'tree': '.', 'verify': list(RECORDING)}, self.workspace, 'owner/product')
+
+    def quietly(self, function: object, *arguments: object) -> object:
+        with contextlib.redirect_stdout(io.StringIO()):
+            result: object = function(*arguments)  # type: ignore[operator]
+        return result
+
+    def test_init_clones_into_the_workspace_beside_the_harness(self) -> None:
+        self.assertTrue(self.settings.at_workspace_root)
+        self.assertEqual(self.settings.tree, self.workspace)
+        self.quietly(checkpoint.init_tree, self.settings, str(self.origin))
+        self.assertEqual(git(self.workspace, 'rev-parse', '--show-toplevel'), self.workspace.as_posix())
+        self.assertEqual(git(self.workspace, 'branch', '--show-current'), 'main')
+        self.assertEqual(git(self.workspace, 'rev-parse', '--abbrev-ref', '@{upstream}'), 'origin/main')
+        self.assertEqual(git(self.workspace, 'config', '--local', checkpoint.TREE_MARK), 'true')
+        self.assertEqual((self.workspace / 'template_harness' / 'marker.txt').read_text(encoding='utf-8'), 'harness\n')
+        self.assertEqual(git(self.workspace, 'status', '--porcelain'), '')
+
+    def test_fold_and_verify_run_in_the_workspace_root(self) -> None:
+        self.quietly(checkpoint.init_tree, self.settings, str(self.origin))
+        self.quietly(checkpoint.fold, self.settings, [str(self.worker) + ':topic/root'], [])
+        self.assertEqual(git(self.workspace, 'log', '-1', '--format=%s'), 'Root topic')
+        self.assertTrue((self.workspace / 'template_harness' / 'marker.txt').is_file())
+        self.assertTrue(self.quietly(checkpoint.verify, self.settings, self.workspace))
+        seen: list[str] = json.loads((self.workspace / 'verified.json').read_text(encoding='utf-8'))
+        self.assertEqual([Path(seen[0]), Path(seen[1]).resolve()], [self.workspace, self.workspace])
+        commands: list[list[str]] = self.quietly(checkpoint.push, self.settings, True, TODAY)
+        self.assertTrue(commands)
+
+    def test_an_entry_the_clone_would_overwrite_stops_init_and_leaves_no_git(self) -> None:
+        (self.workspace / 'base.txt').write_text('mine\n', encoding='utf-8')
+        with self.assertRaisesRegex(checkpoint.CheckpointError, 'failed at git checkout'):
+            self.quietly(checkpoint.init_tree, self.settings, str(self.origin))
+        self.assertFalse((self.workspace / '.git').exists())
+        self.assertEqual((self.workspace / 'base.txt').read_text(encoding='utf-8'), 'mine\n')
+
+    def test_a_tree_below_the_workspace_is_never_cloned_in_place(self) -> None:
+        below: checkpoint.Settings = checkpoint.parse_settings(
+            {'tree': 'template_harness', 'verify': list(PASSING)}, self.workspace, 'owner/product')
+        self.assertFalse(below.at_workspace_root)
+        with self.assertRaisesRegex(checkpoint.CheckpointError, 'exists and is not a git checkout'):
+            self.quietly(checkpoint.init_tree, below, str(self.origin))
+
 if __name__ == '__main__':
     unittest.main()

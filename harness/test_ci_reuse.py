@@ -1,5 +1,6 @@
 """Validation reuse must not turn a stale or untrusted result into a green job."""
 from __future__ import annotations
+import dataclasses
 import hashlib
 import io
 import json
@@ -15,6 +16,7 @@ import zipfile
 
 import harness_testing
 import ci_reuse
+import project
 
 
 def fixture_identity() -> dict[str, Any]:
@@ -117,6 +119,20 @@ class ReuseTests(unittest.TestCase):
     def test_another_platforms_job_is_not_taken(self) -> None:
         fixture: FixtureAPI = FixtureAPI()
         fixture.job['name'] = 'native (ubuntu-24.04-arm, linux-arm64, bash) / build'
+        self.assertFalse(self.lookup(fixture))
+
+    def test_a_matrix_job_named_by_its_platform_is_found_through_a_template(self) -> None:
+        # A product whose own matrix names each native job by its platform
+        # (${{ matrix.label || matrix.platform }}) sets native_job = "{platform}".
+        template: project.Project = dataclasses.replace(project.current(), native_job='{platform}')
+        fixture: FixtureAPI = FixtureAPI()
+        fixture.job['name'] = 'linux-x64'
+        with patch.object(ci_reuse.project, 'current', return_value=template):
+            self.assertTrue(self.lookup(fixture))
+            other: FixtureAPI = FixtureAPI()
+            other.job['name'] = 'linux-arm64'
+            self.assertFalse(self.lookup(other))
+        # The prefix form does not take a bare platform name.
         self.assertFalse(self.lookup(fixture))
 
     def test_changed_receipt_inputs_are_rejected(self) -> None:

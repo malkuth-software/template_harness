@@ -1184,6 +1184,7 @@ def main() -> int:
                         help="print the changed C and C++ files (or 'every') and exit; needs --changed-from")
     parser.add_argument("--gate", action="store_true", help="exit with status 1 on any F1 or F2 in the scope")
     args: argparse.Namespace = parser.parse_args()
+    project.current().require_state_machines()
     root: Path = Path(args.root)
     changed: list[str] | None = None
     if args.changed_from:

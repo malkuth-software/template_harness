@@ -12,9 +12,10 @@ NAME selects projects/NAME.toml in this repository (--project-file names
 another file). In order:
 
 1. the product: <github>/<repository>.git cloned into DIR/<source_dir> on
-   its default branch. When it has a harness.lock, DIR/template_harness
-   becomes that commit (harness/lock.py), and the restore and the smoke
-   build use that harness and its projects/NAME.toml;
+   its default branch, or into DIR itself when source_dir is "." (the
+   product at the workspace root). When it has a harness.lock,
+   DIR/template_harness becomes that commit (harness/lock.py), and the
+   restore and the smoke build use that harness and its projects/NAME.toml;
 2. the notes: <github>/<notes_repository>.git cloned into DIR/notes with
    main checked out, and the project's notes branch (notes_branch, by
    default the project name) as the worktree DIR/notes-<branch>;
@@ -22,9 +23,17 @@ another file). In order:
    DIR/projects. It is private; without access the bootstrap stops and
    says so;
 4. the toolchain and the compiler cache, through harness/restore_local.py
-   (skipped with --no-restore);
+   (skipped with --no-restore; the cache also when the project publishes
+   none, having no ci.cache_asset_prefix);
 5. the project's [bootstrap] smoke command, run from DIR (skipped with
    --no-smoke, or when the project names none).
+
+With the product at the workspace root, template_harness/, notes/,
+notes-<branch>/, projects/ and the CI state (.build/, .ccache/, .ci/) all
+sit inside the product's checkout. After the clones the bootstrap asks
+git whether the checkout ignores each of them (git check-ignore) and warns
+about any it does not: the product's .gitignore should list them
+(docs/adopting.md).
 
 Re-running updates instead of re-cloning: each clone is fetched, and a
 checkout that is on its tracked branch with no uncommitted changes to
@@ -57,6 +66,9 @@ PLATFORMS: tuple[str, ...] = ('windows-x64', 'linux-x64', 'linux-arm64', 'macos-
 PYTHON_ARGUMENT: str = '{python}'
 # The pinned harness's directory in the workspace, beside the product (owner decision 2).
 HARNESS_DIRECTORY: str = 'template_harness'
+# What a product at the workspace root must ignore: the directories the
+# bootstrap and the tools put there (projects/ only with --in-house).
+ROOT_LAYOUT_ENTRIES: tuple[str, ...] = (HARNESS_DIRECTORY + '/', 'notes/', '.build/', '.ccache/', '.ci/')
 # Written by restore_local.py (its TOOLCHAIN_PATH_RECORD).
 TOOLCHAIN_PATH_RECORD: str = '.ci/local-toolchain-path.txt'
 
@@ -193,6 +205,38 @@ class PinnedHarness:
     product: project.Project
 
 
+def product_checkout(plan: Plan) -> Path:
+    """The product's checkout: DIR itself for a product at the workspace root, else DIR/<source_dir>."""
+    checkout: Path = plan.workspace if plan.product.at_workspace_root() else plan.workspace / plan.product.source_dir
+    return checkout
+
+
+def unignored_entries(plan: Plan) -> list[str]:
+    """The workspace entries a root-layout product's checkout does not ignore (empty for any other layout)."""
+    if not plan.product.at_workspace_root() or not (plan.workspace / '.git').exists():
+        return []
+    entries: list[str] = list(ROOT_LAYOUT_ENTRIES)
+    if plan.product.bootstrap is not None:
+        entries.append('notes-' + plan.product.bootstrap.notes_branch + '/')
+    if plan.in_house:
+        entries.append('projects/')
+    unignored: list[str] = []
+    entry: str
+    for entry in entries:
+        # check-ignore: 0 ignored, 1 not ignored; a directory path ends in / so
+        # it matches a directory pattern before the directory exists.
+        if git_query(plan.workspace, 'check-ignore', '--quiet', entry).returncode != 0:
+            unignored.append(entry)
+    return unignored
+
+
+def warn_unignored(plan: Plan) -> None:
+    entries: list[str] = unignored_entries(plan)
+    if entries:
+        say('warning: the product is at the workspace root, and its checkout does not ignore '
+            + ', '.join(entries) + '; add them to its .gitignore (docs/adopting.md)')
+
+
 def pin_harness(plan: Plan) -> PinnedHarness:
     """The workspace's template_harness at the product's harness.lock commit, or this harness without a lock.
 
@@ -201,9 +245,9 @@ def pin_harness(plan: Plan) -> PinnedHarness:
     harness's own.
     """
     product: project.Project = plan.product
-    lock_path: Path = plan.workspace / product.source_dir / lock.LOCK_NAME
+    lock_path: Path = product_checkout(plan) / lock.LOCK_NAME
     if not lock_path.is_file():
-        if plan.dry_run and not (plan.workspace / product.source_dir / '.git').exists():
+        if plan.dry_run and not (product_checkout(plan) / '.git').exists():
             say('harness: would read ' + str(lock_path) + ' once the product is cloned; this harness meanwhile')
         else:
             say('harness: the product has no ' + lock.LOCK_NAME + '; using this harness, ' + str(REPOSITORY))
@@ -254,8 +298,7 @@ def bootstrap(plan: Plan) -> None:
     if not plan.dry_run:
         plan.workspace.mkdir(parents=True, exist_ok=True)
     say('Workspace ' + str(plan.workspace) + ' for ' + product.name + ' (' + plan.platform + ')')
-    sync_clone(plan, repository_url(plan.github, product.repository), plan.workspace / product.source_dir, None,
-               'the product')
+    sync_clone(plan, repository_url(plan.github, product.repository), product_checkout(plan), None, 'the product')
     harness: PinnedHarness = pin_harness(plan)
     notes: Path = plan.workspace / 'notes'
     sync_clone(plan, repository_url(plan.github, product.bootstrap.notes_repository), notes, 'main', 'the notes')
@@ -267,10 +310,16 @@ def bootstrap(plan: Plan) -> None:
         except BootstrapError as error:
             raise BootstrapError(str(error) + '\n' + product.bootstrap.projects_repository
                                  + ' is private: --in-house needs read access to it') from error
+    warn_unignored(plan)
     environment: dict[str, str] = step_environment(plan, harness)
     if plan.restore:
+        kinds: list[str] = ['toolchain']
+        if harness.product.cache_asset_prefix is not None:
+            kinds.append('cache')
+        else:
+            say('Cache restore skipped (the project publishes no compiler caches: no ci.cache_asset_prefix)')
         kind: str
-        for kind in ('toolchain', 'cache'):
+        for kind in kinds:
             command: list[str] = [sys.executable, '-B', str(harness.root / 'harness' / 'restore_local.py'), kind,
                                   '--platform', plan.platform]
             change(plan, command, 'restoring the ' + kind, plan.workspace, environment)

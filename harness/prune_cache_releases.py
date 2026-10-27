@@ -24,13 +24,17 @@ from typing import Any
 import project
 
 ROOT: Path = project.current().source_root()
-PINNED_PATH: Path = ROOT / project.current().pinned_cache_revisions
+# None when the project names no pinned revisions: --pinned is then required.
+PINNED_PATH: Path | None = (None if project.current().pinned_cache_revisions is None
+                            else ROOT / project.current().pinned_cache_revisions)
 TAG_PATTERN: re.Pattern[str] = re.compile(r"build-([0-9a-f]{40})")
 DEFAULT_KEEP: int = 5
 MINIMUM_PIN_LENGTH: int = 7
 
 
-def load_pinned(path: Path = PINNED_PATH) -> list[str]:
+def load_pinned(path: Path | None = PINNED_PATH) -> list[str]:
+    if path is None:
+        raise project.current().missing('ci.pinned_cache_revisions')
     data = json.loads(path.read_text(encoding="utf-8"))
     pins: list[str] = []
     for entry in data["pinned"]:

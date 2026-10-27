@@ -43,7 +43,9 @@ after-merge
 The [checkpoint] table, read by harness/project.py (projects/gui_forms.toml has
 GUI.Forms' values):
 
-    tree          the integration tree, relative to the workspace root
+    tree          the integration tree, relative to the workspace root; "." for a
+                  product whose checkout is the workspace root, which init
+                  clones into in place beside the harness already there
     verify        the verification command, a list of arguments
     base          the branch folded onto and targeted by the PR (main)
     remote        the integration tree's remote (origin)
@@ -62,6 +64,8 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
+import stat
 import subprocess
 import sys
 from typing import Any
@@ -99,6 +103,9 @@ class Settings:
     merge_method: str
     # The product's repository (owner/name), for gh.
     repository: str
+    # The tree is the workspace root ("." for a product at the root): init may
+    # then clone into it although it already holds the harness and the notes.
+    at_workspace_root: bool
 
 
 @dataclass(frozen=True)
@@ -123,7 +130,8 @@ def settings_from(table: project.CheckpointTable, workspace: Path, repository: s
         tree = workspace / tree
     settings: Settings = Settings(
         tree=tree.resolve(), verify=table.verify, base=table.base, remote=table.remote,
-        branch_prefix=table.branch_prefix, merge_method=table.merge_method, repository=repository)
+        branch_prefix=table.branch_prefix, merge_method=table.merge_method, repository=repository,
+        at_workspace_root=tree.resolve() == workspace.resolve())
     return settings
 
 
@@ -207,10 +215,48 @@ def require_tree(settings: Settings) -> Path:
     return tree
 
 
+def remove_git_directory(directory: Path) -> None:
+    """Deletes a .git directory this tool just made, read-only object files included (git writes them so on Windows)."""
+    root: str
+    files: list[str]
+    for root, _, files in os.walk(directory):
+        name: str
+        for name in files:
+            os.chmod(os.path.join(root, name), stat.S_IWRITE | stat.S_IREAD)
+    shutil.rmtree(directory)
+
+
+def clone_into_workspace_root(settings: Settings, source: str) -> None:
+    """Makes the workspace root, which may already hold other entries, a clone of source on base.
+
+    git clone needs an empty directory; a product at the workspace root has
+    template_harness/ (and the notes) there first. The clone is made in
+    place instead: init, fetch, then a checkout of base, which git refuses
+    when an entry already there would be overwritten. On any failure the new
+    .git is removed, leaving the directory as it was.
+    """
+    tree: Path = settings.tree
+    steps: tuple[tuple[str, ...], ...] = (
+        ('init', '--quiet', '--initial-branch', settings.base),
+        ('remote', 'add', settings.remote, source),
+        ('fetch', '--quiet', settings.remote),
+        ('checkout', '--quiet', '--track', settings.remote + '/' + settings.base))
+    step: tuple[str, ...]
+    for step in steps:
+        completed: subprocess.CompletedProcess[str] = git(tree, *step, check=False)
+        if completed.returncode != 0:
+            remove_git_directory(tree / '.git')
+            raise CheckpointError('cloning ' + source + ' into the workspace root ' + str(tree) + ' failed at git '
+                                  + step[0] + ': ' + completed.stderr.strip())
+    print('Cloned ' + source + ' into the workspace root ' + str(tree), flush=True)
+
+
 def init_tree(settings: Settings, source: str) -> None:
     """Clones source into the tree, or adopts an existing clean clone; then marks it."""
     tree: Path = settings.tree
-    if tree.exists():
+    if tree.exists() and not (tree / '.git').exists() and settings.at_workspace_root:
+        clone_into_workspace_root(settings, source)
+    elif tree.exists():
         if not (tree / '.git').exists():
             raise CheckpointError(str(tree) + ' exists and is not a git checkout')
         changes: str = tracked_changes(tree)

@@ -142,7 +142,7 @@ def lookup(identity: dict[str, Any], wait_seconds: int) -> bool:
                 native: list[dict[str, Any]] = []
                 job: dict[str, Any]
                 for job in jobs:
-                    if job['name'].startswith(project.current().native_job + ' (') and ', ' + identity['platform'] + ',' in job['name']:
+                    if project.current().native_job_matches(job['name'], identity['platform']):
                         native.append(job)
                 if len(native) != 1:
                     continue
@@ -160,7 +160,7 @@ def lookup(identity: dict[str, Any], wait_seconds: int) -> bool:
                     continue
                 payload: dict[str, Any] = api(prefix + 'artifacts/' + str(receipt['artifact_id']))
                 if (payload['expired'] or payload['workflow_run']['id'] != producer
-                        or payload['name'] != project.current().cache_asset_prefix + identity['platform']):
+                        or payload['name'] != project.current().require_cache_asset_prefix() + identity['platform']):
                     continue
                 write_json(STATE / 'reused.json', receipt)
                 output('artifact-id', str(receipt['artifact_id']))

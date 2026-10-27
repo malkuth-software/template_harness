@@ -29,7 +29,12 @@ PLATFORM: str = 'windows-x64'
 # (GUI.Forms: gui-forms-toolchain-windows-x64.tar.zst, gui-forms-cache-windows-x64.tar.gz).
 ARCHIVE_NAME: str = project.current().toolchain_asset_prefix + PLATFORM + '.tar.zst'
 MANIFEST_NAME: str = project.current().toolchain_asset_prefix + PLATFORM + '.json'
-CACHE_NAME: str = project.current().cache_asset(PLATFORM)
+# The compiler-cache archive beside the toolchain, or None for a product that
+# publishes no caches: only the cache publication and fetch-recorded read it
+# (through project.cache_asset, which names the missing field), so such a
+# product still restores the toolchain.
+CACHE_NAME: str | None = (None if project.current().cache_asset_prefix is None
+                          else project.current().cache_asset(PLATFORM))
 SPEC_PATH: Path = Path(__file__).resolve().parent / 'windows_toolchain.json'
 # The release that holds the published archive of the current specification,
 # kept apart from the specification, whose digest names the toolchain.
@@ -410,7 +415,7 @@ def publication_files(root: Path) -> list[Path]:
     manifest_path: Path = root / MANIFEST_NAME
     manifest: dict[str, Any] = json.loads(manifest_path.read_text(encoding='utf-8'))
     verify_archive(archive, manifest)
-    record: dict[str, Any] = cache_toolchain(root / CACHE_NAME)
+    record: dict[str, Any] = cache_toolchain(root / project.current().cache_asset(PLATFORM))
     if record['sha256'] != manifest['archive_sha256'] or record['compiler_sha256'] != manifest['compiler_sha256']:
         raise ValueError('Toolchain does not match the one recorded by the cache archive')
     files: list[Path] = [archive, manifest_path]
@@ -476,7 +481,7 @@ def pack_command(msys_root: Path) -> None:
 
 
 def fetch_recorded_command(repository: str) -> None:
-    record: dict[str, Any] = cache_toolchain(ci_reuse.ROOT / CACHE_NAME)
+    record: dict[str, Any] = cache_toolchain(ci_reuse.ROOT / project.current().cache_asset(PLATFORM))
     archive_sha256: str = record['sha256']
     found: tuple[str, dict[str, Any]] | None = None
     pin: dict[str, Any] = json.loads(PIN_PATH.read_text(encoding='utf-8'))

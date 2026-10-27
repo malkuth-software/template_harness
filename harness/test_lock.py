@@ -139,6 +139,29 @@ class LockTests(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertIn('no branch or tag absent', errors)
 
+    def test_checkout_inside_a_root_layout_product_that_ignores_it(self) -> None:
+        # A product at the workspace root: the harness goes inside its checkout.
+        product: Path = self.lock_path.parent
+        git(product, 'init', '-q', '-b', 'main')
+        (product / '.gitignore').write_text('/template_harness/\n', encoding='utf-8')
+        git(product, 'add', '.gitignore', 'harness.lock')
+        git(product, 'commit', '-q', '-m', 'The product')
+        harness: Path = product / 'template_harness'
+        status: int
+        errors: str
+        status, _, errors = self.run_lock('checkout', str(harness))
+        self.assertEqual(status, 0, errors)
+        # Its own clone, not a directory of the product's repository.
+        self.assertEqual(git(harness, 'rev-parse', '--show-toplevel'), harness.as_posix())
+        self.assertEqual(git(harness, 'rev-parse', 'HEAD'), self.commits[0])
+        self.assertEqual(git(product, 'status', '--porcelain'), '')
+        # A bump moves it in place; the product sees only its lock change.
+        self.lock_path.write_text(lock_text(self.commits[1]), encoding='utf-8')
+        status, _, errors = self.run_lock('checkout', str(harness))
+        self.assertEqual(status, 0, errors)
+        self.assertEqual(git(harness, 'rev-parse', 'HEAD'), self.commits[1])
+        self.assertEqual(git(product, 'status', '--porcelain'), 'M harness.lock')
+
 
 class ActionLockReaderTests(unittest.TestCase):
     """The composite action's read_lock.sh agrees with lock.parse on what a lock says."""

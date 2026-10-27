@@ -28,7 +28,9 @@ from typing import NamedTuple
 import project
 
 SOURCE_ROOT: Path = project.current().source_root()
-AREAS_FILE: Path = SOURCE_ROOT / project.current().test_areas_file
+# None when the project names no test-area rules: load_rules then fails.
+AREAS_FILE: Path | None = (None if project.current().test_areas_file is None
+                           else SOURCE_ROOT / project.current().test_areas_file)
 EVERY_AREA: str = '*'
 AREA_LABEL_PREFIX: str = 'area_'
 # Characters a test name would need escaped in a ctest -R regular expression.
@@ -308,6 +310,8 @@ def ctest_listing(tree: Path) -> dict:
 
 
 def load_rules() -> list[PathRule]:
+    if AREAS_FILE is None:
+        raise project.current().missing('tests.areas_file')
     return load_path_rules(json.loads(AREAS_FILE.read_text(encoding='utf-8')))
 
 

@@ -5,6 +5,7 @@ or reshaped one of them: restore it, or record the change under "Breaking
 changes" in CHANGELOG.md and update the page and this test together.
 """
 from __future__ import annotations
+import dataclasses
 import inspect
 from pathlib import Path
 import subprocess
@@ -93,6 +94,23 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(product.build_tree('linux-x64', sanitize=True), '.build/native-linux-x64/gui-forms-sanitize',
                          CHANGE_RULE)
         self.assertEqual(product.source_root(), project.workspace_root() / product.source_dir, CHANGE_RULE)
+        self.assertEqual(project.ROOT_SOURCE_DIR, '.', CHANGE_RULE)
+        at_root: project.Project = dataclasses.replace(product, source_dir=project.ROOT_SOURCE_DIR)
+        self.assertTrue(at_root.at_workspace_root(), CHANGE_RULE)
+        self.assertEqual(at_root.source_root(), project.workspace_root(), CHANGE_RULE)
+
+    def test_optional_fields_and_the_native_job_forms(self) -> None:
+        self.assertTrue(issubclass(project.MissingField, ValueError), CHANGE_RULE)
+        self.assertEqual(parameter_names(project.Project.native_job_matches), ['self', 'job_name', 'platform'],
+                         CHANGE_RULE)
+        self.assertEqual(project.PLATFORM_PLACEHOLDER, '{platform}', CHANGE_RULE)
+        product: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
+        self.assertTrue(product.native_job_matches('native (ubuntu-24.04, linux-x64, bash) / build', 'linux-x64'),
+                        CHANGE_RULE)
+        templated: project.Project = dataclasses.replace(product, native_job='{platform}', cache_asset_prefix=None)
+        self.assertTrue(templated.native_job_matches('linux-x64', 'linux-x64'), CHANGE_RULE)
+        with self.assertRaises(project.MissingField, msg=CHANGE_RULE):
+            templated.cache_asset('linux-x64')
 
     def test_macos_runtime_manifest_verify_takes_a_prefix(self) -> None:
         self.assertEqual(parameter_names(macos_runtime_manifest.verify), ['prefix'], CHANGE_RULE)

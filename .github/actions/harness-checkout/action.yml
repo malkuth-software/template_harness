@@ -6,7 +6,11 @@ description: >-
   equivalent.
 inputs:
   product-path:
-    description: The product checkout, relative to the workspace; it holds harness.lock.
+    description: >-
+      The product checkout, relative to the workspace; it holds harness.lock.
+      "." for a product checked out at the workspace root (source_dir "."),
+      whose harness then lands inside it at template_harness/ (the product's
+      .gitignore lists it). Check the product out before this step.
     required: true
   path:
     description: Where the harness goes, relative to the workspace.
