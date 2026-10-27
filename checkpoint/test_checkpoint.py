@@ -291,10 +291,9 @@ class SettingsTests(unittest.TestCase):
 
     def test_the_reference_project_names_its_checkpoint(self) -> None:
         reference: Path = Path(__file__).resolve().parents[1] / 'projects' / 'gui_forms.toml'
-        with mock.patch.dict(os.environ, {'HARNESS_PROJECT': str(reference), 'HARNESS_WORKSPACE': '/workspace'}):
-            settings: checkpoint.Settings = checkpoint.parse_settings(
-                checkpoint.tomllib.loads(reference.read_text(encoding='utf-8'))['checkpoint'],
-                Path('/workspace'), 'malkuth-software/gui_forms')
+        loaded: checkpoint.project.Project = checkpoint.project.load(reference)
+        self.assertIsNotNone(loaded.checkpoint)
+        settings: checkpoint.Settings = checkpoint.settings_from(loaded.checkpoint, Path('/workspace'), loaded.repository)
         self.assertEqual(settings.verify, ('sh', 'build.sh', 'all'))
         self.assertEqual(settings.tree, (Path('/workspace') / 'gui_forms').resolve())
 

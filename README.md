@@ -13,7 +13,8 @@ outsider) clones this repository first.
 | `harness/project.py` | Reads the project file; every product-specific name comes from it. | here |
 | `projects/` | Project files. `projects/gui_forms.toml` reproduces GUI.Forms' names exactly, so its cache and reuse history stays valid. | here |
 | `docs/contract.md` | What consumers run or import, and how it may change. | here |
-| `bootstrap.(sh\|ps1)` | Clone the product and its notes, restore the toolchain and caches, smoke build. | later |
+| `CHANGELOG.md` | The release notes; contract changes are recorded under "Breaking changes". | here |
+| `bootstrap.(sh\|ps1)` | Clone or update the product and its notes (and, `--in-house`, the projects repository), restore the toolchain and caches (`harness/restore_local.py`), run the smoke build: `sh bootstrap.sh --workspace DIR --project NAME [--dry-run]` (`harness/bootstrap.py` has the options). Settings: `[bootstrap]`. | here |
 | `checkpoint/` | The local checkpoint tool (`checkpoint/checkpoint.py`): `init` marks a dedicated integration tree, `fold` squashes each worker branch into one commit on `origin/main`, `verify` runs the project's verification and records it against the tree, `push` opens one auto-merging PR from a verified tree, `after-merge` lists the folded branches main now contains. Settings: the project file's `[checkpoint]` table. | here |
 | `workflows/` | Reusable GitHub workflows (`on: workflow_call`) a product calls: `harness-native.yml` (one host's build: the Windows CLANG64 toolchain, the project's Linux packages or the macOS runtimes, the compiler cache, then the product's build command), `harness-house-style.yml` and `harness-state-machines.yml`. GitHub runs reusable workflows only from `.github/workflows/`, so they live there; `example.yml` is the harness's own use of them. Docs are not yet covered. | here |
 | `agents/` | Agent configuration: hats, worker counts, brief, verification layers, merge and line-ending rules. | later |

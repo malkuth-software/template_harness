@@ -2,8 +2,7 @@
 
 docs/contract.md lists the contract. A failure here means a change renamed
 or reshaped one of them: restore it, or record the change under "Breaking
-changes" in the harness's release notes and update the page and this test
-together.
+changes" in CHANGELOG.md and update the page and this test together.
 """
 from __future__ import annotations
 import inspect
@@ -32,9 +31,15 @@ CONTRACT_FILES: tuple[str, ...] = (
     'harness/check_house_style.py',
     'harness/check_lifetime_rules.py',
     'harness/cmake/llvm22.cmake',
+    'checkpoint/checkpoint.py',
+    'bootstrap.sh',
+    'bootstrap.ps1',
+    'harness/bootstrap.py',
+    'harness/restore_local.py',
+    'CHANGELOG.md',
 )
 CHANGE_RULE: str = ('products use this (docs/contract.md); a change needs a Breaking changes '
-                    'entry in the harness release notes')
+                    'entry in CHANGELOG.md')
 
 
 def parameter_names(function: object) -> list[str]:
@@ -76,6 +81,15 @@ class ContractTests(unittest.TestCase):
                          ['host', 'lsan_suppressions', 'debug_info'], CHANGE_RULE)
         default: object = inspect.signature(ci_build_steps.sanitizer_options).parameters['debug_info'].default
         self.assertEqual(default, 'lines', CHANGE_RULE)
+        self.assertIsInstance(ci_build_steps.SANITIZER_LINK_FLAGS, str, CHANGE_RULE)
+        self.assertIn('-fsanitize=address', ci_build_steps.SANITIZER_LINK_FLAGS, CHANGE_RULE)
+
+    def test_the_workspace_layout(self) -> None:
+        product: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
+        self.assertEqual(product.build_tree('linux-x64'), '.build/native-linux-x64/gui-forms', CHANGE_RULE)
+        self.assertEqual(product.build_tree('linux-x64', sanitize=True), '.build/native-linux-x64/gui-forms-sanitize',
+                         CHANGE_RULE)
+        self.assertEqual(product.source_root(), project.workspace_root() / product.source_dir, CHANGE_RULE)
 
     def test_macos_runtime_manifest_verify_takes_a_prefix(self) -> None:
         self.assertEqual(parameter_names(macos_runtime_manifest.verify), ['prefix'], CHANGE_RULE)
