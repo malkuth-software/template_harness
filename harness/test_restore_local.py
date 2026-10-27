@@ -5,6 +5,7 @@ import hashlib
 import io
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import tarfile
 import tempfile
@@ -150,7 +151,11 @@ class ToolchainTests(unittest.TestCase):
         product: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
         with contextlib.redirect_stdout(printed):
             restore_local.restore_toolchain(product, 'linux-x64', False)
-        self.assertIn('install_linux_ci_packages.sh toolkit', printed.getvalue())
+        # The script needs the project file, so the command names it.
+        script: Path = harness_testing.HARNESS / 'install_linux_ci_packages.sh'
+        expected: str = (project.PROJECT_VARIABLE + '=' + shlex.quote(str(product.path)) + ' sh '
+                         + shlex.quote(str(script)) + ' toolkit <apt archive directory>')
+        self.assertIn(expected, printed.getvalue())
 
     def test_windows_without_a_published_toolchain_stops(self) -> None:
         product: project.Project = project.load(harness_testing.REFERENCE_PROJECT)

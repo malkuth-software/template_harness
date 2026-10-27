@@ -208,8 +208,12 @@ def restore_toolchain(product: project.Project, platform: str, dry_run: bool) ->
         return
     harness: Path = Path(__file__).resolve().parent
     if platform.startswith('linux-'):
-        print('Install the Ubuntu packages yourself (sudo): sh ' + str(harness / 'install_linux_ci_packages.sh')
-              + ' toolkit <apt archive directory>', flush=True)
+        # install_linux_ci_packages.sh reads the package set from the project file, so the
+        # printed command names it; the line runs as it stands once the directory is filled in.
+        print('Install the Ubuntu packages yourself (sudo): '
+              + project.PROJECT_VARIABLE + '=' + shlex.quote(str(product.path)) + ' sh '
+              + shlex.quote(str(harness / 'install_linux_ci_packages.sh')) + ' toolkit <apt archive directory>',
+              flush=True)
         return
     runtime: Path = product.workspace_root() / MACOS_RUNTIME
     if (runtime / 'runtime-manifest.json').is_file():
