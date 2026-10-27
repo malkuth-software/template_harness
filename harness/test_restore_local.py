@@ -1,6 +1,7 @@
 """Unit tests for restore_local.py with gh replaced (no network)."""
 from __future__ import annotations
 import contextlib
+import dataclasses
 import hashlib
 import io
 import os
@@ -156,6 +157,26 @@ class ToolchainTests(unittest.TestCase):
         expected: str = (project.PROJECT_VARIABLE + '=' + shlex.quote(str(product.path)) + ' sh '
                          + shlex.quote(str(script)) + ' toolkit <apt archive directory>')
         self.assertIn(expected, printed.getvalue())
+
+    def test_the_linux_profile_is_toolkit_or_the_only_one(self) -> None:
+        product: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
+        self.assertEqual(project.Project.workspace_linux_profile(product), 'toolkit')
+        paint: project.Project = dataclasses.replace(product, linux_packages={'paint': ('cmake',)})
+        self.assertEqual(project.Project.workspace_linux_profile(paint), 'paint')
+        several: project.Project = dataclasses.replace(product, linux_packages={'b': ('x',), 'a': ('y',)})
+        self.assertEqual(project.Project.workspace_linux_profile(several), '<profile: a | b>')
+        assert several.bootstrap is not None
+        chosen: project.Project = dataclasses.replace(
+            several, bootstrap=dataclasses.replace(several.bootstrap, linux_packages='b'))
+        self.assertEqual(project.Project.workspace_linux_profile(chosen), 'b')
+        printed: io.StringIO = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            restore_local.restore_toolchain(paint, 'linux-x64', False)
+        self.assertIn(' paint <apt archive directory>', printed.getvalue())
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            restore_local.restore_toolchain(dataclasses.replace(product, linux_packages={}), 'linux-x64', False)
+        self.assertIn('names no Ubuntu packages', printed.getvalue())
 
     def test_windows_without_a_published_toolchain_stops(self) -> None:
         product: project.Project = project.load(harness_testing.REFERENCE_PROJECT)

@@ -86,3 +86,6 @@ notes_repository = "malkuth-software/notes"
 notes_branch = "games"
 projects_repository = "malkuth-software/projects"
 smoke = ["{python}", "tools/harness_smoke.py"]
+# The Ubuntu packages a Linux workspace installs: the smoke build is the portable core
+# (cmake, ninja, ccache, clang-22), nothing of the application.
+linux_packages = "core"

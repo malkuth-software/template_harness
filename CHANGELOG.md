@@ -7,6 +7,25 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Added
+- `.github/workflows/bootstrap.yml`: the bootstrap proof. On Windows, macOS and
+  Linux it bootstraps GUI.Forms from an empty directory through the entry a
+  person uses, runs the administrator step the bootstrap prints, passes the
+  smoke build, and checks that two more bootstraps clone and download nothing
+  (`harness/bootstrap_proof.py`, the harness's own CI tool). The job summary
+  times each step.
+- The bootstrap proof covers every project whose file has a `[bootstrap]`
+  table, not only GUI.Forms. `bootstrap_proof.py matrix` skips a project, with
+  the reason in the summary, until its notes branch exists and its smoke
+  script is on its default branch. A product without a `harness.lock`
+  bootstraps with this harness. The downloaded Ubuntu packages are kept in an
+  Actions cache, because the Ubuntu mirror once took 34 minutes. The plan
+  skips one host, with the reason, when it cannot work there yet, for
+  example Linux, when the bootstrap would install the wrong package profile.
+- `[bootstrap] linux_packages` (optional): the `[linux_packages]` profile a
+  workspace installs on Linux. Without it the bootstrap uses `toolkit`, else
+  the project's only profile (`Project.workspace_linux_profile()`). A project
+  with several profiles and none named `toolkit` (Pocket Library, Games) must
+  name one.
 - `harness/lockstep.py`: the local lockstep GUI.Forms. One clone under
   `D:/malkuth` (or `HARNESS_LOCKSTEP_ROOT`) is built once per (commit,
   target, toolchain, features) with `tools/build_sdk.py --features all` into
@@ -53,6 +72,11 @@ and new form. Provisional rows there may change without an entry.
   in its `harness.lock` (`[harness] repository, commit`).
 
 ### Changed
+- The bootstrap checks the product's submodules out at the commits it
+  records (`git submodule update --init --recursive`), so File Manager's
+  `gui_forms/` and `backend/` are there for its smoke build. It does this
+  after a clone or a fast-forward only; a checkout left as it is keeps its
+  submodules as they are.
 - The bootstrap's warning for a root-layout product also checks that the
   checkout ignores `.toolchain/` and `.bootstrap/`. restore_local creates
   them for the Windows toolchain and its downloads
@@ -61,6 +85,10 @@ and new form. Provisional rows there may change without an entry.
   Ubuntu package command with `HARNESS_PROJECT=<project file>` in front,
   because `install_linux_ci_packages.sh` reads the package set from it.
   The printed line runs as it stands once the apt directory is filled in.
+  It names the project's own package profile: the one `[bootstrap]
+  linux_packages` names, else `toolkit` when the project has one, else its only profile (Plan Paint's `paint`). A project with
+  several and no `toolkit` gets a placeholder listing them, and one with
+  none gets a note.
 - `harness/windows_toolchain.py restore` reads the project's `[toolchain]
   repository`, falling back to `GITHUB_REPOSITORY` when it is empty.
 - A product may be the workspace root (`source_dir = "."`, File Manager's

@@ -44,8 +44,11 @@ prefix = pathlib.Path(args.prefix)
 
 
 def git(directory: Path, *arguments: str) -> str:
+    # The fixture identity, not the machine's: a CI runner has no git user, so a commit would fail.
+    environment: dict[str, str] = dict(os.environ)
+    environment.update(GIT_ENVIRONMENT)
     completed: subprocess.CompletedProcess[str] = subprocess.run(
-        ['git', '-C', str(directory), *arguments], capture_output=True, text=True, check=True)
+        ['git', '-C', str(directory), *arguments], capture_output=True, text=True, check=True, env=environment)
     return completed.stdout.strip()
 
 
