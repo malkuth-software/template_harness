@@ -592,6 +592,20 @@ A product has adopted the harness when all three of these hold:
   harness's copy of the same file. Set your own `.gitattributes`, as the
   harness does; don't rely on the runner's git config. GUI.Forms has
   none yet, and computes its Skia archive identity on a Linux runner.
+- **Compiler-cache keys on Windows: line endings and locale.** ccache
+  keys every object on the exact bytes of every file the compile reads,
+  and on the locale. GUI.Forms' Windows CI checks its sources out with
+  CRLF (the runner's git has `core.autocrlf=true`) and runs under MSYS2
+  with `LANG=en_US.UTF-8`. A local build from LF sources with no `LANG`
+  produces byte-identical objects under different keys: it hit 3 of 526
+  compilations against CI's published cache. Matching both (CRLF sources
+  following git's rule and the tree's `.gitattributes`, plus
+  `LANG=en_US.UTF-8`) hit 525 of 526 (2026-10-27). So a local harness
+  that wants CI's caches checks out and builds exactly as CI does. The
+  lockstep clone does (`core.autocrlf=true`, the record's `lang`), and
+  `example_app/fetch_sdk.py` rewrites an unpacked source SDK to CRLF on
+  windows-x64. If a product's checkouts ever become LF everywhere, every
+  Windows cache restarts once.
 - **The Skia identity.** GUI.Forms' Windows Skia archive identity hashed
   `tools/windows_toolchain*.json`. These now come from the harness
   (`skia_archive.MOVED_INPUTS`) under their old names, so the identity
