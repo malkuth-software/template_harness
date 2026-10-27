@@ -32,6 +32,11 @@ and new form. Provisional rows there may change without an entry.
 ### Changed
 - `checkpoint/checkpoint.py` reads its settings from `project.Project`
   instead of parsing `[checkpoint]` itself. The command line is unchanged.
+- `projects/gui_forms.toml`: `harness.lock` and `tools/harness_link.py` join
+  `[state_machines].full_tree_triggers`, so a harness bump checks the whole
+  tree. The `[bootstrap]` smoke command is unchanged; GUI.Forms' `ci_build.py`
+  now accepts `--tests` without `--sanitize` (a plain build of what the
+  matching tests read, and those tests).
 
 ### Breaking changes
 - None.

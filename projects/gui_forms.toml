@@ -98,11 +98,15 @@ areas = [
     ["tools/", "tools"],
 ]
 # A change to one of these can change any verdict: a changed-code run checks
-# the full tree.
+# the full tree. GUI.Forms' tools/check_*.py are forwarding shims to this
+# harness, so a change to the checkers reaches GUI.Forms as a harness.lock
+# bump (tools/harness_link.py is how the shims reach it).
 full_tree_triggers = [
     "tools/check_state_machines.py",
     "tools/check_house_style.py",
     ".github/workflows/state-machines.yml",
+    "harness.lock",
+    "tools/harness_link.py",
 ]
 
 [build]
@@ -144,8 +148,10 @@ merge_method = "merge"
 
 # harness/bootstrap.py: the notes clone (main, plus the gui_forms side branch
 # as the worktree notes-gui_forms), the in-house projects repository, and the
-# smoke build: ci_build.py configures as CI does and builds and runs only
-# gui_forms_core_tests. {python} is the interpreter running the bootstrap.
+# smoke build: ci_build.py configures as CI does, then a plain (not
+# sanitized) build of only what gui_forms_core_tests reads, and that test;
+# without --sanitize, --tests installs nothing (GUI.Forms #408 admitted it).
+# {python} is the interpreter running the bootstrap.
 [bootstrap]
 notes_repository = "malkuth-software/notes"
 notes_branch = "gui_forms"

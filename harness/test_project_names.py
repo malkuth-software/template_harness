@@ -135,7 +135,8 @@ class ReferenceProjectTests(unittest.TestCase):
             ('stx_vorbis/', 'stx_vorbis'), ('stx_zlib/', 'stx_zlib'), ('stx_png/', 'stx_png'),
             ('stx_conv/', 'stx_conv'), ('fuzz/', 'fuzz'), ('examples/', 'examples'), ('tools/', 'tools')))
         self.assertEqual(check_state_machines.CHECKER_FILES, (
-            'tools/check_state_machines.py', 'tools/check_house_style.py', '.github/workflows/state-machines.yml'))
+            'tools/check_state_machines.py', 'tools/check_house_style.py', '.github/workflows/state-machines.yml',
+            'harness.lock', 'tools/harness_link.py'))
 
 
 if __name__ == '__main__':
