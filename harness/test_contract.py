@@ -37,6 +37,9 @@ CONTRACT_FILES: tuple[str, ...] = (
     'harness/bootstrap.py',
     'harness/restore_local.py',
     'CHANGELOG.md',
+    'harness/lock.py',
+    '.github/actions/harness-checkout/action.yml',
+    '.github/actions/harness-checkout/read_lock.sh',
 )
 CHANGE_RULE: str = ('products use this (docs/contract.md); a change needs a Breaking changes '
                     'entry in CHANGELOG.md')

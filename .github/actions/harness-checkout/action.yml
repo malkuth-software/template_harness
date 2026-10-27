@@ -1,0 +1,45 @@
+name: Check out the pinned harness
+description: >-
+  Reads <product-path>/harness.lock and checks that template_harness commit
+  out, detached, at <path> in the workspace (template_harness/ by default,
+  beside the product). Owner decision 2; harness/lock.py is the local
+  equivalent.
+inputs:
+  product-path:
+    description: The product checkout, relative to the workspace; it holds harness.lock.
+    required: true
+  path:
+    description: Where the harness goes, relative to the workspace.
+    default: template_harness
+outputs:
+  repository:
+    description: The locked repository (owner/name).
+    value: ${{ steps.lock.outputs.repository }}
+  commit:
+    description: The locked commit.
+    value: ${{ steps.lock.outputs.commit }}
+runs:
+  using: composite
+  steps:
+    - id: lock
+      shell: bash
+      env:
+        LOCK: ${{ inputs.product-path }}/harness.lock
+      run: sh "$GITHUB_ACTION_PATH/read_lock.sh" "$LOCK" >> "$GITHUB_OUTPUT"
+    - uses: actions/checkout@v4
+      with:
+        repository: ${{ steps.lock.outputs.repository }}
+        ref: ${{ steps.lock.outputs.commit }}
+        path: ${{ inputs.path }}
+        persist-credentials: false
+    - shell: bash
+      env:
+        HARNESS: ${{ inputs.path }}
+        COMMIT: ${{ steps.lock.outputs.commit }}
+      run: |
+        head=$(git -C "$HARNESS" rev-parse HEAD)
+        if [ "$head" != "$COMMIT" ]; then
+          echo "harness-checkout: $HARNESS is at $head, not the locked $COMMIT" >&2
+          exit 1
+        fi
+        echo "template_harness at $COMMIT in $HARNESS"
