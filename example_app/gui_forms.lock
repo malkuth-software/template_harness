@@ -5,10 +5,15 @@
 # this file from a release's published digests.
 #
 # Each platform's archive is gui-forms-sdk-<version>-<platform>.tar.gz
-# (.zip on Windows): the `cmake --install` prefix GUI.Forms' CI already
-# builds and tests. No release publishes those archives yet (the release
-# change is pending), so the [sdk] table is empty and a fetch stops with that
-# reason; pin the first release that carries them.
+# (.zip on Windows), published with each release since GUI.Forms PR #406,
+# with its digest in the release's SHA256SUMS.txt. It holds one directory,
+# gui-forms-sdk-<version>-<platform>/, the `cmake --install` prefix:
+# include/, lib/ (and bin/ for the Windows DLLs), lib/cmake/GUIForms/,
+# cmake/llvm22.cmake, share/GUIForms/fonts/, share/licenses/GUIForms/ and,
+# on macOS, llvm-runtime/ (the LLVM runtime its binaries need). The example
+# configures with the harness's own harness/cmake/llvm22.cmake. Until a
+# release carrying the archives is pinned, the [sdk] table is empty and a
+# fetch stops with that reason.
 schema = 1
 
 [release]

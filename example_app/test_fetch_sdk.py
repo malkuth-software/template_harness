@@ -136,24 +136,61 @@ class FetchTests(unittest.TestCase):
                 fetch_sdk.extract(archive, 'bad.zip', into)
             self.assertFalse((root / 'escaped.txt').exists())
 
+    def release(self) -> tuple[list[dict[str, Any]], str]:
+        """A v0.2.9 listing with every platform's SDK, a program package and SHA256SUMS.txt, and that file's text."""
+        listed: list[dict[str, Any]] = []
+        sums: list[str] = []
+        platform: str
+        for platform in fetch_sdk.PLATFORMS:
+            suffix: str = '.zip' if platform.startswith('windows') else '.tar.gz'
+            name: str = 'gui-forms-sdk-0.2.9-' + platform + suffix
+            digest: str = hashlib.sha256(platform.encode()).hexdigest()
+            listed.append({'name': name, 'size': 1000, 'digest': 'sha256:' + digest})
+            sums.append(digest + '  ' + name)
+        listed.append({'name': 'gui-forms-gallery-0.2.9-linux-x64.deb', 'size': 5, 'digest': 'sha256:' + '1' * 64})
+        listed.append({'name': fetch_sdk.CHECKSUMS_ASSET, 'size': 300, 'digest': None})
+        sums.append('1' * 64 + ' *gui-forms-gallery-0.2.9-linux-x64.deb')
+        text: str = '\n'.join(sums) + '\n'
+        result: tuple[list[dict[str, Any]], str] = (listed, text)
+        return result
+
     def test_pin_rewrites_the_sdk_table(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path: Path = Path(directory) / 'gui_forms.lock'
             path.write_text(LOCK_TEXT, encoding='utf-8')
-            listed: list[dict[str, Any]] = []
-            platform: str
-            for platform in fetch_sdk.PLATFORMS:
-                suffix: str = '.zip' if platform.startswith('windows') else '.tar.gz'
-                listed.append({'name': 'gui-forms-sdk-0.2.9-' + platform + suffix,
-                               'digest': 'sha256:' + hashlib.sha256(platform.encode()).hexdigest()})
-            listed.append({'name': 'gui-forms-gallery-0.2.9-linux-x64.deb', 'digest': 'sha256:' + '1' * 64})
+            listed: list[dict[str, Any]]
+            sums: str
+            listed, sums = self.release()
             with mock.patch.object(fetch_sdk, 'LOCK_PATH', path), \
-                    mock.patch.object(fetch_sdk, 'release_assets', return_value=listed):
-                fetch_sdk.pin_command(fetch_sdk.read_lock(path), 'v0.2.9')
+                    mock.patch.object(fetch_sdk, 'release_assets', return_value=listed), \
+                    mock.patch.object(fetch_sdk, 'release_checksums', return_value=sums):
+                printed: list[str] = fetch_sdk.pin_command(fetch_sdk.read_lock(path), 'v0.2.9')
             lock: fetch_sdk.Lock = fetch_sdk.read_lock(path)
             self.assertEqual(lock.tag, 'v0.2.9')
             self.assertEqual(sorted(lock.assets), sorted(fetch_sdk.PLATFORMS))
             self.assertEqual(lock.assets['windows-x64'].name, 'gui-forms-sdk-0.2.9-windows-x64.zip')
+            self.assertEqual(lock.assets['linux-x64'].sha256, hashlib.sha256(b'linux-x64').hexdigest())
+            self.assertIn('gui-forms-sdk-0.2.9-windows-x64.zip 1000 bytes', printed)
+
+    def test_pin_refuses_disagreeing_digests(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path: Path = Path(directory) / 'gui_forms.lock'
+            path.write_text(LOCK_TEXT, encoding='utf-8')
+            listed: list[dict[str, Any]]
+            sums: str
+            listed, sums = self.release()
+            listed[0]['digest'] = 'sha256:' + '2' * 64
+            kept: list[str] = [line for line in sums.splitlines() if 'linux-arm64' not in line]
+            missing: str = '\n'.join(kept) + '\n'
+            checksums: str
+            for checksums in (sums, missing):
+                with mock.patch.object(fetch_sdk, 'LOCK_PATH', path), \
+                        mock.patch.object(fetch_sdk, 'release_assets', return_value=listed), \
+                        mock.patch.object(fetch_sdk, 'release_checksums', return_value=checksums):
+                    with self.assertRaises(fetch_sdk.FetchError):
+                        fetch_sdk.pin_command(fetch_sdk.read_lock(path), 'v0.2.9')
+                listed[0]['digest'] = None
+            self.assertEqual(path.read_text(encoding='utf-8'), LOCK_TEXT)
 
     def test_pin_refuses_a_release_without_sdks(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

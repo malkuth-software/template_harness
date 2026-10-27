@@ -27,6 +27,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import urllib.error
 
 HERE: Path = Path(__file__).resolve().parent
 HARNESS_ROOT: Path = HERE.parent
@@ -76,6 +77,9 @@ def main() -> int:
         lines: list[str] = fetch_sdk.fetch_command(lock, platform, fetch_sdk.checked_cache(cache))
     except fetch_sdk.FetchError as error:
         print('ci_build: ' + str(error), file=sys.stderr)
+        return 1
+    except urllib.error.URLError as error:
+        print('ci_build: fetching the SDK: ' + str(error), file=sys.stderr)
         return 1
     prefix: str = value_of(lines, 'prefix')
     bundled_runtime: str = value_of(lines, 'llvm_runtime')

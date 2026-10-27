@@ -14,9 +14,11 @@ without a download. With GITHUB_OUTPUT set, the same lines are appended
 there. prefix prints the same lines for an SDK already fetched, without the
 network.
 
-pin reads a release's asset list (names and the digests GitHub publishes;
-no archive is downloaded) and rewrites the lock's [sdk] table with every
-platform's archive named by the lock's sdk_asset pattern.
+pin reads a release's asset list and its SHA256SUMS.txt (no archive is
+downloaded) and rewrites the lock's [sdk] table with every platform's
+archive named by the lock's sdk_asset pattern: the digest SHA256SUMS.txt
+records, which must agree with the digest GitHub publishes for the asset
+when it publishes one. It prints each archive's size.
 
 The cache is outside the source tree: --cache, else HARNESS_CACHE, else
 %LOCALAPPDATA%/template_harness/cache on Windows and
@@ -43,6 +45,7 @@ import tarfile
 import tempfile
 import tomllib
 from typing import Any, BinaryIO
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -51,6 +54,8 @@ REPOSITORY_ROOT: Path = HERE.parent
 LOCK_PATH: Path = HERE / 'gui_forms.lock'
 PLATFORMS: tuple[str, ...] = ('windows-x64', 'macos-arm64', 'linux-x64', 'linux-arm64')
 ARCHIVE_SUFFIXES: tuple[str, ...] = ('.tar.gz', '.zip')
+# The release's checksum list: `<sha256>  <asset name>` per line.
+CHECKSUMS_ASSET: str = 'SHA256SUMS.txt'
 # The file that marks a complete unpack, holding the archive's digest.
 COMPLETE_MARKER: str = '.fetched-sha256'
 CHUNK_BYTES: int = 1 << 20
@@ -299,26 +304,63 @@ def release_assets(repository: str, tag: str) -> list[dict[str, Any]]:
     return assets
 
 
+def release_checksums(repository: str, tag: str) -> str:
+    """The text of a release's SHA256SUMS.txt (a few kilobytes)."""
+    url: str = 'https://github.com/' + repository + '/releases/download/' + tag + '/' + CHECKSUMS_ASSET
+    request: urllib.request.Request = urllib.request.Request(url, headers={'User-Agent': 'template_harness-fetch-sdk'})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        text: str = response.read().decode('utf-8')
+    return text
+
+
+def parse_checksums(text: str) -> dict[str, str]:
+    """Asset name to digest from `<sha256>  <name>` lines (sha256sum's text or `*` binary marker)."""
+    digests: dict[str, str] = {}
+    line: str
+    for line in text.splitlines():
+        fields: list[str] = line.split(None, 1)
+        if len(fields) != 2:
+            continue
+        digest: str = fields[0].lower()
+        name: str = fields[1].strip().lstrip('*')
+        if len(digest) == 64 and all(c in '0123456789abcdef' for c in digest):
+            digests[name] = digest
+    return digests
+
+
 def pin_command(lock: Lock, tag: str) -> list[str]:
     version: str = tag[1:] if tag.startswith('v') else tag
     listed: list[dict[str, Any]] = release_assets(lock.repository, tag)
-    by_name: dict[str, str] = {}
+    published: dict[str, str] = {}
+    sizes: dict[str, int] = {}
     entry: dict[str, Any]
     for entry in listed:
-        digest: str = str(entry.get('digest') or '')
-        if digest.startswith('sha256:'):
-            by_name[str(entry.get('name'))] = digest[len('sha256:'):]
+        entry_name: str = str(entry.get('name'))
+        sizes[entry_name] = int(entry.get('size') or 0)
+        published_digest: str = str(entry.get('digest') or '')
+        if published_digest.startswith('sha256:'):
+            published[entry_name] = published_digest[len('sha256:'):]
+    if CHECKSUMS_ASSET not in sizes:
+        raise FetchError(tag + ' publishes no ' + CHECKSUMS_ASSET)
+    recorded: dict[str, str] = parse_checksums(release_checksums(lock.repository, tag))
     pinned: list[Asset] = []
     platform: str
     for platform in PLATFORMS:
         stem: str = lock.sdk_asset.replace('{version}', version).replace('{platform}', platform)
+        found: str = ''
         suffix: str
         for suffix in ARCHIVE_SUFFIXES:
-            if stem + suffix in by_name:
-                pinned.append(Asset(platform, stem + suffix, by_name[stem + suffix]))
+            if stem + suffix in sizes:
+                found = stem + suffix
                 break
-        else:
-            raise FetchError(tag + ' publishes no ' + stem + '.tar.gz or .zip with a digest')
+        if not found:
+            raise FetchError(tag + ' publishes no ' + stem + '.tar.gz or .zip')
+        if found not in recorded:
+            raise FetchError(tag + "'s " + CHECKSUMS_ASSET + ' records no digest for ' + found)
+        if found in published and published[found] != recorded[found]:
+            raise FetchError(found + ': ' + CHECKSUMS_ASSET + ' records ' + recorded[found]
+                             + ' but GitHub publishes ' + published[found])
+        pinned.append(Asset(platform, found, recorded[found]))
     text: str = LOCK_PATH.read_text(encoding='utf-8')
     head: str = text.split('\n[sdk]', 1)[0]
     head = head.replace('tag = "' + lock.tag + '"', 'tag = "' + tag + '"', 1)
@@ -334,7 +376,9 @@ def pin_command(lock: Lock, tag: str) -> list[str]:
     staged.write_text(replacement, encoding='utf-8', newline='\n')
     read_lock(staged)
     staged.replace(LOCK_PATH)
-    result: list[str] = ['pinned ' + tag + ': ' + ', '.join(a.platform for a in pinned)]
+    result: list[str] = ['pinned ' + tag]
+    for asset in pinned:
+        result.append(asset.name + ' ' + str(sizes[asset.name]) + ' bytes')
     return result
 
 
@@ -361,6 +405,9 @@ def main() -> int:
             else:
                 lines = prefix_command(lock, platform, cache)
     except FetchError as error:
+        print('fetch_sdk: ' + str(error), file=sys.stderr)
+        return 1
+    except urllib.error.URLError as error:
         print('fetch_sdk: ' + str(error), file=sys.stderr)
         return 1
     line: str
