@@ -213,9 +213,35 @@ class BootstrapTests(unittest.TestCase):
         plan: bootstrap.Plan = bootstrap.Plan(
             workspace=self.workspace, product=bootstrap.project.load(self.project_file), github=str(self.github),
             platform='windows-x64', in_house=False, restore=False, smoke=False, dry_run=False)
-        environment: dict[str, str] = bootstrap.step_environment(plan)
+        harness: bootstrap.PinnedHarness = bootstrap.PinnedHarness(bootstrap.REPOSITORY, plan.product)
+        environment: dict[str, str] = bootstrap.step_environment(plan, harness)
         self.assertEqual(environment['PATH'].split(os.pathsep)[:2], ['/toolchain/clang64/bin', '/toolchain/usr/bin'])
         self.assertEqual(environment['HARNESS_WORKSPACE'], str(self.workspace))
+
+    def test_a_locked_product_gets_its_pinned_harness(self) -> None:
+        # A harness repository whose second commit carries the project file the steps must use.
+        harness_seed: Path = make_remote(self.github, 'malkuth-software/template_harness', {'main': 'first.txt'})
+        (harness_seed / 'projects').mkdir()
+        (harness_seed / 'projects' / 'gui_forms.toml').write_text(project_text('gui_forms'), encoding='utf-8')
+        git(harness_seed, 'add', 'projects')
+        git(harness_seed, 'commit', '-q', '-m', 'The project file')
+        pinned: str = git(harness_seed, 'rev-parse', 'HEAD')
+        commit_file(harness_seed, 'later.txt', 'after the pin\n')
+        git(harness_seed, 'push', '-q', 'origin', 'main')
+        commit_file(self.product_seed, 'harness.lock',
+                    '[harness]\nrepository = "malkuth-software/template_harness"\ncommit = "' + pinned + '"\n')
+        git(self.product_seed, 'push', '-q', 'origin', 'main')
+        status: int
+        output: str
+        errors: str
+        status, output, errors = self.run_bootstrap('--no-restore')
+        self.assertEqual(status, 0, errors)
+        harness: Path = self.workspace / 'template_harness'
+        self.assertEqual(git(harness, 'rev-parse', 'HEAD'), pinned)
+        self.assertFalse((harness / 'later.txt').exists())
+        smoke: list[str] = json.loads((self.workspace / 'smoke.json').read_text(encoding='utf-8'))
+        self.assertEqual(smoke, [str(self.workspace), str(harness / 'projects' / 'gui_forms.toml')])
+        self.assertIn('(harness.lock)', output)
 
 
 if __name__ == '__main__':

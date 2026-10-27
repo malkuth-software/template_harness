@@ -7,6 +7,13 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Added
+- `harness/lock.py` (owner decision 2): `show`, `checkout DIR` and `bump [--to REF]`
+  for a product's `harness.lock`, which pins the exact harness commit.
+- `.github/actions/harness-checkout`: a composite action that reads
+  `harness.lock` and checks the pinned commit out beside the product.
+- The bootstrap checks a locked product's harness out at
+  `<workspace>/template_harness` and runs the restore and the smoke build
+  from it, with its `projects/<name>.toml`.
 - `bootstrap.sh` and `bootstrap.ps1` (provisional): set up a workspace for one
   product. They clone or update the product and the notes, with the project's
   notes branch as a worktree, and the private projects repository with

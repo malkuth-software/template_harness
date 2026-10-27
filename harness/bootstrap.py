@@ -12,7 +12,9 @@ NAME selects projects/NAME.toml in this repository (--project-file names
 another file). In order:
 
 1. the product: <github>/<repository>.git cloned into DIR/<source_dir> on
-   its default branch;
+   its default branch. When it has a harness.lock, DIR/template_harness
+   becomes that commit (harness/lock.py), and the restore and the smoke
+   build use that harness and its projects/NAME.toml;
 2. the notes: <github>/<notes_repository>.git cloned into DIR/notes with
    main checked out, and the project's notes branch (notes_branch, by
    default the project name) as the worktree DIR/notes-<branch>;
@@ -45,6 +47,7 @@ import shlex
 import subprocess
 import sys
 
+import lock
 import project
 
 HARNESS: Path = Path(__file__).resolve().parent
@@ -52,6 +55,8 @@ REPOSITORY: Path = HARNESS.parent
 GITHUB: str = 'https://github.com'
 PLATFORMS: tuple[str, ...] = ('windows-x64', 'linux-x64', 'linux-arm64', 'macos-arm64')
 PYTHON_ARGUMENT: str = '{python}'
+# The pinned harness's directory in the workspace, beside the product (owner decision 2).
+HARNESS_DIRECTORY: str = 'template_harness'
 # Written by restore_local.py (its TOOLCHAIN_PATH_RECORD).
 TOOLCHAIN_PATH_RECORD: str = '.ci/local-toolchain-path.txt'
 
@@ -181,7 +186,47 @@ def sync_notes_worktree(plan: Plan, notes: Path, branch: str) -> None:
                   'origin/' + branch], 'adding the notes worktree')
 
 
-def step_environment(plan: Plan) -> dict[str, str]:
+@dataclass(frozen=True)
+class PinnedHarness:
+    """The harness the steps after the clones use, and the project file read from it."""
+    root: Path
+    product: project.Project
+
+
+def pin_harness(plan: Plan) -> PinnedHarness:
+    """The workspace's template_harness at the product's harness.lock commit, or this harness without a lock.
+
+    The pinned harness's projects/<name>.toml replaces the bootstrap's project
+    file when it has one, so the restore and the smoke build are the pinned
+    harness's own.
+    """
+    product: project.Project = plan.product
+    lock_path: Path = plan.workspace / product.source_dir / lock.LOCK_NAME
+    if not lock_path.is_file():
+        if plan.dry_run and not (plan.workspace / product.source_dir / '.git').exists():
+            say('harness: would read ' + str(lock_path) + ' once the product is cloned; this harness meanwhile')
+        else:
+            say('harness: the product has no ' + lock.LOCK_NAME + '; using this harness, ' + str(REPOSITORY))
+        return PinnedHarness(REPOSITORY, product)
+    target: Path = plan.workspace / HARNESS_DIRECTORY
+    try:
+        pinned: lock.Lock = lock.load(lock_path)
+        say('harness: ' + pinned.repository + ' at ' + pinned.commit + ' (' + lock.LOCK_NAME + ') in ' + str(target))
+        if plan.dry_run:
+            say('would run: ' + shlex.join([sys.executable, '-B', str(HARNESS / 'lock.py'), '--lock', str(lock_path),
+                                            'checkout', str(target)]))
+            return PinnedHarness(REPOSITORY, product)
+        lock.checkout(pinned, target, plan.github)
+    except lock.LockError as error:
+        raise BootstrapError('pinning the harness failed: ' + str(error)) from error
+    pinned_project: Path = target / 'projects' / (product.name + '.toml')
+    if not pinned_project.is_file():
+        say('harness: the pinned harness has no ' + str(pinned_project) + '; keeping ' + str(product.path))
+        return PinnedHarness(target, product)
+    return PinnedHarness(target, project.load(pinned_project))
+
+
+def step_environment(plan: Plan, harness: PinnedHarness) -> dict[str, str]:
     """The environment of the steps after the clones: the project and workspace variables, and the
     restored Windows toolchain (restore_local.TOOLCHAIN_PATH_RECORD) before PATH when there is one."""
     environment: dict[str, str] = dict(os.environ)
@@ -189,7 +234,7 @@ def step_environment(plan: Plan) -> dict[str, str]:
     if record.is_file():
         directories: list[str] = record.read_text(encoding='utf-8').splitlines()
         environment['PATH'] = os.pathsep.join(directories + [environment.get('PATH', '')])
-    environment[project.PROJECT_VARIABLE] = str(plan.product.path)
+    environment[project.PROJECT_VARIABLE] = str(harness.product.path)
     environment[project.WORKSPACE_VARIABLE] = str(plan.workspace)
     return environment
 
@@ -211,6 +256,7 @@ def bootstrap(plan: Plan) -> None:
     say('Workspace ' + str(plan.workspace) + ' for ' + product.name + ' (' + plan.platform + ')')
     sync_clone(plan, repository_url(plan.github, product.repository), plan.workspace / product.source_dir, None,
                'the product')
+    harness: PinnedHarness = pin_harness(plan)
     notes: Path = plan.workspace / 'notes'
     sync_clone(plan, repository_url(plan.github, product.bootstrap.notes_repository), notes, 'main', 'the notes')
     sync_notes_worktree(plan, notes, product.bootstrap.notes_branch)
@@ -221,17 +267,17 @@ def bootstrap(plan: Plan) -> None:
         except BootstrapError as error:
             raise BootstrapError(str(error) + '\n' + product.bootstrap.projects_repository
                                  + ' is private: --in-house needs read access to it') from error
-    environment: dict[str, str] = step_environment(plan)
+    environment: dict[str, str] = step_environment(plan, harness)
     if plan.restore:
         kind: str
         for kind in ('toolchain', 'cache'):
-            command: list[str] = [sys.executable, '-B', str(HARNESS / 'restore_local.py'), kind,
+            command: list[str] = [sys.executable, '-B', str(harness.root / 'harness' / 'restore_local.py'), kind,
                                   '--platform', plan.platform]
             change(plan, command, 'restoring the ' + kind, plan.workspace, environment)
     else:
         say('Toolchain and cache restore skipped (--no-restore)')
-    smoke: list[str] = smoke_command(product)
-    environment = step_environment(plan)
+    smoke: list[str] = smoke_command(harness.product)
+    environment = step_environment(plan, harness)
     if not plan.smoke or not smoke:
         say('Smoke build skipped' + (' (--no-smoke)' if not plan.smoke else ' (the project names none)'))
     else:
