@@ -103,8 +103,7 @@ class BooksProjectTests(unittest.TestCase):
         self.assertEqual(bootstrap.notes_repository, 'malkuth-software/notes')
         self.assertEqual(bootstrap.notes_branch, 'books')
         self.assertEqual(bootstrap.projects_repository, 'malkuth-software/projects')
-        # No smoke build yet: Pocket Library's build driver arrives with the SDK port.
-        self.assertEqual(bootstrap.smoke, ())
+        self.assertEqual(bootstrap.smoke, ('{python}', 'scripts/smoke-build.py'))
 
 
 if __name__ == '__main__':
