@@ -105,6 +105,8 @@ class GamesProjectTests(unittest.TestCase):
         self.assertEqual(bootstrap.notes_branch, 'games')
         self.assertEqual(bootstrap.projects_repository, 'malkuth-software/projects')
         self.assertEqual(tuple(bootstrap.smoke), ('{python}', 'tools/harness_smoke.py'))
+        self.assertEqual(bootstrap.linux_packages, 'core')
+        self.assertEqual(self.games.workspace_linux_profile(), 'core')
 
 
 if __name__ == '__main__':
