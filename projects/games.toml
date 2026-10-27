@@ -1,0 +1,88 @@
+# PlaySuite's project file (harness/project.py reads it).
+#
+# PlaySuite is the repository malkuth-software/games; its internal names stay
+# "games" (the executable, the CMake project, the save folders), so the
+# harness names follow them. harness/test_project_games.py checks every
+# derived name literally. Changing a value starts a new history; change one
+# deliberately.
+
+schema = 1
+
+[project]
+name = "games"
+repository = "malkuth-software/games"
+# The product is the workspace root, as File Manager is: its CI has always
+# checked GUI.Forms out at <root>/gui_forms and restored GUI.Forms' compiler
+# cache (.ccache at the root, CCACHE_BASEDIR the root) beside it, so the
+# toolkit's objects hit only in this layout.
+source_dir = "."
+# .build/native-<platform>/games (-sanitize).
+build_name = "games"
+# GAMES_LLVM_RUNTIME, GAMES_PLATFORM, GAMES_COMPILER_ID, ... PlaySuite's own
+# variables (GAMES_STATE_DIR, GAMES_RELEASE_VERSION, ...) use none of these.
+env_prefix = "GAMES"
+
+[ci]
+# games-validated-, games-inputs-, games-tree-, games-sanitize-ccache-linux-x64.
+artifact_prefix = "games-"
+# No compiler caches of PlaySuite's own are published yet (it restores
+# GUI.Forms'), so there is no cache_asset_prefix or pinned_cache_revisions.
+# The application job of applications.yml builds and packages each host:
+# "application (<runner>, <platform>, <shell>)".
+native_workflow = ".github/workflows/applications.yml"
+native_job = "application"
+
+[toolchain]
+# GUI.Forms' published Windows CLANG64 toolchain, which its compiler caches
+# were built with.
+repository = "malkuth-software/gui_forms"
+asset_prefix = "gui-forms-toolchain-"
+
+[tests]
+# tests/X.cpp builds X_tests and names the test X; no prefixes apply.
+name_prefixes = []
+
+# install_linux_ci_packages.sh <profile>.
+# core: the portable game core (GAMES_BUILD_APPLICATION=OFF) and its tests.
+[linux_packages.core]
+packages = ["cmake", "ninja-build", "ccache", "clang-22"]
+
+# application: GUI.Forms from source (its X11 host and CPU Skia, with gn),
+# the application and its tests under a virtual display. It repeats core's
+# packages because a profile may extend only one that extends none.
+[linux_packages.application]
+packages = [
+    "cmake", "ninja-build", "ccache", "clang-22", "llvm-22", "generate-ninja", "pkg-config",
+    "libx11-dev", "libxext-dev", "libxrandr-dev", "libxcursor-dev", "libxfixes-dev", "libxi-dev",
+    "libatk1.0-dev", "libatk-bridge2.0-dev", "libasound2t64",
+    "xvfb", "xauth",
+]
+
+# packages: the .deb and the relocatable archive.
+[linux_packages.packages]
+extends = "application"
+packages = ["patchelf", "dpkg-dev"]
+
+# assets: preparing and verifying the compact runtime resources.
+[linux_packages.assets]
+packages = ["ffmpeg", "python3-pil"]
+
+[build]
+configure_variables = []
+
+[cache_manifest]
+profile = "PlaySuite application Release against the pinned GUI.Forms source"
+
+[cache_manifest.native_options]
+build_type = "Release"
+cxx_standard = 20
+
+# harness/bootstrap.py: the notes clone (main, plus the games side branch as
+# the worktree notes-games), and the smoke build: tools/harness_smoke.py
+# configures the portable game core with the harness toolchain, builds one
+# test and runs it. {python} is the interpreter running the bootstrap.
+[bootstrap]
+notes_repository = "malkuth-software/notes"
+notes_branch = "games"
+projects_repository = "malkuth-software/projects"
+smoke = ["{python}", "tools/harness_smoke.py"]
