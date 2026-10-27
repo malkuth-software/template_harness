@@ -65,6 +65,11 @@ and new form. Provisional rows there may change without an entry.
   in its `harness.lock` (`[harness] repository, commit`).
 
 ### Changed
+- The bootstrap checks the product's submodules out at the commits it
+  records (`git submodule update --init --recursive`), so File Manager's
+  `gui_forms/` and `backend/` are there for its smoke build. It does this
+  after a clone or a fast-forward only; a checkout left as it is keeps its
+  submodules as they are.
 - The bootstrap's warning for a root-layout product also checks that the
   checkout ignores `.toolchain/` and `.bootstrap/`. restore_local creates
   them for the Windows toolchain and its downloads

@@ -25,7 +25,8 @@ DIR/template_harness and the tag of the restored compiler cache
 first: the run that set an empty workspace up. It cloned the product and
 the notes, added the notes worktree, cloned the pinned harness (or said the
 product has no harness.lock), and restored the Windows toolchain on Windows
-and the compiler cache where one is published.
+and the compiler cache where one is published (a project that publishes
+none says the restore was skipped).
 
 again (with --before): a later run, which must be a no-op update. It updated
 the product, the notes and the notes worktree and cloned nothing. It may
@@ -70,6 +71,8 @@ PRODUCT_CLONED: re.Pattern[str] = re.compile(r'the product: cloning ')
 PRODUCT_UPDATED: re.Pattern[str] = re.compile(r'the product: updating ')
 NOTES_CLONED: re.Pattern[str] = re.compile(r'the notes: cloning ')
 NOTES_UPDATED: re.Pattern[str] = re.compile(r'the notes: updating ')
+# A project that publishes no compiler caches (no ci.cache_asset_prefix).
+CACHE_SKIPPED: re.Pattern[str] = re.compile(r'Cache restore skipped \(the project publishes no compiler caches')
 HARNESS_UNLOCKED: re.Pattern[str] = re.compile(r'harness: the product has no ' + re.escape(lock.LOCK_NAME))
 # lock.py: a harness clone, or a missing pinned commit fetched into an existing one.
 HARNESS_CLONED: re.Pattern[str] = re.compile(r'Cloning \S+ into ')
@@ -278,6 +281,15 @@ def matching(lines: list[str], pattern: re.Pattern[str]) -> list[re.Match[str]]:
     return matches
 
 
+def any_matching(lines: list[str], patterns: tuple[re.Pattern[str], ...]) -> bool:
+    """Whether any line starts with any of patterns."""
+    pattern: re.Pattern[str]
+    for pattern in patterns:
+        if matching(lines, pattern):
+            return True
+    return False
+
+
 def require(lines: list[str], pattern: re.Pattern[str], failures: list[str]) -> None:
     if not matching(lines, pattern):
         failures.append('the log has no line starting ' + repr(pattern.pattern))
@@ -298,8 +310,8 @@ def first_failures(lines: list[str], platform: str, notes_branch: str, locked: b
         require(lines, pattern, failures)
     if platform == 'windows-x64':
         require(lines, TOOLCHAIN_RESTORED, failures)
-    if not matching(lines, CACHE_RESTORED) and not matching(lines, CACHE_NOT_PUBLISHED):
-        failures.append('the log shows neither a restored cache nor that none is published')
+    if not any_matching(lines, (CACHE_RESTORED, CACHE_NOT_PUBLISHED, CACHE_SKIPPED)):
+        failures.append('the log shows no cache outcome: restored, unpublished, or none published by the project')
     return failures
 
 
@@ -331,8 +343,9 @@ def again_failures(lines: list[str], platform: str, notes_branch: str, before: B
         else:
             moves.append('the cache moved from ' + str(before.cache) + ' to ' + found.group(1)
                          + ' (the product was at ' + str(before.product) + ')')
-    if not restored and not matching(lines, CACHE_IN_PLACE) and not matching(lines, CACHE_NOT_PUBLISHED):
-        failures.append('the log shows no cache outcome: not restored, already restored or unpublished')
+    if not restored and not any_matching(lines, (CACHE_IN_PLACE, CACHE_NOT_PUBLISHED, CACHE_SKIPPED)):
+        failures.append('the log shows no cache outcome: restored, already restored, unpublished, or none '
+                        'published by the project')
     return failures
 
 

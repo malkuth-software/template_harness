@@ -13,7 +13,8 @@ another file). In order:
 
 1. the product: <github>/<repository>.git cloned into DIR/<source_dir> on
    its default branch, or into DIR itself when source_dir is "." (the
-   product at the workspace root). When it has a harness.lock,
+   product at the workspace root), with its submodules checked out at the
+   commits it records. When it has a harness.lock,
    DIR/template_harness becomes that commit (harness/lock.py), and the
    restore and the smoke build use that harness and its projects/NAME.toml;
 2. the notes: <github>/<notes_repository>.git cloned into DIR/notes with
@@ -38,7 +39,10 @@ about any it does not: the product's .gitignore should list them
 Re-running updates instead of re-cloning: each clone is fetched, and a
 checkout that is on its tracked branch with no uncommitted changes to
 tracked files is fast-forwarded. Any other checkout is left as it is, with
-the reason printed. Nothing is ever reset, deleted or force-updated.
+the reason printed. The product's submodules follow a cloned or
+fast-forwarded checkout (git submodule update --init --recursive, which
+refuses to overwrite local changes in them); a checkout left as it is
+keeps them as they are. Nothing is ever reset, deleted or force-updated.
 
 --dry-run prints every step's command and changes nothing (it still reads
 the state of existing clones to choose the steps). --github-base replaces
@@ -134,28 +138,31 @@ def change(plan: Plan, command: list[str], what: str, cwd: Path | None = None,
         raise BootstrapError(what + ' failed: ' + completed.stderr.strip())
 
 
-def fast_forward(plan: Plan, checkout: Path, branch: str) -> None:
-    """Fast-forwards checkout to origin/<branch> when it is on branch and has no tracked changes."""
+def fast_forward(plan: Plan, checkout: Path, branch: str) -> bool:
+    """Fast-forwards checkout to origin/<branch> when it is on branch and has no tracked changes;
+    whether it did (False: the checkout was left as it is, and says why)."""
     current: str = git_query(checkout, 'branch', '--show-current').stdout.strip()
     if current != branch:
         say(str(checkout) + ' is on ' + (current or 'a detached HEAD') + ', not ' + branch + '; left as it is')
-        return
+        return False
     changes: str = git_query(checkout, 'status', '--porcelain', '--untracked-files=no').stdout.strip()
     if changes:
         say(str(checkout) + ' has uncommitted changes; left as it is')
-        return
+        return False
     change(plan, ['git', '-C', str(checkout), 'merge', '--ff-only', '--quiet', 'origin/' + branch],
            'fast-forwarding ' + str(checkout))
+    return True
 
 
-def sync_clone(plan: Plan, url: str, checkout: Path, branch: str | None, what: str) -> None:
-    """Clones url into checkout (on branch, or the default branch), or fetches and fast-forwards an existing clone."""
+def sync_clone(plan: Plan, url: str, checkout: Path, branch: str | None, what: str) -> bool:
+    """Clones url into checkout (on branch, or the default branch), or fetches and fast-forwards an existing
+    clone; whether checkout is now at its tracked branch's tip (False: an existing clone was left as it is)."""
     if (checkout / '.git').exists():
         say(what + ': updating ' + str(checkout))
         change(plan, ['git', '-C', str(checkout), 'fetch', '--quiet', 'origin'], 'fetching ' + what)
         tracked: str = branch if branch is not None else default_branch(checkout)
-        fast_forward(plan, checkout, tracked)
-        return
+        moved: bool = fast_forward(plan, checkout, tracked)
+        return moved
     if checkout.exists() and any(checkout.iterdir()):
         raise BootstrapError(str(checkout) + ' exists, is not empty and is not a git clone; move it aside')
     say(what + ': cloning ' + url)
@@ -164,6 +171,24 @@ def sync_clone(plan: Plan, url: str, checkout: Path, branch: str | None, what: s
         command.extend(['--branch', branch])
     command.extend([url, str(checkout)])
     change(plan, command, 'cloning ' + what + ' from ' + url)
+    return True
+
+
+def sync_submodules(plan: Plan, checkout: Path, settled: bool) -> None:
+    """Checks the product's submodules out at the commits it records (File Manager's gui_forms/ and
+    backend/), after a clone or a fast-forward (settled). A checkout left as it is keeps its submodules
+    as they are, so local work in them is never overwritten."""
+    command: list[str] = ['git', '-C', str(checkout), 'submodule', 'update', '--init', '--recursive']
+    if plan.dry_run and not (checkout / '.git').exists():
+        say('would run: ' + shlex.join(command) + ' (when the product has .gitmodules)')
+        return
+    if not (checkout / '.gitmodules').is_file():
+        return
+    if not settled:
+        say('the product: its submodules are left as they are')
+        return
+    say('the product: updating its submodules')
+    change(plan, command, "updating the product's submodules")
 
 
 def default_branch(checkout: Path) -> str:
@@ -300,7 +325,9 @@ def bootstrap(plan: Plan) -> None:
     if not plan.dry_run:
         plan.workspace.mkdir(parents=True, exist_ok=True)
     say('Workspace ' + str(plan.workspace) + ' for ' + product.name + ' (' + plan.platform + ')')
-    sync_clone(plan, repository_url(plan.github, product.repository), product_checkout(plan), None, 'the product')
+    settled: bool = sync_clone(plan, repository_url(plan.github, product.repository), product_checkout(plan), None,
+                               'the product')
+    sync_submodules(plan, product_checkout(plan), settled)
     harness: PinnedHarness = pin_harness(plan)
     notes: Path = plan.workspace / 'notes'
     sync_clone(plan, repository_url(plan.github, product.bootstrap.notes_repository), notes, 'main', 'the notes')

@@ -102,6 +102,31 @@ class BootstrapTests(unittest.TestCase):
                                           '--github-base', str(self.github), *extra])
         return status, output.getvalue(), errors.getvalue()
 
+    def test_the_products_submodules_follow_a_settled_checkout_only(self) -> None:
+        # Local submodule URLs need the file protocol, which git allows only when asked.
+        allow: mock._patch_dict = mock.patch.dict(os.environ, {
+            'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'protocol.file.allow', 'GIT_CONFIG_VALUE_0': 'always'})
+        allow.start()
+        self.addCleanup(allow.stop)
+        make_remote(self.github, 'owner/library', {'main': 'library.txt'})
+        git(self.product_seed, 'submodule', 'add', '-q', str(self.github / 'owner' / 'library.git'), 'library')
+        git(self.product_seed, 'commit', '-q', '-m', 'Add the library')
+        git(self.product_seed, 'push', '-q', 'origin', 'main')
+        status: int
+        output: str
+        errors: str
+        status, output, errors = self.run_bootstrap('--no-restore', '--no-smoke')
+        self.assertEqual(status, 0, errors)
+        self.assertTrue((self.workspace / 'gui_forms' / 'library' / 'library.txt').is_file())
+        self.assertIn('the product: updating its submodules', output)
+        status, output, errors = self.run_bootstrap('--no-restore', '--no-smoke')
+        self.assertEqual(status, 0, errors)
+        self.assertIn('the product: updating its submodules', output)
+        (self.workspace / 'gui_forms' / 'product.txt').write_text('local work\n', encoding='utf-8')
+        status, output, errors = self.run_bootstrap('--no-restore', '--no-smoke')
+        self.assertEqual(status, 0, errors)
+        self.assertIn('the product: its submodules are left as they are', output)
+
     def test_a_fresh_workspace_gets_the_product_notes_and_smoke_build(self) -> None:
         status: int
         output: str
@@ -168,16 +193,17 @@ class BootstrapTests(unittest.TestCase):
         for line in output.splitlines():
             if line.startswith('would run: '):
                 lines.append(line)
-        self.assertEqual(len(lines), 7, output)
+        self.assertEqual(len(lines), 8, output)
         self.assertIn('git clone --quiet', lines[0])
         self.assertIn('malkuth-software/gui_forms.git', lines[0])
-        self.assertIn('--branch main', lines[1])
-        self.assertIn('worktree add --track -b gui_forms', lines[2])
-        self.assertIn('malkuth-software/projects.git', lines[3])
+        self.assertIn('submodule update --init --recursive (when the product has .gitmodules)', lines[1])
+        self.assertIn('--branch main', lines[2])
+        self.assertIn('worktree add --track -b gui_forms', lines[3])
+        self.assertIn('malkuth-software/projects.git', lines[4])
         # shlex quotes a path with backslashes, so the script name may be followed by a quote.
-        self.assertRegex(lines[4], r"restore_local\.py'? toolchain --platform linux-x64$")
-        self.assertRegex(lines[5], r"restore_local\.py'? cache --platform linux-x64$")
-        self.assertIn('smoke.json', lines[6])
+        self.assertRegex(lines[5], r"restore_local\.py'? toolchain --platform linux-x64$")
+        self.assertRegex(lines[6], r"restore_local\.py'? cache --platform linux-x64$")
+        self.assertIn('smoke.json', lines[7])
 
     def test_in_house_without_access_stops_clearly(self) -> None:
         status: int

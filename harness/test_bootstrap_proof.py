@@ -121,6 +121,18 @@ class LogTests(unittest.TestCase):
         repeated: tuple[str, ...] = replaced(AGAIN_WINDOWS_LOG, 'The cache of ', 'No published gui-forms-cache-x')
         self.assertEqual(again('windows-x64', repeated), ([], []))
 
+    def test_a_project_without_caches_satisfies_both_runs(self) -> None:
+        # bootstrap.py's line for a project with no ci.cache_asset_prefix (SwiftEdit, File Manager).
+        skipped: str = 'Cache restore skipped (the project publishes no compiler caches: no ci.cache_asset_prefix)'
+        first: tuple[str, ...] = replaced(FIRST_WINDOWS_LOG, 'Restored the cache', skipped)
+        self.assertEqual(bootstrap_proof.first_failures(list(first), 'windows-x64', NOTES_BRANCH, True), [])
+        repeated: tuple[str, ...] = replaced(AGAIN_WINDOWS_LOG, 'The cache of ', skipped)
+        self.assertEqual(again('windows-x64', repeated), ([], []))
+        silent: tuple[str, ...] = replaced(AGAIN_WINDOWS_LOG, 'The cache of ', 'nothing about the cache')
+        self.assertEqual(again('windows-x64', silent)[0],
+                         ['the log shows no cache outcome: restored, already restored, unpublished, or none '
+                          'published by the project'])
+
     def test_a_run_that_did_not_finish_fails(self) -> None:
         unfinished: tuple[str, ...] = AGAIN_WINDOWS_LOG[:-1]
         self.assertEqual(again('windows-x64', unfinished)[0], ["the log has no line starting 'Bootstrap finished'"])
