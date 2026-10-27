@@ -27,8 +27,9 @@ native_job = "native"
 pinned_cache_revisions = "packaging/pinned_cache_revisions.json"
 
 [toolchain]
-# The Windows CLANG64 toolchain is published as releases of this repository:
-# gui-forms-toolchain-windows-x64.tar.zst and its manifest.
+# The Windows CLANG64 toolchain is published as releases of the running
+# repository: gui-forms-toolchain-windows-x64.tar.zst and its manifest,
+# which records this repository as its publisher.
 repository = "malkuth-software/gui_forms"
 asset_prefix = "gui-forms-toolchain-"
 
@@ -103,3 +104,23 @@ full_tree_triggers = [
     "tools/check_house_style.py",
     ".github/workflows/state-machines.yml",
 ]
+
+# cache_manifest.py records these in cache-manifest.json beside the cache.
+[cache_manifest]
+profile = "native Release plus separately tested development text/host profiles"
+
+# The native job's build options, in the order the manifest lists them.
+# harfbuzz: ADR-004, every host draws text with the shared HarfBuzz/FreeType engine.
+[cache_manifest.native_options]
+build_type = "Release"
+cxx_standard = 20
+pic = true
+audio = true
+tests = true
+gallery = false
+skia = true
+harfbuzz = true
+
+# The Windows build has no Skia.
+[cache_manifest.platform_options."windows-x64"]
+skia = false

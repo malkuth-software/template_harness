@@ -15,6 +15,7 @@ field is changed deliberately or not at all.
 
     python3 harness/project.py show                 print the loaded project
     python3 harness/project.py linux-packages NAME  print a package profile, space-separated
+    python3 harness/project.py variable NAME        print the environment variable <env_prefix>_NAME
 
 TOML is read with tomllib (Python 3.11 and later). Every CI job that runs the
 tools sets up Python 3.12 or 3.14, the Windows toolchain itself needs 3.14,
@@ -62,7 +63,8 @@ class Project:
     # The workflow whose runs may produce receipts and caches, and its native job's name.
     native_workflow: str
     native_job: str
-    # The repository whose releases hold the Windows toolchain; empty means GITHUB_REPOSITORY.
+    # The repository the Windows toolchain manifest records as its publisher.
+    # Releases are read from the running repository (GITHUB_REPOSITORY), as before.
     toolchain_repository: str
     # A toolchain archive is <toolchain_asset_prefix><platform>.tar.zst.
     toolchain_asset_prefix: str
@@ -80,6 +82,11 @@ class Project:
     vocabulary_headers: tuple[str, ...]
     state_machine_areas: tuple[StateMachineArea, ...]
     full_tree_triggers: tuple[str, ...]
+    # cache_manifest.py: the build profile the cache records, the native build
+    # options in recorded order, and each platform's overrides of them.
+    cache_profile: str
+    native_options: dict[str, str | int | bool]
+    platform_native_options: dict[str, dict[str, str | int | bool]]
 
     def variable(self, name: str) -> str:
         """The environment variable <env_prefix>_<name>."""
@@ -95,6 +102,12 @@ class Project:
         """The compiler-cache archive's file and release asset name for a platform."""
         result: str = self.cache_asset_prefix + platform + '.tar.gz'
         return result
+
+    def native_options_for(self, platform: str) -> dict[str, str | int | bool]:
+        """The native options a platform's cache records: the shared ones, each override in its place."""
+        options: dict[str, str | int | bool] = dict(self.native_options)
+        options.update(self.platform_native_options.get(platform, {}))
+        return options
 
     def workspace_root(self) -> Path:
         result: Path = workspace_root()
@@ -176,6 +189,34 @@ def state_machine_areas(value: Any) -> tuple[StateMachineArea, ...]:
     return result
 
 
+def option_table(value: Any, where: str) -> dict[str, str | int | bool]:
+    if type(value) is not dict:
+        raise ValueError('[' + where + '] must be a table')
+    key: str
+    for key in value:
+        if type(value[key]) not in (str, int, bool):
+            raise ValueError(where + '.' + key + ' must be a string, an integer or a boolean')
+    result: dict[str, str | int | bool] = dict(value)
+    return result
+
+
+def platform_option_tables(value: Any, shared: dict[str, str | int | bool]) -> dict[str, dict[str, str | int | bool]]:
+    """Each platform's overrides; an override names an option the shared table has."""
+    if type(value) is not dict:
+        raise ValueError('[cache_manifest.platform_options] must be a table')
+    tables: dict[str, dict[str, str | int | bool]] = {}
+    platform: str
+    for platform in value:
+        where: str = 'cache_manifest.platform_options.' + platform
+        table: dict[str, str | int | bool] = option_table(value[platform], where)
+        key: str
+        for key in table:
+            if key not in shared:
+                raise ValueError(where + '.' + key + ' overrides no cache_manifest.native_options entry')
+        tables[platform] = table
+    return tables
+
+
 def parse(document: dict[str, Any], path: Path) -> Project:
     """Validate a parsed project file whole before building the record."""
     if document.get('schema') != SCHEMA:
@@ -186,6 +227,8 @@ def parse(document: dict[str, Any], path: Path) -> Project:
     tests: dict[str, Any] = table_field(document, 'tests')
     packages: dict[str, Any] = table_field(document, 'linux_packages')
     machines: dict[str, Any] = table_field(document, 'state_machines')
+    cache: dict[str, Any] = table_field(document, 'cache_manifest')
+    native_options: dict[str, str | int | bool] = option_table(cache.get('native_options'), 'cache_manifest.native_options')
     source_dir: str = text_field(product, 'source_dir', 'project')
     if not source_dir or source_dir.endswith('/') or '\\' in source_dir:
         raise ValueError('project.source_dir must be a relative directory without a trailing slash')
@@ -209,7 +252,10 @@ def parse(document: dict[str, Any], path: Path) -> Project:
         first_party_dirs=text_list(machines, 'first_party_dirs', 'state_machines'),
         vocabulary_headers=text_list(machines, 'vocabulary_headers', 'state_machines'),
         state_machine_areas=state_machine_areas(machines.get('areas')),
-        full_tree_triggers=text_list(machines, 'full_tree_triggers', 'state_machines'))
+        full_tree_triggers=text_list(machines, 'full_tree_triggers', 'state_machines'),
+        cache_profile=text_field(cache, 'profile', 'cache_manifest'),
+        native_options=native_options,
+        platform_native_options=platform_option_tables(cache.get('platform_options', {}), native_options))
     return project
 
 
@@ -249,10 +295,15 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser('show', help='print the loaded project')
     packages: argparse.ArgumentParser = commands.add_parser('linux-packages', help='print a package profile')
     packages.add_argument('profile')
+    variable: argparse.ArgumentParser = commands.add_parser('variable', help='print <env_prefix>_NAME')
+    variable.add_argument('name')
     args: argparse.Namespace = parser.parse_args(argv)
     project: Project = current()
     if args.command == 'show':
         print(project)
+        return 0
+    if args.command == 'variable':
+        print(project.variable(args.name))
         return 0
     if args.profile not in project.linux_packages:
         expected: str = ' or '.join(sorted(project.linux_packages))
