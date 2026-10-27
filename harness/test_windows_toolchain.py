@@ -1,5 +1,6 @@
 """The Windows toolchain archive is the exact tree that filled the cache, and nothing else."""
 from __future__ import annotations
+import dataclasses
 import hashlib
 import io
 import json
@@ -404,6 +405,15 @@ class RestoreTests(unittest.TestCase):
     def test_only_a_packaging_request_reaches_the_mirrors(self) -> None:
         outputs: list[tuple[str, str]] = self.restore({windows_toolchain.PACKAGE_VARIABLE: 'true'})
         self.assertIn(('restored', 'false'), outputs)
+
+    def test_restore_reads_the_project_toolchain_repository(self) -> None:
+        environ: dict[str, str] = {'GITHUB_REPOSITORY': 'owner/consumer'}
+        with patch.dict(windows_toolchain.os.environ, environ):
+            self.assertEqual(windows_toolchain.release_repository(), 'malkuth-software/gui_forms')
+            unnamed: windows_toolchain.project.Project = dataclasses.replace(
+                windows_toolchain.project.current(), toolchain_repository='')
+            with patch.object(windows_toolchain.project, 'current', return_value=unnamed):
+                self.assertEqual(windows_toolchain.release_repository(), 'owner/consumer')
 
 
 class ExclusionTests(unittest.TestCase):

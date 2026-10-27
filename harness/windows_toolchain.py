@@ -494,20 +494,28 @@ def fetch_recorded_command(repository: str) -> None:
         raise ValueError('Fetched toolchain is not the one recorded by the promoted cache')
 
 
+def release_repository() -> str:
+    """Where restore looks for the published toolchain: the project's [toolchain] repository, else
+    GITHUB_REPOSITORY (the running repository). A consumer of another product's toolchain, such as the
+    harness's example app building against GUI.Forms' SDK, names that product there."""
+    named: str = project.current().toolchain_repository
+    result: str = named if named else os.environ['GITHUB_REPOSITORY']
+    return result
+
+
 def main() -> None:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=('restore', 'pack', 'fetch-recorded'))
     parser.add_argument('--root', type=Path, help='Installed msys64 directory to package')
     args: argparse.Namespace = parser.parse_args()
-    repository: str = os.environ['GITHUB_REPOSITORY']
     if args.command == 'restore':
-        restore_command(repository)
+        restore_command(release_repository())
     elif args.command == 'pack':
         if args.root is None:
             raise ValueError('pack requires --root')
         pack_command(args.root.resolve())
     else:
-        fetch_recorded_command(repository)
+        fetch_recorded_command(os.environ['GITHUB_REPOSITORY'])
 
 
 if __name__ == '__main__':
