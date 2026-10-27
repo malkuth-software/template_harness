@@ -187,6 +187,18 @@ struct DragOutcome final {
         findings: list[hunt.Finding] = hunt.source_candidates("src/core/fixture.cpp", source, {"MappingState"})
         self.assertEqual(rules_of(findings), ["C3"])
 
+    def test_a_reviewed_shape_is_not_raised(self) -> None:
+        # The reference project keeps ResolvedTextLayout (state_machines.reviewed_shapes).
+        source: str = """
+enum class TextResolutionStatus { exact, estimated };
+struct ResolvedTextLayout final {
+    std::optional<FontVerticalMetrics> design_metrics;
+    TextResolutionStatus status{TextResolutionStatus::estimated};
+};"""
+        reviewed: str = "include/gui_forms/typography/types/typography_types.hpp"
+        self.assertEqual(hunt.source_candidates(reviewed, source), [])
+        self.assertEqual(rules_of(hunt.source_candidates("include/gui_forms/other.hpp", source)), ["C3"])
+
     def test_status_shapes_that_are_not_candidates(self) -> None:
         # A C struct's int error code (stb_vorbis in stx_vorbis's C adapter),
         # a class's private state, and a status with no optional payload.

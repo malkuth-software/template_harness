@@ -108,6 +108,11 @@ full_tree_triggers = [
     "harness.lock",
     "tools/harness_link.py",
 ]
+# C3 records reviewed and kept, each [path, record, reason].
+reviewed_shapes = [
+    ["include/gui_forms/typography/types/typography_types.hpp", "ResolvedTextLayout",
+     "design_metrics follows the measuring engine, not the status grade: a broad-form case, kept for the owner's decision"],
+]
 
 [build]
 # GUI_FORMS_SYSTEM_BUILD_TOOLS changes what a configure records

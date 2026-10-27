@@ -86,6 +86,14 @@ class ProjectFileTests(unittest.TestCase):
             parsed(MINIMAL.replace('skia = false', 'gallery = false'))
         with self.assertRaisesRegex(ValueError, 'native_options.tests'):
             parsed(MINIMAL.replace('tests = true', 'tests = [true]'))
+        with self.assertRaisesRegex(ValueError, 'reviewed_shapes'):
+            parsed(MINIMAL.replace('full_tree_triggers = []', 'full_tree_triggers = []\nreviewed_shapes = [["a.hpp", "R"]]'))
+
+    def test_reviewed_shapes_are_optional_triples(self) -> None:
+        self.assertEqual(parsed(MINIMAL).reviewed_shapes, ())
+        loaded: project.Project = parsed(MINIMAL.replace(
+            'full_tree_triggers = []', 'full_tree_triggers = []\nreviewed_shapes = [["src/a.hpp", "Record", "why"]]'))
+        self.assertEqual(loaded.reviewed_shapes, (project.ReviewedShape('src/a.hpp', 'Record', 'why'),))
 
     def test_derived_names(self) -> None:
         loaded: project.Project = parsed(MINIMAL)

@@ -64,6 +64,14 @@ class StateMachineArea:
 
 
 @dataclass(frozen=True)
+class ReviewedShape:
+    """A record whose C3 status shape a person reviewed and kept, with the one-line reason."""
+    path: str
+    record: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class CheckpointTable:
     """[checkpoint], for checkpoint/checkpoint.py (its docstring explains each field)."""
     # The integration tree, relative to the workspace root or absolute.
@@ -136,6 +144,9 @@ class Project:
     vocabulary_headers: tuple[str, ...]
     state_machine_areas: tuple[StateMachineArea, ...]
     full_tree_triggers: tuple[str, ...]
+    # C3 records reviewed and kept as they are (state_machines.reviewed_shapes,
+    # optional): the candidate is listed with its reason instead of raised.
+    reviewed_shapes: tuple[ReviewedShape, ...]
     # ci_build_steps.py: the product's own environment variables, without the
     # prefix, that change what a configure records (SYSTEM_BUILD_TOOLS).
     configure_variable_names: tuple[str, ...]
@@ -328,6 +339,25 @@ def state_machine_areas(value: Any) -> tuple[StateMachineArea, ...]:
     return result
 
 
+def reviewed_shapes(value: Any) -> tuple[ReviewedShape, ...]:
+    """state_machines.reviewed_shapes: [path, record, reason] triples, each reason non-empty."""
+    message: str = 'state_machines.reviewed_shapes must be a list of [path, record, reason] triples'
+    if type(value) is not list:
+        raise ValueError(message)
+    shapes: list[ReviewedShape] = []
+    triple: Any
+    for triple in value:
+        if type(triple) is not list or len(triple) != 3:
+            raise ValueError(message)
+        part: Any
+        for part in triple:
+            if type(part) is not str or not part:
+                raise ValueError(message)
+        shapes.append(ReviewedShape(triple[0], triple[1], triple[2]))
+    result: tuple[ReviewedShape, ...] = tuple(shapes)
+    return result
+
+
 def option_table(value: Any, where: str) -> dict[str, str | int | bool]:
     if type(value) is not dict:
         raise ValueError('[' + where + '] must be a table')
@@ -452,6 +482,7 @@ def parse(document: dict[str, Any], path: Path) -> Project:
         vocabulary_headers=text_list(machines, 'vocabulary_headers', 'state_machines'),
         state_machine_areas=state_machine_areas(machines.get('areas')),
         full_tree_triggers=text_list(machines, 'full_tree_triggers', 'state_machines'),
+        reviewed_shapes=reviewed_shapes(machines.get('reviewed_shapes', [])),
         configure_variable_names=text_list(build, 'configure_variables', 'build'),
         cache_profile=text_field(cache, 'profile', 'cache_manifest'),
         native_options=native_options,

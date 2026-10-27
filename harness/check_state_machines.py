@@ -43,7 +43,9 @@ in check_house_style.py). They are heuristics and never fail a run:
                               member) that says which optional members are
                               present. The house form holds the states in one
                               std::variant, built by named factories and read
-                              by named queries.
+                              by named queries. A record listed in the
+                              project's state_machines.reviewed_shapes, with
+                              its reason, is not raised.
 
 A comment on a candidate's line or the line above clears C1 to C3; F2's
 reason is a comment on the default label, the line above or in its body, or a
@@ -94,6 +96,9 @@ VOCABULARY_HEADERS: tuple[str, ...] = project.current().vocabulary_headers
 AREAS: tuple[tuple[str, str], ...] = tuple((entry.prefix, entry.area)
                                            for entry in project.current().state_machine_areas)
 CHECKER_FILES: tuple[str, ...] = project.current().full_tree_triggers
+# (path, record) -> the reason a person reviewed that record's C3 status shape and kept it.
+REVIEWED_SHAPES: dict[tuple[str, str], str] = {(shape.path, shape.record): shape.reason
+                                               for shape in project.current().reviewed_shapes}
 GATE_RULES: tuple[str, ...] = ("F1", "F2")
 HEADER_SUFFIXES: tuple[str, ...] = (".hpp", ".hh", ".h", ".inc")
 INCLUDE: re.Pattern[str] = re.compile(r'#\s*include\s*[<"]([^>"]+)[>"]')
@@ -671,7 +676,7 @@ def status_candidates(record: str, members: list[Member], enums: set[str]) -> li
     return results
 
 
-def find_shapes(text: str, enums: set[str]) -> list[tuple[int, str]]:
+def find_shapes(text: str, enums: set[str], path: str = "") -> list[tuple[int, str]]:
     results: list[tuple[int, str]] = []
     match: re.Match[str]
     for match in RECORD.finditer(text):
@@ -683,7 +688,8 @@ def find_shapes(text: str, enums: set[str]) -> list[tuple[int, str]]:
         members: list[Member] = record_members(text, match.end(), end)
         candidates: list[tuple[int, str]] = shape_candidates(members)
         plain: bool = text.startswith("struct", match.start()) and HIDDEN_SECTION.search(text, match.end(), end) is None
-        if plain:
+        reviewed: bool = (path, match.group(1)) in REVIEWED_SHAPES
+        if plain and not reviewed:
             candidates.extend(status_candidates(match.group(1), members, enums))
         candidate: tuple[int, str]
         for candidate in candidates:
@@ -1170,7 +1176,7 @@ def source_candidates(path: str, source: str, enums: set[str] | None = None) -> 
             candidates.append(Finding(path, item[0], "C1", area_of(path), item[1]))
     for item in find_chains(text, comments):
         candidates.append(Finding(path, item[0], "C2", area_of(path), item[1]))
-    for item in find_shapes(text, known):
+    for item in find_shapes(text, known, path):
         if item[0] in comments or item[0] - 1 in comments:
             continue
         candidates.append(Finding(path, item[0], "C3", area_of(path), item[1]))
