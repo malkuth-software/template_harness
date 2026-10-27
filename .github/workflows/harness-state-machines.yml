@@ -1,5 +1,5 @@
 name: Harness state-machine gate
-# House style section 9 for new code: harness/check_state_machines.py fails on
+# House style section 2 for new code: harness/check_state_machines.py fails on
 # any F1 (a switch without a default, not in the compliant form) or F2 (a
 # default that hides enumerators without a stated reason) in the translation
 # units a change can affect. The project file's [state_machines] table names

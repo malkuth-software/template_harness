@@ -1,9 +1,9 @@
-"""Report state machines with undefined or unhandled states (house style sections 1 and 9).
+"""Report state machines with undefined or unhandled states (house style sections 2 and 3).
 
-Section 9: "A switch over a closed set still has a default, and a state machine
+Section 2: "A switch over a closed set still has a default, and a state machine
 still says what an unexpected input does in each state", sending every such
 case to one defined fallback (a named failure, a reset, or an input ignored
-for a stated reason). Section 1: prefer a shape that cannot hold contradictory
+for a stated reason). Section 3: prefer a shape that cannot hold contradictory
 values.
 
 Findings come from the compiler, which knows which conditions are
@@ -1228,7 +1228,7 @@ def main() -> int:
     if args.gate:
         failing: int = gate_failures(findings)
         if failing:
-            print(f"state-machine gate: {failing} F1/F2 findings (house style section 9); fix them to the "
+            print(f"state-machine gate: {failing} F1/F2 findings (house style section 2); fix them to the "
                   "compliant form or give the default its reason")
             return 1
         print("state-machine gate: no F1/F2 findings")

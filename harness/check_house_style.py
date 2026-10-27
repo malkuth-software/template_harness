@@ -33,7 +33,7 @@ RULES: tuple[tuple[str, str], ...] = (
     ("ranges-or-views", r"\bstd\s*::\s*(?:ranges|views)\s*::"),
     ("defaulted-comparison", r"\boperator\s*(?:==|!=|<=>|<=|>=|<|>)\s*\([^;{}]*?=\s*default\b"),
     # Objective-C block literals (^{ ... }, ^(arguments) { ... } and
-    # ^Return(arguments) { ... }) are anonymous callbacks, which section 2
+    # ^Return(arguments) { ... }) are anonymous callbacks, which section 9
     # forbids (owner decision V2-1). Checked in every file: C++ exclusive-or
     # never puts a brace, or a parameter list and then a brace, after `^`, so
     # in C++ sources the rule finds nothing; the macOS host's run file is
