@@ -38,9 +38,14 @@ advance   moves the clone to REF (fetched from --from, default origin) and
           leaves it detached. It is the coordinator's command; it refuses a
           clone with changes to tracked files, and waits for a running build.
 build     builds and installs the clone's HEAD for the target (default: this
-          host) with tools/build_sdk.py, once per (commit, target, toolchain
-          identity), then writes the install's build record and
-          current-<target>.json. A matching record means nothing is built.
+          host) with tools/build_sdk.py --features all, once per (commit,
+          target, toolchain identity, features), then writes the install's
+          build record and current-<target>.json. A matching record means
+          nothing is built. `all` adds every optional component a product may
+          link (GUIForms::TextMasks, GUIForms::AudioLoopTransport) to the
+          default (Audio with the stx Vorbis decoder, the HarfBuzz/FreeType
+          text engine, the host's Application), so one install serves every
+          product; a commit whose build_sdk.py has no --features is refused.
           One build runs at a time; others wait on the lock, then find the
           record. A failed build leaves current-<target>.json as it was and no
           record in the install, which the next build replaces.
@@ -58,6 +63,7 @@ for product build drivers to read:
     target              windows-x64, macos-arm64, linux-x64 or linux-arm64
     toolchain_identity  HARNESS_TOOLCHAIN_IDENTITY, else a digest of the clang
                         binary, its version and the host
+    features            the build_sdk.py --features set: all
     compiler            the clang that built it (absolute path)
     prefix              the install: CMAKE_PREFIX_PATH
     package_dir         <prefix>/lib/cmake/GUIForms: GUIForms_DIR
@@ -96,7 +102,9 @@ TARGETS: tuple[str, ...] = ('windows-x64', 'macos-arm64', 'linux-x64', 'linux-ar
 # The untracked sources a build reads, which init can copy from a seed.
 SEEDED_SOURCES: tuple[str, ...] = ('harfbuzz', 'freetype', 'libunibreak', 'miniaudio')
 # The fields that decide whether an install is the one wanted.
-RECORD_KEY: tuple[str, ...] = ('commit', 'target', 'toolchain_identity')
+RECORD_KEY: tuple[str, ...] = ('commit', 'target', 'toolchain_identity', 'features')
+# build_sdk.py's feature set: every optional component, so one install serves every product.
+FEATURES: str = 'all'
 # CI's Windows build shell sets this LANG, and ccache hashes the locale.
 WINDOWS_LANG: str = 'en_US.UTF-8'
 CCACHE_MAXSIZE: str = '20G'
@@ -423,6 +431,7 @@ def full_record(layout: Layout, commit: str, target: str, identity: str, compile
     prefix: Path = install_of(layout, commit, target)
     record: dict[str, Any] = {
         'schema': RECORD_SCHEMA, 'commit': commit, 'target': target, 'toolchain_identity': identity,
+        'features': FEATURES,
         'compiler': compiler.as_posix(), 'prefix': prefix.as_posix(),
         'package_dir': (prefix / 'lib' / 'cmake' / 'GUIForms').as_posix(),
         'source': layout.source.as_posix(), 'toolchain_file': (layout.source / 'cmake' / 'llvm22.cmake').as_posix(),
@@ -451,12 +460,18 @@ def build_command(layout: Layout, target: str, jobs: int) -> list[str]:
                 write_record(current_of(layout, target), recorded)
             up_to_date: list[str] = ['prefix=' + prefix.as_posix(), 'built=already']
             return up_to_date
+        entry: Path = layout.source / 'tools' / 'build_sdk.py'
+        usage: subprocess.CompletedProcess[str] = subprocess.run([sys.executable, str(entry), '--help'],
+                                                                 cwd=layout.source, capture_output=True, text=True)
+        if '--features' not in usage.stdout:
+            raise LockstepError('tools/build_sdk.py at ' + commit + ' has no --features; the lockstep builds '
+                                'GUI.Forms commits whose SDK build takes --features ' + FEATURES)
         if prefix.exists():
             shutil.rmtree(prefix)
         before: dict[str, int] = ccache_counters(environment)
         work: Path = layout.workspace / '.build' / ('native-' + target)
-        command: list[str] = [sys.executable, str(layout.source / 'tools' / 'build_sdk.py'), '--target', target,
-                              '--prefix', str(prefix), '--jobs', str(jobs), '--work', str(work)]
+        command: list[str] = [sys.executable, str(entry), '--target', target, '--prefix', str(prefix),
+                              '--jobs', str(jobs), '--work', str(work), '--features', FEATURES]
         print('+ ' + ' '.join(command), file=sys.stderr, flush=True)
         completed: subprocess.CompletedProcess[bytes] = subprocess.run(command, cwd=layout.source, env=environment)
         if completed.returncode != 0:

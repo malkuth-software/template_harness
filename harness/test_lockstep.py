@@ -24,10 +24,10 @@ GIT_ENVIRONMENT: dict[str, str] = {
 # installs a package configuration and a font directory into --prefix.
 BUILD_SCRIPT: str = '''import argparse, json, os, pathlib, sys, time
 parser = argparse.ArgumentParser()
-for name in ('--target', '--prefix', '--jobs', '--work'):
+for name in ('--target', '--prefix', '--jobs', '--work', '--features'):
     parser.add_argument(name, required=True)
 args = parser.parse_args()
-record = {'cwd': pathlib.Path.cwd().name, 'work': pathlib.Path(args.work).as_posix(),
+record = {'cwd': pathlib.Path.cwd().name, 'work': pathlib.Path(args.work).as_posix(), 'features': args.features,
           'basedir': os.environ.get('CCACHE_BASEDIR', ''), 'lang': os.environ.get('LANG', '')}
 with open(os.environ['FAKE_BUILD_LOG'], 'a', encoding='utf-8') as log:
     log.write(json.dumps(record) + '\\n')
@@ -113,17 +113,18 @@ class LockstepTests(unittest.TestCase):
             run: dict[str, str] = fixture.builds()[0]
             expected_lang: str = 'en_US.UTF-8' if fixture.target.startswith('windows') else 'caller'
             self.assertEqual(run, {
-                'cwd': 'gui_forms', 'basedir': fixture.layout.workspace.as_posix(), 'lang': expected_lang,
+                'features': 'all', 'cwd': 'gui_forms', 'basedir': fixture.layout.workspace.as_posix(), 'lang': expected_lang,
                 'work': (fixture.layout.workspace / '.build' / ('native-' + fixture.target)).as_posix()})
             self.assertEqual(fixture.run('prefix'), [first_prefix.as_posix()])
             record: dict[str, Any] = json.loads(fixture.run('prefix', 'json')[0])
             self.assertEqual(record['commit'], fixture.first)
+            self.assertEqual(record['features'], 'all')
             self.assertEqual(record['package_dir'], (first_prefix / 'lib/cmake/GUIForms').as_posix())
             self.assertEqual(record['font_dir'], (first_prefix / 'share/GUIForms/fonts').as_posix())
             self.assertEqual(record['source'], fixture.layout.source.as_posix())
             self.assertEqual(record['toolchain_file'], (fixture.layout.source / 'cmake/llvm22.cmake').as_posix())
             self.assertEqual(sorted(record), sorted([
-                'schema', 'commit', 'target', 'toolchain_identity', 'compiler', 'prefix', 'package_dir', 'source',
+                'schema', 'commit', 'target', 'toolchain_identity', 'features', 'compiler', 'prefix', 'package_dir', 'source',
                 'toolchain_file', 'font_dir', 'llvm_runtime', 'ccache_dir', 'ccache_basedir', 'lang']))
             second: str = commit_file(fixture.upstream, 'src/one.cpp', 'int one();\n')
             self.assertEqual(fixture.run('advance', 'main'), ['from=' + fixture.first, 'commit=' + second])
@@ -194,6 +195,15 @@ class LockstepTests(unittest.TestCase):
             (other.layout.source / 'file').write_text('x\n', encoding='utf-8')
             with self.assertRaisesRegex(lockstep.LockstepError, 'not a lockstep clone'):
                 other.run('init')
+
+    def test_a_commit_without_sdk_features_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture: Fixture = Fixture(Path(directory))
+            commit_file(fixture.upstream, 'tools/build_sdk.py', BUILD_SCRIPT.replace(", '--features'", ''))
+            fixture.run('init')
+            with self.assertRaisesRegex(lockstep.LockstepError, 'has no --features'):
+                fixture.run('build')
+            self.assertEqual(fixture.builds(), [])
 
     def test_changes_to_tracked_files_stop_build_and_advance(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
