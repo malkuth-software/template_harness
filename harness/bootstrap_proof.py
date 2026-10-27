@@ -49,6 +49,8 @@ missing file or an unreadable lock, snapshot or project file exits 2.
 """
 from __future__ import annotations
 import argparse
+import base64
+import binascii
 from dataclasses import dataclass
 import json
 from pathlib import Path, PurePosixPath
@@ -95,6 +97,11 @@ class Host:
     platform: str
 
 
+# restore_local's first commit that installs a project's own Ubuntu package profile; a harness
+# pinned before it prints the "toolkit" profile for every project.
+PROFILE_CHOICE_COMMIT: str = '7de97ea035383cfe704b70a420ddcefbc6ca700a'
+HARNESS_REPOSITORY: str = 'malkuth-software/template_harness'
+
 # The hosts every ready project is bootstrapped on.
 HOSTS: tuple[Host, ...] = (Host('windows-2022', 'windows-x64'), Host('macos-15', 'macos-arm64'),
                            Host('ubuntu-24.04', 'linux-x64'))
@@ -132,6 +139,25 @@ class GitHub:
 
     def has_branch(self, repository: str, branch: str) -> bool:
         found: bool = self.answer('repos/' + repository + '/branches/' + urllib.parse.quote(branch), '.name') is not None
+        return found
+
+    def text(self, repository: str, path: str, ref: str) -> str | None:
+        """A file's text at ref, or None when it is absent or unreadable."""
+        endpoint: str = ('repos/' + repository + '/contents/' + urllib.parse.quote(path) + '?ref='
+                         + urllib.parse.quote(ref))
+        encoded: str | None = self.answer(endpoint, '.content')
+        if not encoded:
+            return None
+        try:
+            decoded: str = base64.b64decode(encoded).decode('utf-8')
+        except (binascii.Error, UnicodeDecodeError):
+            return None
+        return decoded
+
+    def contains(self, repository: str, ancestor: str, commit: str) -> bool:
+        """Whether commit's history includes ancestor (the compare API: commit is ahead of or at it)."""
+        status: str | None = self.answer('repos/' + repository + '/compare/' + ancestor + '...' + commit, '.status')
+        found: bool = status in ('ahead', 'identical')
         return found
 
 
@@ -208,8 +234,39 @@ def repository_path(product: project.Project, path: str) -> str | None:
     return inside
 
 
+def host_readiness(product: project.Project, host: Host, github: GitHub) -> str | None:
+    """None when the project can be bootstrapped on host, else why not. On Linux the bootstrap must
+    know which Ubuntu package profile to install (Project.workspace_linux_profile), and a product that
+    pins the harness in its harness.lock must pin one that installs that profile."""
+    if not host.platform.startswith('linux-') or not product.linux_packages:
+        return None
+    profile: str = product.workspace_linux_profile()
+    if profile not in product.linux_packages:
+        reason: str = ('its project file has several Ubuntu package profiles ('
+                       + ', '.join(sorted(product.linux_packages)) + '), none named '
+                       + project.LINUX_WORKSPACE_PROFILE
+                       + '; [bootstrap] linux_packages must name the one a workspace installs')
+        return reason
+    if profile == project.LINUX_WORKSPACE_PROFILE:
+        return None
+    branch: str | None = github.default_branch(product.repository)
+    text: str | None = None if branch is None else github.text(product.repository, lock.LOCK_NAME, branch)
+    if text is None:
+        return None
+    try:
+        pinned: lock.Lock = lock.parse(text, product.repository + ' ' + lock.LOCK_NAME)
+    except lock.LockError as error:
+        return str(error)
+    if github.contains(HARNESS_REPOSITORY, PROFILE_CHOICE_COMMIT, pinned.commit):
+        return None
+    late: str = ('its ' + lock.LOCK_NAME + ' pins the harness at ' + pinned.commit[:12] + ', whose restore_local '
+                 'names the toolkit profile for every project; ' + product.name + ' needs "' + profile
+                 + '", so its lock must move past ' + PROFILE_CHOICE_COMMIT[:12])
+    return late
+
+
 def matrix_entries(projects: list[project.Project], github: GitHub) -> tuple[list[dict[str, str]], list[str]]:
-    """The ready projects' jobs, one per host, and one line per skipped project."""
+    """The ready projects' jobs, one per host, and one line per skipped project or host."""
     entries: list[dict[str, str]] = []
     skipped: list[str] = []
     product: project.Project
@@ -222,6 +279,10 @@ def matrix_entries(projects: list[project.Project], github: GitHub) -> tuple[lis
             continue
         host: Host
         for host in HOSTS:
+            host_reason: str | None = host_readiness(product, host, github)
+            if host_reason is not None:
+                skipped.append(product.name + ' on ' + host.runner + ': skipped, because ' + host_reason)
+                continue
             entries.append({'project': product.name, 'runner': host.runner, 'platform': host.platform,
                             'checkout': product.source_dir, 'notes_branch': product.bootstrap.notes_branch})
     return entries, skipped
@@ -242,15 +303,15 @@ def plan(args: argparse.Namespace, github: GitHub) -> int:
     entries: list[dict[str, str]]
     skipped: list[str]
     entries, skipped = matrix_entries(projects, github)
-    ready: list[str] = []
+    # Each ready project's runners, in matrix order.
+    runners: dict[str, list[str]] = {}
     entry: dict[str, str]
     for entry in entries:
-        if entry['project'] not in ready:
-            ready.append(entry['project'])
+        runners.setdefault(entry['project'], []).append(entry['runner'])
     summary: list[str] = ['### Bootstrap proof plan', '']
     name: str
-    for name in ready:
-        summary.append('- ' + name + ': bootstrapped on ' + str(len(HOSTS)) + ' hosts')
+    for name in runners:
+        summary.append('- ' + name + ': bootstrapped on ' + ', '.join(runners[name]))
     line: str
     for line in skipped:
         summary.append('- ' + line)

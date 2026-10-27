@@ -18,7 +18,14 @@ and new form. Provisional rows there may change without an entry.
   the reason in the summary, until its notes branch exists and its smoke
   script is on its default branch. A product without a `harness.lock`
   bootstraps with this harness. The downloaded Ubuntu packages are kept in an
-  Actions cache, because the Ubuntu mirror once took 34 minutes.
+  Actions cache, because the Ubuntu mirror once took 34 minutes. The plan
+  skips one host, with the reason, when it cannot work there yet, for
+  example Linux, when the bootstrap would install the wrong package profile.
+- `[bootstrap] linux_packages` (optional): the `[linux_packages]` profile a
+  workspace installs on Linux. Without it the bootstrap uses `toolkit`, else
+  the project's only profile (`Project.workspace_linux_profile()`). A project
+  with several profiles and none named `toolkit` (Pocket Library, Games) must
+  name one.
 - `harness/lockstep.py`: the local lockstep GUI.Forms. One clone under
   `D:/malkuth` (or `HARNESS_LOCKSTEP_ROOT`) is built once per (commit,
   target, toolchain, features) with `tools/build_sdk.py --features all` into
@@ -78,8 +85,8 @@ and new form. Provisional rows there may change without an entry.
   Ubuntu package command with `HARNESS_PROJECT=<project file>` in front,
   because `install_linux_ci_packages.sh` reads the package set from it.
   The printed line runs as it stands once the apt directory is filled in.
-  It names the project's own package profile: `toolkit` when the project
-  has one, else its only profile (Plan Paint's `paint`). A project with
+  It names the project's own package profile: the one `[bootstrap]
+  linux_packages` names, else `toolkit` when the project has one, else its only profile (Plan Paint's `paint`). A project with
   several and no `toolkit` gets a placeholder listing them, and one with
   none gets a note.
 - `harness/windows_toolchain.py restore` reads the project's `[toolchain]

@@ -48,9 +48,6 @@ CACHE_RECORD: str = '.ci/local-cache.json'
 # bootstrap.py puts them before PATH for the smoke build.
 TOOLCHAIN_PATH_RECORD: str = '.ci/local-toolchain-path.txt'
 MACOS_RUNTIME: str = '.build/toolchain/llvm-22.1.8-macos14'
-# The Ubuntu package profile of GUI.Forms' native build, which a workspace installs when the
-# project has it (restore_toolchain); a project with one profile installs that one.
-LINUX_WORKSPACE_PROFILE: str = 'toolkit'
 # Under the workspace root: the extracted Windows toolchains (one per specification
 # digest) and the downloaded archives.
 TOOLCHAIN_DIRECTORY: str = '.toolchain'
@@ -209,18 +206,6 @@ def restore_windows_toolchain(product: project.Project, dry_run: bool) -> Path |
     return root
 
 
-def linux_profile(product: project.Project) -> str:
-    """The Ubuntu package profile a workspace installs: LINUX_WORKSPACE_PROFILE when the project
-    has it, else its only profile, else a placeholder naming the choices (the command then needs editing)."""
-    profiles: list[str] = sorted(product.linux_packages)
-    if LINUX_WORKSPACE_PROFILE in product.linux_packages:
-        return LINUX_WORKSPACE_PROFILE
-    if len(profiles) == 1:
-        return profiles[0]
-    choice: str = '<profile: ' + ' | '.join(profiles) + '>'
-    return choice
-
-
 def restore_toolchain(product: project.Project, platform: str, dry_run: bool) -> None:
     if platform == 'windows-x64':
         restore_windows_toolchain(product, dry_run)
@@ -231,7 +216,7 @@ def restore_toolchain(product: project.Project, platform: str, dry_run: bool) ->
             print('The project names no Ubuntu packages (no [linux_packages] table); install its build tools '
                   'yourself', flush=True)
             return
-        profile: str = linux_profile(product)
+        profile: str = product.workspace_linux_profile()
         # install_linux_ci_packages.sh reads the package set from the project file, so the
         # printed command names it; the line runs as it stands once the directory is filled in.
         print('Install the Ubuntu packages yourself (sudo): '

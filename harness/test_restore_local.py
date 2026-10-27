@@ -160,11 +160,15 @@ class ToolchainTests(unittest.TestCase):
 
     def test_the_linux_profile_is_toolkit_or_the_only_one(self) -> None:
         product: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
-        self.assertEqual(restore_local.linux_profile(product), 'toolkit')
+        self.assertEqual(project.Project.workspace_linux_profile(product), 'toolkit')
         paint: project.Project = dataclasses.replace(product, linux_packages={'paint': ('cmake',)})
-        self.assertEqual(restore_local.linux_profile(paint), 'paint')
+        self.assertEqual(project.Project.workspace_linux_profile(paint), 'paint')
         several: project.Project = dataclasses.replace(product, linux_packages={'b': ('x',), 'a': ('y',)})
-        self.assertEqual(restore_local.linux_profile(several), '<profile: a | b>')
+        self.assertEqual(project.Project.workspace_linux_profile(several), '<profile: a | b>')
+        assert several.bootstrap is not None
+        chosen: project.Project = dataclasses.replace(
+            several, bootstrap=dataclasses.replace(several.bootstrap, linux_packages='b'))
+        self.assertEqual(project.Project.workspace_linux_profile(chosen), 'b')
         printed: io.StringIO = io.StringIO()
         with contextlib.redirect_stdout(printed):
             restore_local.restore_toolchain(paint, 'linux-x64', False)

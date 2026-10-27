@@ -118,6 +118,11 @@ class ProjectFileTests(unittest.TestCase):
             parsed(tables.replace('verify = ["make"]', 'verify = ["make"]\nmerge_method = "fast"'))
         with self.assertRaisesRegex(ValueError, 'checkpoint.verify'):
             parsed(tables.replace('verify = ["make"]', 'verify = []'))
+        self.assertIsNone(loaded.bootstrap.linux_packages)
+        named: project.Project = parsed(tables + 'linux_packages = "more"\n')
+        self.assertEqual(named.bootstrap.linux_packages, 'more')
+        with self.assertRaisesRegex(ValueError, 'bootstrap.linux_packages names no'):
+            parsed(tables + 'linux_packages = "absent"\n')
 
     def test_the_workspace_and_default_project_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

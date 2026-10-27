@@ -169,9 +169,13 @@ class LogTests(unittest.TestCase):
 class FakeGitHub(bootstrap_proof.GitHub):
     """Answers from fixed sets instead of gh."""
 
-    def __init__(self, paths: set[str], branches: set[str]) -> None:
+    def __init__(self, paths: set[str], branches: set[str], files: dict[str, str] | None = None,
+                 contained: set[str] | None = None) -> None:
         self.paths: set[str] = paths
         self.branches: set[str] = branches
+        # "<repository>:<ref>:<path>" -> text, and the harness commits that contain PROFILE_CHOICE_COMMIT.
+        self.files: dict[str, str] = {} if files is None else files
+        self.contained: set[str] = set() if contained is None else contained
 
     def answer(self, endpoint: str, query: str) -> str | None:
         raise AssertionError('no gh in tests: ' + endpoint)
@@ -186,6 +190,16 @@ class FakeGitHub(bootstrap_proof.GitHub):
 
     def has_branch(self, repository: str, branch: str) -> bool:
         found: bool = repository + ':' + branch in self.branches
+        return found
+
+    def text(self, repository: str, path: str, ref: str) -> str | None:
+        found: str | None = self.files.get(repository + ':' + ref + ':' + path)
+        return found
+
+    def contains(self, repository: str, ancestor: str, commit: str) -> bool:
+        if ancestor != bootstrap_proof.PROFILE_CHOICE_COMMIT or repository != bootstrap_proof.HARNESS_REPOSITORY:
+            raise AssertionError('unexpected comparison: ' + repository + ' ' + ancestor)
+        found: bool = commit in self.contained
         return found
 
 
@@ -229,6 +243,48 @@ class MatrixTests(unittest.TestCase):
         self.assertIsNone(bootstrap_proof.repository_path(reference, 'template_harness/harness/x.py'))
         root: project.Project = dataclasses.replace(reference, source_dir='.')
         self.assertEqual(bootstrap_proof.repository_path(root, 'scripts/smoke-build.py'), 'scripts/smoke-build.py')
+
+    def test_linux_is_skipped_until_the_bootstrap_names_a_package_profile(self) -> None:
+        reference: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
+        assert reference.bootstrap is not None
+        several: project.Project = dataclasses.replace(
+            reference, name='games', linux_packages={'core': ('cmake',), 'application': ('cmake',)})
+        github: FakeGitHub = FakeGitHub({reference.repository + ':main:tools/ci_build.py'},
+                                        {'malkuth-software/notes:gui_forms'})
+        entries: list[dict[str, str]]
+        skipped: list[str]
+        entries, skipped = bootstrap_proof.matrix_entries([several], github)
+        self.assertEqual(len(entries), len(bootstrap_proof.HOSTS) - 1)
+        self.assertEqual(skipped, ['games on ubuntu-24.04: skipped, because its project file has several Ubuntu '
+                                   'package profiles (application, core), none named toolkit; [bootstrap] '
+                                   'linux_packages must name the one a workspace installs'])
+        named: project.Project = dataclasses.replace(
+            several, bootstrap=dataclasses.replace(reference.bootstrap, linux_packages='application'))
+        entries, skipped = bootstrap_proof.matrix_entries([named], github)
+        self.assertEqual((len(entries), skipped), (len(bootstrap_proof.HOSTS), []))
+        unpackaged: project.Project = dataclasses.replace(reference, linux_packages={})
+        self.assertIsNone(bootstrap_proof.host_readiness(unpackaged, bootstrap_proof.HOSTS[2], FakeGitHub(set(), set())))
+
+    def test_linux_waits_for_a_lock_whose_harness_installs_the_projects_profile(self) -> None:
+        reference: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
+        native: project.Project = dataclasses.replace(reference, name='file_manager', repository='owner/fm',
+                                                      linux_packages={'native': ('cmake',)})
+        linux: bootstrap_proof.Host = bootstrap_proof.HOSTS[2]
+        old: str = 'a' * 40
+        new: str = 'b' * 40
+        unlocked: FakeGitHub = FakeGitHub(set(), set())
+        self.assertIsNone(bootstrap_proof.host_readiness(native, linux, unlocked))
+        lock_text: str = '[harness]\nrepository = "malkuth-software/template_harness"\ncommit = "' + old + '"\n'
+        pinned_old: FakeGitHub = FakeGitHub(set(), set(), {'owner/fm:main:harness.lock': lock_text})
+        self.assertEqual(bootstrap_proof.host_readiness(native, linux, pinned_old),
+                         'its harness.lock pins the harness at aaaaaaaaaaaa, whose restore_local names the toolkit '
+                         'profile for every project; file_manager needs "native", so its lock must move past '
+                         + bootstrap_proof.PROFILE_CHOICE_COMMIT[:12])
+        pinned_new: FakeGitHub = FakeGitHub(set(), set(), {'owner/fm:main:harness.lock': lock_text.replace(old, new)},
+                                            {new})
+        self.assertIsNone(bootstrap_proof.host_readiness(native, linux, pinned_new))
+        self.assertIsNone(bootstrap_proof.host_readiness(native, bootstrap_proof.HOSTS[0], pinned_old))
+        self.assertIsNone(bootstrap_proof.host_readiness(reference, linux, pinned_old))
 
     def test_the_matrix_has_each_host_of_each_ready_project(self) -> None:
         reference: project.Project = project.load(harness_testing.REFERENCE_PROJECT)

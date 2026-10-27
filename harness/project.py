@@ -45,6 +45,9 @@ SCHEMA: int = 1
 # (template_harness/), the notes and the CI state (.build/, .ccache/, .ci/)
 # then sit inside the checkout, which must ignore them.
 ROOT_SOURCE_DIR: str = '.'
+# The Ubuntu package profile of GUI.Forms' native build, which a workspace installs when the
+# project has it and its [bootstrap] table names none (Project.workspace_linux_profile).
+LINUX_WORKSPACE_PROFILE: str = 'toolkit'
 # In a native_job template, the platform (linux-x64, windows-x64, ...).
 PLATFORM_PLACEHOLDER: str = '{platform}'
 
@@ -81,6 +84,9 @@ class BootstrapTable:
     projects_repository: str
     # Run from the workspace root; the argument {python} becomes the running interpreter.
     smoke: tuple[str, ...]
+    # The [linux_packages] profile a workspace installs on Linux (Project.workspace_linux_profile);
+    # None: "toolkit" when the project has it, else its only profile.
+    linux_packages: str | None
 
 
 @dataclass(frozen=True)
@@ -175,6 +181,20 @@ class Project:
     def require_state_machines(self) -> None:
         if not self.has_state_machines:
             raise self.missing('[state_machines]')
+
+    def workspace_linux_profile(self) -> str:
+        """The Ubuntu package profile a workspace installs (restore_local prints its command): the one
+        [bootstrap] linux_packages names, else LINUX_WORKSPACE_PROFILE when the project has it, else its
+        only profile, else a placeholder naming the choices, which is no profile name."""
+        if self.bootstrap is not None and self.bootstrap.linux_packages is not None:
+            return self.bootstrap.linux_packages
+        if LINUX_WORKSPACE_PROFILE in self.linux_packages:
+            return LINUX_WORKSPACE_PROFILE
+        profiles: list[str] = sorted(self.linux_packages)
+        if len(profiles) == 1:
+            return profiles[0]
+        choice: str = '<profile: ' + ' | '.join(profiles) + '>'
+        return choice
 
     def cache_asset(self, platform: str) -> str:
         """The compiler-cache archive's file and release asset name for a platform."""
@@ -365,7 +385,8 @@ def checkpoint_table(value: Any) -> CheckpointTable | None:
 
 
 def bootstrap_table(value: Any, name: str, repository: str) -> BootstrapTable | None:
-    """Defaults: <owner>/notes, the project name as the notes branch, <owner>/projects, no smoke build."""
+    """Defaults: <owner>/notes, the project name as the notes branch, <owner>/projects, no smoke build,
+    no named Linux package profile."""
     if value is None:
         return None
     if type(value) is not dict:
@@ -378,7 +399,8 @@ def bootstrap_table(value: Any, name: str, repository: str) -> BootstrapTable | 
         notes_repository=named_text(value, 'notes_repository', 'bootstrap', owner + '/notes'),
         notes_branch=named_text(value, 'notes_branch', 'bootstrap', name),
         projects_repository=named_text(value, 'projects_repository', 'bootstrap', owner + '/projects'),
-        smoke=smoke)
+        smoke=smoke,
+        linux_packages=optional_text(value, 'linux_packages', 'bootstrap'))
     return table
 
 
@@ -437,6 +459,10 @@ def parse(document: dict[str, Any], path: Path) -> Project:
         checkpoint=checkpoint_table(document.get('checkpoint')),
         bootstrap=bootstrap_table(document.get('bootstrap'), text_field(product, 'name', 'project'),
                                   text_field(product, 'repository', 'project')))
+    if project.bootstrap is not None and project.bootstrap.linux_packages is not None:
+        if project.bootstrap.linux_packages not in project.linux_packages:
+            raise ValueError('bootstrap.linux_packages names no [linux_packages] profile: '
+                             + project.bootstrap.linux_packages)
     return project
 
 
