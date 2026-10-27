@@ -1,0 +1,22 @@
+# The GUI.Forms SDK the example app builds against (owner decision 4: a
+# pinned v0.2.N release). fetch_sdk.py downloads the running platform's
+# archive from this release, checks its SHA-256 against this file and unpacks
+# it into a cache outside the source tree; `fetch_sdk.py pin TAG` rewrites
+# this file from a release's published digests.
+#
+# Each platform's archive is gui-forms-sdk-<version>-<platform>.tar.gz
+# (.zip on Windows): the `cmake --install` prefix GUI.Forms' CI already
+# builds and tests. No release publishes those archives yet (the release
+# change is pending), so the [sdk] table is empty and a fetch stops with that
+# reason; pin the first release that carries them.
+schema = 1
+
+[release]
+repository = "malkuth-software/gui_forms"
+tag = "v0.2.1298"
+# The archive name for `pin`, before its .tar.gz or .zip suffix.
+sdk_asset = "gui-forms-sdk-{version}-{platform}"
+
+# [sdk.<platform>] name = "<asset name>", sha256 = "<hex digest>", for
+# windows-x64, macos-arm64, linux-x64 and linux-arm64.
+[sdk]
