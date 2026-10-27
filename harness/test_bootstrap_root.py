@@ -27,6 +27,8 @@ IGNORED: str = '''/template_harness/
 /.build/
 /.ccache/
 /.ci/
+/.toolchain/
+/.bootstrap/
 /smoke.json
 '''
 
@@ -107,7 +109,8 @@ class RootLayoutBootstrapTests(unittest.TestCase):
                 warning.append(line)
         self.assertEqual(len(warning), 1, output)
         entry: str
-        for entry in ('template_harness/', 'notes/', 'notes-gui_forms/', '.build/', '.ccache/', '.ci/'):
+        for entry in ('template_harness/', 'notes/', 'notes-gui_forms/', '.build/', '.ccache/', '.ci/', '.toolchain/',
+                      '.bootstrap/'):
             self.assertIn(entry, warning[0])
         self.assertNotIn('projects/', warning[0])
 
