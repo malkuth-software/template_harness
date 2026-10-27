@@ -498,8 +498,15 @@ trees that already have them, so the first build downloads nothing.
 GUI.Forms' fetch scripts still fetch any pinned revision that the seeds do
 not have.
 
+`build` always runs `tools/build_sdk.py --features all`. On top of the
+default (Audio with the stx Vorbis decoder, the HarfBuzz/FreeType text
+engine and the host's Application), this adds every optional component a
+product may link: `GUIForms::TextMasks` and `GUIForms::AudioLoopTransport`.
+One install therefore serves every product. A GUI.Forms commit whose
+`build_sdk.py` has no `--features` is refused.
+
 `build` does nothing when the install already records the same commit,
-target and toolchain identity. When several product workers run it at once,
+target, toolchain identity and features. When several product workers run it at once,
 one builds while the rest wait on `cache/lockstep/.lockstep.lock`, then find
 the record. A failed build leaves `current-<target>.json` as it was.
 
@@ -527,6 +534,7 @@ file `cache/lockstep/current-<target>.json`:
 | `commit` | the GUI.Forms commit that was built; the clone's HEAD while it is current |
 | `target` | `windows-x64`, `macos-arm64`, `linux-x64` or `linux-arm64` |
 | `toolchain_identity` | `HARNESS_TOOLCHAIN_IDENTITY`, else a digest of the clang binary, its version and the host |
+| `features` | the `build_sdk.py --features` set it was built with: `all` |
 | `compiler` | the clang that built it (absolute path); the product must use the same one |
 | `prefix` | the install: `CMAKE_PREFIX_PATH` |
 | `package_dir` | `<prefix>/lib/cmake/GUIForms`: `GUIForms_DIR` |
