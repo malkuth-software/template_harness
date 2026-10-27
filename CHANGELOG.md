@@ -7,6 +7,12 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Added
+- `.github/workflows/bootstrap.yml`: the bootstrap proof. On Windows, macOS and
+  Linux it bootstraps GUI.Forms from an empty directory through the entry a
+  person uses, runs the administrator step the bootstrap prints, passes the
+  smoke build, and checks that two more bootstraps clone and download nothing
+  (`harness/bootstrap_proof.py`, the harness's own CI tool). The job summary
+  times each step.
 - `docs/adopting.md`: the adoption guide a product's own session follows to
   become a harness instance (project file, `harness.lock`, CI, migration off
   GUI.Forms' shims, local work, the gate, a checklist and the pitfalls).

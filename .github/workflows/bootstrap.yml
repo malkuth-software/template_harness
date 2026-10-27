@@ -1,0 +1,217 @@
+name: Bootstrap proof
+# The bootstrap end to end on each host GUI.Forms supports. From an empty
+# directory, the real entry a person uses (bootstrap.ps1 on Windows,
+# bootstrap.sh elsewhere) sets GUI.Forms' workspace up from GitHub: the
+# product, the notes with the gui_forms worktree, the harness at
+# gui_forms/harness.lock's commit, the toolchain and the published compiler
+# cache. Then the smoke build passes, and a repeated bootstrap is a no-op.
+# Only this harness is checked out by actions/checkout; the bootstrap clones
+# everything else. projects is private, so there is no --in-house run.
+#
+# The bootstrap prints, but does not run, the steps that need an
+# administrator: the Ubuntu packages on Linux and the LLVM runtime build on
+# macOS. This workflow runs the command the first bootstrap printed, as a
+# person would. The run steps are:
+#
+# 1. bootstrap-first (--no-smoke): clones, pins the harness and restores;
+#    harness/bootstrap_proof.py first checks its output and the workspace;
+# 2. the printed administrator step (Linux and macOS);
+# 3. bootstrap-full: the full bootstrap, whose smoke build must pass;
+# 4. bootstrap-again: the same again.
+#
+# Runs 3 and 4 must be no-op updates: nothing cloned, no harness commit
+# fetched, the toolchain and cache already in place (bootstrap_proof.py
+# again). The job summary times each step (.github/scripts/proof_step.sh),
+# and the logs are uploaded as bootstrap-proof-<platform>.
+#
+# The macOS runtime is kept in an Actions cache keyed by the pinned harness's
+# build scripts; dispatch with build_macos_runtime to build it from source.
+# The build environment matches GUI.Forms' native CI: clang through ccache,
+# with ccache's directory where the restored cache puts it (<workspace>/.ccache).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      build_macos_runtime:
+        description: Build the macOS LLVM runtime from source instead of restoring it from the Actions cache
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: bootstrap-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+jobs:
+  bootstrap:
+    name: bootstrap (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            platform: windows-x64
+          - runner: macos-15
+            platform: macos-arm64
+          - runner: ubuntu-24.04
+            platform: linux-x64
+    runs-on: ${{ matrix.runner }}
+    # A cold build of the core tests, and on macOS the LLVM runtime build.
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    env:
+      # restore_local.py reads GUI.Forms' releases through gh.
+      GH_TOKEN: ${{ github.token }}
+      PROOF_PROJECT: gui_forms
+      PROOF_CHECKOUT: gui_forms
+      PROOF_NOTES_BRANCH: gui_forms
+      CC: clang
+      CXX: clang++
+      OBJCXX: clang++
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_OBJCXX_COMPILER_LAUNCHER: ccache
+    steps:
+      - name: Start the clock
+        run: |
+          echo "PROOF_JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+          {
+            echo "### Bootstrap proof, ${{ matrix.platform }}"
+            echo
+            echo "| step | time | exit |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v4
+        with:
+          path: harness
+      # 3.14 for the Windows toolchain restore (stdlib zstd); the same everywhere.
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: '3.14'
+      # bootstrap.sh takes the first python3, python or py -3 of 3.11 or later
+      # on PATH; a Windows runner may have another python3 before this one, so
+      # Windows names it through HARNESS_PYTHON, as a person with several would.
+      - name: Make the empty workspace and set the compiler cache variables
+        env:
+          SELECTED_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            echo "HARNESS_PYTHON=$SELECTED_PYTHON" >> "$GITHUB_ENV"
+          fi
+          workspace="$GITHUB_WORKSPACE/ws"
+          logs="$RUNNER_TEMP/proof"
+          if command -v cygpath >/dev/null; then
+            workspace="$(cygpath -m "$workspace")"
+            logs="$(cygpath -m "$logs")"
+          fi
+          mkdir "$workspace"
+          if [ -n "$(ls -A "$workspace")" ]; then
+            echo "$workspace is not empty" >&2
+            exit 1
+          fi
+          {
+            echo "PROOF_WORKSPACE=$workspace"
+            echo "PROOF_LOGS=$logs"
+            echo "CCACHE_DIR=$workspace/.ccache"
+            echo "CCACHE_BASEDIR=$workspace"
+            echo "CCACHE_COMPILERCHECK=content"
+            echo "CCACHE_MAXSIZE=500M"
+          } >> "$GITHUB_ENV"
+      - name: First bootstrap (clone, pin, restore; no smoke build)
+        run: >-
+          sh harness/.github/scripts/proof_step.sh bootstrap-first
+          sh harness/.github/scripts/bootstrap_entry.sh --workspace "$PROOF_WORKSPACE" --project "$PROOF_PROJECT" --no-smoke
+      - name: Check the first bootstrap
+        run: >-
+          python -B harness/harness/bootstrap_proof.py first --log "$PROOF_LOGS/bootstrap-first.log"
+          --workspace "$PROOF_WORKSPACE" --checkout "$PROOF_CHECKOUT" --notes-branch "$PROOF_NOTES_BRANCH"
+          --platform ${{ matrix.platform }}
+      # The pinned harness's install_linux_ci_packages.sh reads the project
+      # through HARNESS_PROJECT, which the printed command leaves out.
+      - name: Install the Ubuntu packages the first bootstrap named
+        if: runner.os == 'Linux'
+        run: |
+          command=$(sed -n 's/^Install the Ubuntu packages yourself (sudo): //p' "$PROOF_LOGS/bootstrap-first.log")
+          if [ -z "$command" ]; then
+            echo "The first bootstrap named no Ubuntu package step" >&2
+            exit 1
+          fi
+          command=$(printf '%s' "$command" | sed "s|<apt archive directory>|$RUNNER_TEMP/apt-archives|")
+          echo "$command"
+          export HARNESS_PROJECT="$PROOF_WORKSPACE/template_harness/projects/$PROOF_PROJECT.toml"
+          sh harness/.github/scripts/proof_step.sh linux-packages sh -c "$command"
+      - name: Install the macOS build tools
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: |
+          sh harness/.github/scripts/proof_step.sh macos-brew brew install cmake ninja ccache llvm@22
+          echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
+      - name: Read the macOS runtime step the first bootstrap named
+        id: runtime-step
+        if: runner.os == 'macOS'
+        run: |
+          line=$(sed -n 's/^Build the macOS runtime yourself: //p' "$PROOF_LOGS/bootstrap-first.log")
+          if [ -z "$line" ]; then
+            echo "The first bootstrap named no macOS runtime step" >&2
+            exit 1
+          fi
+          # "<build command>; then set NAME=<runtime>"
+          command=$(printf '%s' "${line%%; then set *}" | sed "s|<scratch>|$RUNNER_TEMP/llvm-runtimes|")
+          variable=${line##*; then set }
+          echo "command=$command" >> "$GITHUB_OUTPUT"
+          echo "$variable" >> "$GITHUB_ENV"
+          echo "$command"
+          echo "$variable"
+      - uses: actions/cache/restore@v4
+        id: runtime-cache
+        if: runner.os == 'macOS' && inputs.build_macos_runtime != true
+        with:
+          path: ws/.build/toolchain/llvm-22.1.8-macos14
+          key: bootstrap-macos-runtime-v1-${{ hashFiles('ws/template_harness/harness/build_macos_runtimes.py', 'ws/template_harness/harness/macos_runtime_manifest.py') }}
+      - name: Build the macOS runtime as the first bootstrap named
+        id: runtime-build
+        if: runner.os == 'macOS' && steps.runtime-cache.outputs.cache-hit != 'true'
+        env:
+          RUNTIME_COMMAND: ${{ steps.runtime-step.outputs.command }}
+        run: sh harness/.github/scripts/proof_step.sh macos-runtime sh -c "$RUNTIME_COMMAND"
+      - uses: actions/cache/save@v4
+        if: steps.runtime-build.outcome == 'success'
+        with:
+          path: ws/.build/toolchain/llvm-22.1.8-macos14
+          key: bootstrap-macos-runtime-v1-${{ hashFiles('ws/template_harness/harness/build_macos_runtimes.py', 'ws/template_harness/harness/macos_runtime_manifest.py') }}
+      - name: Full bootstrap (update, restore, smoke build)
+        run: >-
+          sh harness/.github/scripts/proof_step.sh bootstrap-full
+          sh harness/.github/scripts/bootstrap_entry.sh --workspace "$PROOF_WORKSPACE" --project "$PROOF_PROJECT"
+      - name: Check that the full bootstrap was a no-op update
+        run: >-
+          python -B harness/harness/bootstrap_proof.py again --log "$PROOF_LOGS/bootstrap-full.log"
+          --workspace "$PROOF_WORKSPACE" --checkout "$PROOF_CHECKOUT" --notes-branch "$PROOF_NOTES_BRANCH"
+          --platform ${{ matrix.platform }}
+      - name: Bootstrap again
+        run: >-
+          sh harness/.github/scripts/proof_step.sh bootstrap-again
+          sh harness/.github/scripts/bootstrap_entry.sh --workspace "$PROOF_WORKSPACE" --project "$PROOF_PROJECT"
+      - name: Check that the repeated bootstrap was a no-op update
+        run: >-
+          python -B harness/harness/bootstrap_proof.py again --log "$PROOF_LOGS/bootstrap-again.log"
+          --workspace "$PROOF_WORKSPACE" --checkout "$PROOF_CHECKOUT" --notes-branch "$PROOF_NOTES_BRANCH"
+          --platform ${{ matrix.platform }}
+      - name: Time the job
+        if: always()
+        run: |
+          finish=$(date +%s)
+          echo "| job, to here | $((finish - PROOF_JOB_START)) s | |" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bootstrap-proof-${{ matrix.platform }}
+          path: ${{ runner.temp }}/proof
+          if-no-files-found: ignore
+          retention-days: 14
