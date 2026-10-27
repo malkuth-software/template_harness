@@ -13,6 +13,7 @@ outsider) clones this repository first.
 | `harness/project.py` | Reads the project file; every product-specific name comes from it. | here |
 | `projects/` | Project files. `projects/gui_forms.toml` reproduces GUI.Forms' names exactly, so its cache and reuse history stays valid. | here |
 | `docs/contract.md` | What consumers run or import, and how it may change. | here |
+| `docs/adopting.md` | How a product becomes a harness instance: its project file, `harness.lock`, CI, local work, the gate and a checklist, with GUI.Forms as the worked example. | here |
 | `CHANGELOG.md` | The release notes; contract changes are recorded under "Breaking changes". | here |
 | `bootstrap.(sh\|ps1)` | Clone or update the product and its notes (and, `--in-house`, the projects repository), restore the toolchain and caches (`harness/restore_local.py`), run the smoke build: `sh bootstrap.sh --workspace DIR --project NAME [--dry-run]` (`harness/bootstrap.py` has the options). Settings: `[bootstrap]`. | here |
 | `checkpoint/` | The local checkpoint tool (`checkpoint/checkpoint.py`): `init` marks a dedicated integration tree, `fold` squashes each worker branch into one commit on `origin/main`, `verify` runs the project's verification and records it against the tree, `push` opens one auto-merging PR from a verified tree, `after-merge` lists the folded branches main now contains. Settings: the project file's `[checkpoint]` table. | here |
