@@ -260,8 +260,11 @@ jobs:
       - name: Full bootstrap (update, restore, smoke build)
         run: |
           python -B harness/harness/bootstrap_proof.py snapshot --workspace "$PROOF_WORKSPACE" --checkout "$PROOF_CHECKOUT" --out "$PROOF_LOGS/bootstrap-full.before.json"
+          # The smoke build runs GUI.Forms tests that open an X display; a Linux runner has none, so Xvfb supplies one.
+          set --
+          if [ "$RUNNER_OS" = Linux ]; then set -- xvfb-run -a -s "-screen 0 1280x1024x24 -noreset"; fi
           sh harness/.github/scripts/proof_step.sh bootstrap-full \
-            sh harness/.github/scripts/bootstrap_entry.sh --workspace "$PROOF_WORKSPACE" --project "$PROOF_PROJECT"
+            "$@" sh harness/.github/scripts/bootstrap_entry.sh --workspace "$PROOF_WORKSPACE" --project "$PROOF_PROJECT"
       - name: Check that the full bootstrap was a no-op update
         run: >-
           python -B harness/harness/bootstrap_proof.py again --log "$PROOF_LOGS/bootstrap-full.log"
@@ -270,8 +273,11 @@ jobs:
       - name: Bootstrap again
         run: |
           python -B harness/harness/bootstrap_proof.py snapshot --workspace "$PROOF_WORKSPACE" --checkout "$PROOF_CHECKOUT" --out "$PROOF_LOGS/bootstrap-again.before.json"
+          # As in the full bootstrap: Xvfb supplies the X display the smoke build's tests open.
+          set --
+          if [ "$RUNNER_OS" = Linux ]; then set -- xvfb-run -a -s "-screen 0 1280x1024x24 -noreset"; fi
           sh harness/.github/scripts/proof_step.sh bootstrap-again \
-            sh harness/.github/scripts/bootstrap_entry.sh --workspace "$PROOF_WORKSPACE" --project "$PROOF_PROJECT"
+            "$@" sh harness/.github/scripts/bootstrap_entry.sh --workspace "$PROOF_WORKSPACE" --project "$PROOF_PROJECT"
       - name: Check that the repeated bootstrap was a no-op update
         run: >-
           python -B harness/harness/bootstrap_proof.py again --log "$PROOF_LOGS/bootstrap-again.log"
