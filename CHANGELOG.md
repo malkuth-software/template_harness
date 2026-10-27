@@ -10,6 +10,9 @@ and new form. Provisional rows there may change without an entry.
 - `docs/adopting.md`: the adoption guide a product's own session follows to
   become a harness instance (project file, `harness.lock`, CI, migration off
   GUI.Forms' shims, local work, the gate, a checklist and the pitfalls).
+- `harness/test_project_prefixes.py`: no two `projects/*.toml` files have
+  overlapping names (project name, `env_prefix`, `build_name`, artifact and
+  cache-asset prefixes); a Windows toolchain may be shared only exactly.
 - `harness/lock.py` (owner decision 2): `show`, `checkout DIR` and `bump [--to REF]`
   for a product's `harness.lock`, which pins the exact harness commit.
 - `.github/actions/harness-checkout`: a composite action that reads

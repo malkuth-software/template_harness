@@ -367,7 +367,8 @@ A product has adopted the harness when all three of these hold:
 2. **The bootstrap sets the product up on a clean machine.** Run
    `bootstrap.sh --workspace <empty directory> --project <name>` there,
    and record what it restored and the smoke command's result.
-3. **The names are checked.** Add a test beside
+3. **The names are checked.** `harness/test_project_prefixes.py` already
+   fails when your prefixes overlap another project's. Also add a test beside
    `harness/test_project_names.py` that loads `projects/<name>.toml` with
    `project.load` and asserts each derived name literally:
    - `variable()`;
@@ -398,12 +399,13 @@ A product has adopted the harness when all three of these hold:
 **Pitfalls GUI.Forms hit:**
 
 - **Line endings.** This repository checks out LF everywhere except
-  `*.ps1` and `*.cmd` (`.gitattributes`). A product without
-  `.gitattributes`, checked out with `core.autocrlf=true` (GitHub's
-  Windows runners and many Windows clones), has CRLF files. A hash over
-  file bytes then differs between hosts, and between a product copy and
-  the harness's copy of the same file. Compute byte identities on Linux,
-  or give the product `.gitattributes` with at least `*.sh text eol=lf`.
+  `*.ps1` and `*.cmd` (`.gitattributes`). Without a `.gitattributes`
+  of its own, a product's line endings in a checkout follow that
+  machine's git configuration (`core.autocrlf`). A hash over file bytes
+  can then differ between hosts, and between a product copy and the
+  harness's copy of the same file. Set your own `.gitattributes`, as the
+  harness does; don't rely on the runner's git config. GUI.Forms has
+  none yet, and computes its Skia archive identity on a Linux runner.
 - **The Skia identity.** GUI.Forms' Windows Skia archive identity hashed
   `tools/windows_toolchain*.json`. These now come from the harness
   (`skia_archive.MOVED_INPUTS`) under their old names, so the identity
