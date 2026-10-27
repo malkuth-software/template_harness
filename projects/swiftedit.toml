@@ -1,0 +1,70 @@
+# SwiftEdit's project file (harness/project.py reads it).
+#
+# SwiftEdit builds GUI.Forms, the File Manager document picker and the
+# standalone stx_rtf2md package from pinned sources (ci/dependencies.json),
+# then itself, all inside its own checkout: tools/prepare_dependencies.py
+# puts the GUI.Forms source at gui_forms/ and its build trees at
+# .build/native-<platform>/, with CCACHE_BASEDIR at the checkout root. That
+# is GUI.Forms' own CI layout, so the checkout is the workspace root;
+# moved anywhere else, GUI.Forms' published compiler-cache entries would
+# not hit.
+#
+# SwiftEdit publishes no compiler caches of its own, so ci.cache_asset_prefix
+# is left out. harness/test_swiftedit_names.py asserts the derived names.
+
+schema = 1
+
+[project]
+name = "swiftedit"
+repository = "malkuth-software/swiftedit"
+source_dir = "."
+# SwiftEdit's own build tree. Its dependency trees keep their providers'
+# names beside it (gui-forms, picker, stx-rtf2md).
+build_name = "swiftedit"
+# SWIFTEDIT_LLVM_RUNTIME (macOS) and the other harness variables. SwiftEdit
+# already reads SWIFTEDIT_RELEASE_VERSION and SWIFTEDIT_STX_RTF2MD_SOURCE,
+# which no harness tool sets.
+env_prefix = "SWIFTEDIT"
+
+[ci]
+artifact_prefix = "swiftedit-"
+native_workflow = ".github/workflows/native-builds.yml"
+# Matches "native (<runner>, <platform>, <shell>)".
+native_job = "native"
+
+[toolchain]
+# The Windows CLANG64 toolchain GUI.Forms publishes and builds with.
+repository = "malkuth-software/gui_forms"
+asset_prefix = "gui-forms-toolchain-"
+
+[tests]
+name_prefixes = []
+
+# app: what building GUI.Forms (its Linux host and CPU Skia, with gn), the
+# picker, stx_rtf2md and SwiftEdit, testing under a virtual display, and
+# packaging the .deb need on Ubuntu 24.04. These are SwiftEdit's current CI
+# packages plus libxi-dev, which GUI.Forms 0.2's Linux host links.
+[linux_packages.app]
+packages = [
+    "cmake", "ninja-build", "ccache", "clang-22", "generate-ninja", "pkg-config",
+    "libx11-dev", "libxext-dev", "libxrandr-dev", "libxcursor-dev", "libxfixes-dev", "libxi-dev",
+    "libatk1.0-dev", "libatk-bridge2.0-dev",
+    "xvfb", "xauth", "patchelf", "dpkg-dev",
+]
+
+[build]
+configure_variables = []
+
+[cache_manifest]
+profile = "SwiftEdit against pinned GUI.Forms, picker and stx_rtf2md sources"
+
+[cache_manifest.native_options]
+build_type = "Release"
+cxx_standard = 20
+
+[bootstrap]
+notes_repository = "malkuth-software/notes"
+notes_branch = "swiftedit"
+projects_repository = "malkuth-software/projects"
+# Needs nothing the restore supplies: the publication-version contract.
+smoke = ["{python}", "-B", "-m", "unittest", "discover", "-s", "tests", "-p", "test_publication.py"]
