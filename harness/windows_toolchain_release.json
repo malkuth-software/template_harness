@@ -1,0 +1,11 @@
+{
+  "notes": [
+    "The release that publishes the Windows toolchain of tools/windows_toolchain.json, read by its tag (tools/windows_toolchain.py).",
+    "spec_sha256 is windows_toolchain.spec_digest of the specification; archive_sha256 is the archive's digest in that release's manifest.",
+    "Change it with every specification change, once the new toolchain is published; keep its revision in packaging/pinned_cache_revisions.json so that the release is never pruned."
+  ],
+  "spec_sha256": "a6c66b1008e8b16787e6cf803fb554b0eeffa1d965dceebc47594fab60597aa0",
+  "archive_sha256": "de97be8abaf87c943ac627e7fdb16f7688b188015bd3bbd23112498433ed2182",
+  "llvm": "22.1.8",
+  "tag": "build-5bb7a8ba74ccb358f11d1b9056831e0130bdd8d0"
+}
