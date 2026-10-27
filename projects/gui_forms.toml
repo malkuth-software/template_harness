@@ -1,0 +1,105 @@
+# GUI.Forms' project file (harness/project.py reads it).
+#
+# Every value reproduces a name GUI.Forms' CI used before the harness
+# existed, so its caches, receipts and toolchain releases stay valid:
+# harness/test_project_names.py checks the derived names byte for byte.
+# Changing a value starts a new history; change one deliberately.
+
+schema = 1
+
+[project]
+name = "gui_forms"
+repository = "malkuth-software/gui_forms"
+# The checkout under the workspace root (gui_forms/), and its build trees
+# .build/native-<platform>/gui-forms/ (-sanitize, -sdk).
+source_dir = "gui_forms"
+build_name = "gui-forms"
+# GUI_FORMS_LLVM_RUNTIME, GUI_FORMS_PLATFORM, GUI_FORMS_COMPILER_ID, ...
+env_prefix = "GUI_FORMS"
+
+[ci]
+# gui-validated-, gui-inputs-, gui-tree-, gui-sanitize-ccache-linux-x64.
+artifact_prefix = "gui-"
+# gui-forms-cache-<platform>.tar.gz
+cache_asset_prefix = "gui-forms-cache-"
+native_workflow = ".github/workflows/native.yml"
+native_job = "native"
+pinned_cache_revisions = "packaging/pinned_cache_revisions.json"
+
+[toolchain]
+# The Windows CLANG64 toolchain is published as releases of this repository:
+# gui-forms-toolchain-windows-x64.tar.zst and its manifest.
+repository = "malkuth-software/gui_forms"
+asset_prefix = "gui-forms-toolchain-"
+
+[tests]
+areas_file = "tools/test_areas.json"
+# tests/X.cpp names the tests X, gui_forms_X and gui_drawing_X.
+name_prefixes = ["gui_forms_", "gui_drawing_"]
+
+# install_linux_ci_packages.sh <profile>: toolkit (native and sanitizer jobs)
+# or programs (release.yml).
+#
+# xcompmgr: a compositing manager for stage T5's X11 compositor probe and
+# gate under Xvfb (owner decision T5-Q12). weston and xwayland: a headless
+# Wayland compositor and its X server, for the same probe under XWayland
+# (owner, 2026-10-25; Linux CI only).
+[linux_packages.toolkit]
+packages = [
+    "cmake", "ninja-build", "ccache", "clang-22", "generate-ninja", "pkg-config",
+    "libx11-dev", "libxext-dev", "libxrandr-dev", "libxcursor-dev", "libxfixes-dev", "libxi-dev",
+    "libatk1.0-dev", "libatk-bridge2.0-dev",
+    "xvfb", "xauth", "xcompmgr", "weston", "xwayland", "xdg-utils", "dbus", "at-spi2-core",
+    "python3-gi", "gir1.2-atspi-2.0",
+]
+
+[linux_packages.programs]
+extends = "toolkit"
+packages = ["xdotool", "patchelf", "dpkg-dev"]
+
+[state_machines]
+first_party_dirs = [
+    "include", "src", "demo", "tests", "examples", "tools",
+    "file_manager_demoboard", "stx_vorbis", "stx_zlib", "stx_png", "stx_conv",
+    "fuzz",
+]
+# The atom vocabulary: PartRole, AnatomyState, SemanticRole, PartMark,
+# ControlVisualRole and their neighbours.
+vocabulary_headers = [
+    "include/gui_forms/anatomy/types/anatomy_types.hpp",
+    "include/gui_forms/semantics/types/semantic_types.hpp",
+    "include/gui_forms/theme/part_painting/part_painting.hpp",
+    "include/gui_forms/theme/types/theme_types.hpp",
+]
+# Owning areas by path prefix, most specific first (AGENTS.md ownership).
+areas = [
+    ["include/gui_forms/controls/", "controls"],
+    ["src/controls/", "controls"],
+    ["demo/", "controls"],
+    ["src/host/windows/", "host-windows"],
+    ["src/host/macos/", "host-macos"],
+    ["src/host/linux/", "host-linux"],
+    ["src/host/", "host"],
+    ["src/render/", "render"],
+    ["src/abi/", "c-abi"],
+    ["src/audio/", "audio"],
+    ["src/runtime/", "runtime"],
+    ["src/core/", "core"],
+    ["include/", "core"],
+    ["tests/", "tests"],
+    ["file_manager_demoboard/", "demoboard"],
+    ["stx_vorbis/", "stx_vorbis"],
+    ["stx_zlib/", "stx_zlib"],
+    ["stx_png/", "stx_png"],
+    ["stx_conv/", "stx_conv"],
+    ["fuzz/", "fuzz"],
+    ["examples/", "examples"],
+    ["tools/", "tools"],
+]
+# A change to one of these can change any verdict: a changed-code run checks
+# the full tree.
+full_tree_triggers = [
+    "tools/check_state_machines.py",
+    "tools/check_house_style.py",
+    ".github/workflows/state-machines.yml",
+]
