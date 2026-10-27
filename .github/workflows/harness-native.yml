@@ -149,7 +149,6 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
               output.write('name=' + product.name + '\n')
               output.write('env-prefix=' + product.env_prefix + '\n')
-              output.write('toolchain-repository=' + product.toolchain_repository + '\n')
           EOF
       # Stdlib zstd unpacks the Windows toolchain; the build keeps 3.12.
       - uses: actions/setup-python@v5
@@ -158,16 +157,14 @@ jobs:
         with:
           python-version: '3.14'
           update-environment: false
-      # windows_toolchain.py reads releases from GITHUB_REPOSITORY; the
-      # toolchain is the project's [toolchain] repository's.
+      # From the project's [toolchain] repository's releases.
       - name: Restore the published Windows toolchain without MSYS2 mirrors
         if: runner.os == 'Windows'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TOOLCHAIN_PYTHON: ${{ steps.toolchain-python.outputs.python-path }}
-          TOOLCHAIN_REPOSITORY: ${{ steps.project.outputs.toolchain-repository }}
-        run: GITHUB_REPOSITORY="$TOOLCHAIN_REPOSITORY" "$TOOLCHAIN_PYTHON" "$HARNESS_ROOT/harness/windows_toolchain.py" restore
+        run: '"$TOOLCHAIN_PYTHON" "$HARNESS_ROOT/harness/windows_toolchain.py" restore'
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         shell: bash
