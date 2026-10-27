@@ -29,6 +29,7 @@ product.
 | `harness/lock.py` and a product's `harness.lock` | The pin (owner decision 2): `[harness] repository = "owner/name"`, `commit = "<40 hex>"` on one line each. Commands: `show`, `checkout DIR` (the exact commit, detached; refuses a dirty DIR), `bump [--to REF]`; options `--lock PATH`, `--github-base URL`. |
 | `.github/actions/harness-checkout` | A composite action: inputs `product-path` (holding `harness.lock`) and `path` (default `template_harness`); outputs `repository` and `commit`. It checks the locked commit out beside the product and verifies it; with `product-path: .` the harness lands inside a root-layout product at `template_harness/`. |
 | `bootstrap.sh`, `bootstrap.ps1`, `harness/bootstrap.py`, `harness/restore_local.py` | **Provisional**, as above. `bootstrap.sh --workspace DIR --project NAME [--in-house] [--dry-run] [--platform P] [--no-restore] [--no-smoke]`; settings in the project file's `[bootstrap]` table. With `source_dir = "."` the product is cloned into `DIR` itself and the bootstrap warns about any of its entries the checkout does not ignore. |
+| `harness/lockstep.py` | **Provisional**, as above. `init`, `advance --to REF [--from REMOTE]`, `build [--target T]`, `prefix [--target T] [--json]`, `status`, all with `--root` (else `HARNESS_LOCKSTEP_ROOT`); product builds read `prefix` or the record `cache/lockstep/current-<target>.json` (schema 1, fields in `docs/adopting.md`). |
 
 The names a project file produces are part of the contract too: a product's
 caches, receipts, artifacts and toolchain releases carry them.
