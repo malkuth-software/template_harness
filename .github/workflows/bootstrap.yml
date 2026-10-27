@@ -21,7 +21,10 @@ name: Bootstrap proof
 #
 # Runs 3 and 4 must be no-op updates: nothing cloned, no harness commit
 # fetched, the toolchain and cache already in place (bootstrap_proof.py
-# again). The job summary times each step (.github/scripts/proof_step.sh),
+# again). Each is compared with a snapshot taken just before it, because
+# gui_forms' main may move during the job: a newer cache restored for a
+# newer main, or a harness fetched because harness.lock moved, is an update
+# and is printed as one, while the same cache restored twice fails. The job summary times each step (.github/scripts/proof_step.sh),
 # and the logs are uploaded as bootstrap-proof-<platform>.
 #
 # The macOS runtime is kept in an Actions cache keyed by the pinned harness's
@@ -186,23 +189,25 @@ jobs:
           path: ws/.build/toolchain/llvm-22.1.8-macos14
           key: bootstrap-macos-runtime-v1-${{ hashFiles('ws/template_harness/harness/build_macos_runtimes.py', 'ws/template_harness/harness/macos_runtime_manifest.py') }}
       - name: Full bootstrap (update, restore, smoke build)
-        run: >-
-          sh harness/.github/scripts/proof_step.sh bootstrap-full
-          sh harness/.github/scripts/bootstrap_entry.sh --workspace "$PROOF_WORKSPACE" --project "$PROOF_PROJECT"
+        run: |
+          python -B harness/harness/bootstrap_proof.py snapshot --workspace "$PROOF_WORKSPACE" --checkout "$PROOF_CHECKOUT" --out "$PROOF_LOGS/bootstrap-full.before.json"
+          sh harness/.github/scripts/proof_step.sh bootstrap-full \
+            sh harness/.github/scripts/bootstrap_entry.sh --workspace "$PROOF_WORKSPACE" --project "$PROOF_PROJECT"
       - name: Check that the full bootstrap was a no-op update
         run: >-
           python -B harness/harness/bootstrap_proof.py again --log "$PROOF_LOGS/bootstrap-full.log"
           --workspace "$PROOF_WORKSPACE" --checkout "$PROOF_CHECKOUT" --notes-branch "$PROOF_NOTES_BRANCH"
-          --platform ${{ matrix.platform }}
+          --platform ${{ matrix.platform }} --before "$PROOF_LOGS/bootstrap-full.before.json"
       - name: Bootstrap again
-        run: >-
-          sh harness/.github/scripts/proof_step.sh bootstrap-again
-          sh harness/.github/scripts/bootstrap_entry.sh --workspace "$PROOF_WORKSPACE" --project "$PROOF_PROJECT"
+        run: |
+          python -B harness/harness/bootstrap_proof.py snapshot --workspace "$PROOF_WORKSPACE" --checkout "$PROOF_CHECKOUT" --out "$PROOF_LOGS/bootstrap-again.before.json"
+          sh harness/.github/scripts/proof_step.sh bootstrap-again \
+            sh harness/.github/scripts/bootstrap_entry.sh --workspace "$PROOF_WORKSPACE" --project "$PROOF_PROJECT"
       - name: Check that the repeated bootstrap was a no-op update
         run: >-
           python -B harness/harness/bootstrap_proof.py again --log "$PROOF_LOGS/bootstrap-again.log"
           --workspace "$PROOF_WORKSPACE" --checkout "$PROOF_CHECKOUT" --notes-branch "$PROOF_NOTES_BRANCH"
-          --platform ${{ matrix.platform }}
+          --platform ${{ matrix.platform }} --before "$PROOF_LOGS/bootstrap-again.before.json"
       - name: Time the job
         if: always()
         run: |
