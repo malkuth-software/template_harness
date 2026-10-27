@@ -55,6 +55,10 @@ and new form. Provisional rows there may change without an entry.
   Ubuntu package command with `HARNESS_PROJECT=<project file>` in front,
   because `install_linux_ci_packages.sh` reads the package set from it.
   The printed line runs as it stands once the apt directory is filled in.
+  It names the project's own package profile: `toolkit` when the project
+  has one, else its only profile (Plan Paint's `paint`). A project with
+  several and no `toolkit` gets a placeholder listing them, and one with
+  none gets a note.
 - `harness/windows_toolchain.py restore` reads the project's `[toolchain]
   repository`, falling back to `GITHUB_REPOSITORY` when it is empty.
 - A product may be the workspace root (`source_dir = "."`, File Manager's
