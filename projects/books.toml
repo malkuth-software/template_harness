@@ -55,6 +55,11 @@ packages = [
 extends = "consumer"
 packages = ["patchelf", "dpkg-dev"]
 
+# core: the portable library core without GUI.Forms (GAMES_BUILD_APPLICATION=OFF),
+# which the bootstrap's smoke build compiles and tests.
+[linux_packages.core]
+packages = ["cmake", "ninja-build", "ccache", "clang-22"]
+
 [state_machines]
 first_party_dirs = ["src", "tests", "books", "shared", "new-games"]
 vocabulary_headers = []
@@ -97,3 +102,5 @@ notes_repository = "malkuth-software/notes"
 notes_branch = "books"
 projects_repository = "malkuth-software/projects"
 smoke = ["{python}", "scripts/smoke-build.py"]
+# The Ubuntu bootstrap job installs this profile before the smoke build.
+linux_packages = "core"

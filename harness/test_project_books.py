@@ -75,7 +75,8 @@ class BooksProjectTests(unittest.TestCase):
                          'libatk1.0-dev libatk-bridge2.0-dev libasound2t64 xvfb xauth')
         self.assertEqual(' '.join(self.books.linux_packages['consumer']), consumer)
         self.assertEqual(' '.join(self.books.linux_packages['programs']), consumer + ' patchelf dpkg-dev')
-        self.assertEqual(sorted(self.books.linux_packages), ['consumer', 'programs'])
+        self.assertEqual(' '.join(self.books.linux_packages['core']), 'cmake ninja-build ccache clang-22')
+        self.assertEqual(sorted(self.books.linux_packages), ['consumer', 'core', 'programs'])
 
     def test_state_machine_scope(self) -> None:
         self.assertTrue(self.books.has_state_machines)
