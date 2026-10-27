@@ -105,6 +105,11 @@ full_tree_triggers = [
     ".github/workflows/state-machines.yml",
 ]
 
+[build]
+# GUI_FORMS_SYSTEM_BUILD_TOOLS changes what a configure records
+# (ci_build_steps.configure_record); GUI_FORMS_LLVM_RUNTIME always does.
+configure_variables = ["SYSTEM_BUILD_TOOLS"]
+
 # cache_manifest.py records these in cache-manifest.json beside the cache.
 [cache_manifest]
 profile = "native Release plus separately tested development text/host profiles"

@@ -42,6 +42,8 @@ first_party_dirs = ["src"]
 vocabulary_headers = []
 areas = [["src/", "core"]]
 full_tree_triggers = []
+[build]
+configure_variables = ["TOOLS"]
 [cache_manifest]
 profile = "example"
 [cache_manifest.native_options]
@@ -88,6 +90,7 @@ class ProjectFileTests(unittest.TestCase):
     def test_derived_names(self) -> None:
         loaded: project.Project = parsed(MINIMAL)
         self.assertEqual(loaded.variable('PLATFORM'), 'EXAMPLE_PLATFORM')
+        self.assertEqual(loaded.configure_variables(), ('EXAMPLE_TOOLS',))
         self.assertEqual(loaded.artifact('tree-docs-abc'), 'example-tree-docs-abc')
         self.assertEqual(loaded.cache_asset('linux-x64'), 'example-cache-linux-x64.tar.gz')
         self.assertEqual(loaded.build_tree('linux-x64', sanitize=True), '.build/native-linux-x64/example-sanitize')

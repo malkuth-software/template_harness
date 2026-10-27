@@ -82,6 +82,9 @@ class Project:
     vocabulary_headers: tuple[str, ...]
     state_machine_areas: tuple[StateMachineArea, ...]
     full_tree_triggers: tuple[str, ...]
+    # ci_build_steps.py: the product's own environment variables, without the
+    # prefix, that change what a configure records (SYSTEM_BUILD_TOOLS).
+    configure_variable_names: tuple[str, ...]
     # cache_manifest.py: the build profile the cache records, the native build
     # options in recorded order, and each platform's overrides of them.
     cache_profile: str
@@ -101,6 +104,15 @@ class Project:
     def cache_asset(self, platform: str) -> str:
         """The compiler-cache archive's file and release asset name for a platform."""
         result: str = self.cache_asset_prefix + platform + '.tar.gz'
+        return result
+
+    def configure_variables(self) -> tuple[str, ...]:
+        """The product's configure variables with their prefix (GUI_FORMS_SYSTEM_BUILD_TOOLS)."""
+        names: list[str] = []
+        name: str
+        for name in self.configure_variable_names:
+            names.append(self.variable(name))
+        result: tuple[str, ...] = tuple(names)
         return result
 
     def native_options_for(self, platform: str) -> dict[str, str | int | bool]:
@@ -228,6 +240,7 @@ def parse(document: dict[str, Any], path: Path) -> Project:
     packages: dict[str, Any] = table_field(document, 'linux_packages')
     machines: dict[str, Any] = table_field(document, 'state_machines')
     cache: dict[str, Any] = table_field(document, 'cache_manifest')
+    build: dict[str, Any] = table_field(document, 'build')
     native_options: dict[str, str | int | bool] = option_table(cache.get('native_options'), 'cache_manifest.native_options')
     source_dir: str = text_field(product, 'source_dir', 'project')
     if not source_dir or source_dir.endswith('/') or '\\' in source_dir:
@@ -253,6 +266,7 @@ def parse(document: dict[str, Any], path: Path) -> Project:
         vocabulary_headers=text_list(machines, 'vocabulary_headers', 'state_machines'),
         state_machine_areas=state_machine_areas(machines.get('areas')),
         full_tree_triggers=text_list(machines, 'full_tree_triggers', 'state_machines'),
+        configure_variable_names=text_list(build, 'configure_variables', 'build'),
         cache_profile=text_field(cache, 'profile', 'cache_manifest'),
         native_options=native_options,
         platform_native_options=platform_option_tables(cache.get('platform_options', {}), native_options))
