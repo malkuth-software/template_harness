@@ -142,6 +142,63 @@ struct Sample {
         source: str = "struct Options { bool checked{}; bool enabled{true}; bool wraps{}; int count = 0; };"
         self.assertEqual(candidates(source), [])
 
+    def test_status_beside_optional_payload(self) -> None:
+        source: str = """
+enum class LoadStatus { loaded, missing, failed };
+struct NoteLoadResult final {
+    LoadStatus status{LoadStatus::failed};
+    std::optional<Note> note{};
+};
+struct ClipboardImageResult final {
+    HostServiceStatus status;
+    std::optional<Image> image;
+    std::uint64_t generation{};
+};"""
+        details: list[str] = []
+        finding: hunt.Finding
+        for finding in candidates(source):
+            self.assertEqual(finding.rule, "C3")
+            details.append(finding.detail)
+        self.assertEqual(details, [
+            "NoteLoadResult: status status beside std::optional note; one std::variant of the states, built by "
+            "named factories and read by named queries, cannot disagree",
+            "ClipboardImageResult: status status beside std::optional image; one std::variant of the states, "
+            "built by named factories and read by named queries, cannot disagree",
+        ])
+
+    def test_result_record_names_its_first_status_not_a_nested_result(self) -> None:
+        # DockDragOutcome's shape: `end` says how the drag ended and `target`
+        # exists only for `dropped`; `result` is a record payload, not a status.
+        source: str = """
+enum class DragEnd : std::uint8_t { dropped, escaped };
+struct DragOutcome final {
+    DragEnd end{DragEnd::escaped};
+    std::optional<DropTarget> target{};
+    TransactionResult result{};
+};"""
+        findings: list[hunt.Finding] = candidates(source)
+        self.assertEqual(len(findings), 1)
+        self.assertTrue(findings[0].detail.startswith("DragOutcome: status end beside std::optional target;"))
+        self.assertEqual(findings[0].line, 4)
+
+    def test_product_enumerations_reach_a_record_in_another_file(self) -> None:
+        source: str = "struct MappingResult final { MappingState state; std::optional<int> position; };"
+        self.assertEqual(candidates(source), [])
+        findings: list[hunt.Finding] = hunt.source_candidates("src/core/fixture.cpp", source, {"MappingState"})
+        self.assertEqual(rules_of(findings), ["C3"])
+
+    def test_status_shapes_that_are_not_candidates(self) -> None:
+        # A C struct's int error code (stb_vorbis in stx_vorbis's C adapter),
+        # a class's private state, and a status with no optional payload.
+        c_struct: str = "struct stb_vorbis { int error{}; std::optional<unsigned int> length{}; };"
+        owner: str = """
+enum class Status { idle, busy };
+class Panel { public: void run(); private: Status status_{}; std::optional<int> cached_{}; };"""
+        plain: str = "enum class Status { ok, failed }; struct WriteResult final { Status status{}; std::string text; };"
+        self.assertEqual(candidates(c_struct), [])
+        self.assertEqual(candidates(owner), [])
+        self.assertEqual(candidates(plain), [])
+
 
 MAPPING: str = """
 int native_role(PartRole role) {
