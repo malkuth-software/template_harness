@@ -1,0 +1,91 @@
+# Pocket Library's project file (harness/project.py reads it).
+#
+# Pocket Library (malkuth-software/books) is PlaySuite's shell with one
+# volume: a bookcase of books, set as printed pages. It builds GUI.Forms from
+# source beside itself (add_subdirectory of <workspace>/gui_forms), so it is
+# the workspace root, like File Manager: GUI.Forms then compiles under the
+# same workspace-relative paths as in GUI.Forms' own CI, and GUI.Forms'
+# published compiler cache (build-<commit>) can hit. harness/test_project_books.py
+# checks every derived name; changing a value starts a new history.
+
+schema = 1
+
+[project]
+name = "books"
+repository = "malkuth-software/books"
+# The product is the workspace root; template_harness/, gui_forms/, .build/,
+# .ccache/, .ci/ and the notes sit inside its checkout and are ignored there.
+source_dir = "."
+# .build/native-<platform>/books[-sanitize]
+build_name = "books"
+# BOOKS_LLVM_RUNTIME (macOS), BOOKS_PLATFORM, BOOKS_COMPILER_ID, ...
+env_prefix = "BOOKS"
+
+[ci]
+# books-validated-, books-inputs-, books-tree-, books-sanitize-ccache-linux-x64.
+artifact_prefix = "books-"
+# books-cache-<platform>.tar.gz
+cache_asset_prefix = "books-cache-"
+# The release gate: builds, tests, packages and smoke-tests every host, and
+# publishes from a green main. Its matrix job is named "native (<runner>,
+# <platform>, <shell>)".
+native_workflow = ".github/workflows/applications.yml"
+native_job = "native"
+
+[toolchain]
+# GUI.Forms' published Windows CLANG64 toolchain, shared as published.
+repository = "malkuth-software/gui_forms"
+asset_prefix = "gui-forms-toolchain-"
+
+[tests]
+name_prefixes = []
+
+# consumer: building GUI.Forms from source for its Linux host (CPU Skia with
+# gn), the application, and its native tests under a virtual display, on
+# Ubuntu 24.04. programs adds what packaging and the package smoke test need.
+[linux_packages.consumer]
+packages = [
+    "cmake", "ninja-build", "ccache", "clang-22", "generate-ninja", "pkg-config",
+    "libx11-dev", "libxext-dev", "libxrandr-dev", "libxcursor-dev", "libxfixes-dev", "libxi-dev",
+    "libatk1.0-dev", "libatk-bridge2.0-dev", "libasound2t64",
+    "xvfb", "xauth",
+]
+
+[linux_packages.programs]
+extends = "consumer"
+packages = ["patchelf", "dpkg-dev"]
+
+[state_machines]
+first_party_dirs = ["src", "tests", "books", "shared", "new-games"]
+vocabulary_headers = []
+# Owning areas by path prefix, most specific first.
+areas = [
+    ["books/", "library"],
+    ["shared/", "paper"],
+    ["new-games/", "kit"],
+    ["src/", "shell"],
+    ["tests/", "tests"],
+]
+full_tree_triggers = ["harness.lock"]
+
+[build]
+configure_variables = []
+
+[cache_manifest]
+profile = "Pocket Library native Release against the pinned GUI.Forms source"
+
+[cache_manifest.native_options]
+build_type = "Release"
+cxx_standard = 20
+audio = true
+text_masks = true
+harfbuzz = true
+skia = true
+
+[cache_manifest.platform_options."windows-x64"]
+skia = false
+
+[bootstrap]
+notes_repository = "malkuth-software/notes"
+notes_branch = "books"
+projects_repository = "malkuth-software/projects"

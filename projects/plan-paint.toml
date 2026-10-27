@@ -1,0 +1,77 @@
+# Plan Paint's project file (harness/project.py reads it).
+#
+# Plan Paint is the workspace root (source_dir "."): its caches have always
+# used the checkout as CCACHE_BASEDIR, with the GUI.Forms toolkit at
+# <root>/gui_forms, the layout GUI.Forms' own compiler caches are built in.
+# The harness, notes, build trees and CI state therefore sit inside the
+# checkout, and its .gitignore lists them. Its CI builds GUI.Forms from the
+# pinned source with GUI.Forms' Windows toolchain, so only that toolchain
+# carries GUI.Forms' names; every other name is Plan Paint's own.
+# test_project_names_plan_paint.py checks the derived names.
+
+schema = 1
+
+[project]
+name = "plan-paint"
+repository = "malkuth-software/plan-paint"
+source_dir = "."
+# .build/native-<platform>/plan-paint/ (-sanitize).
+build_name = "plan-paint"
+# PLAN_PAINT_LLVM_RUNTIME, PLAN_PAINT_PLATFORM, ...
+env_prefix = "PLAN_PAINT"
+
+[ci]
+# plan-paint-validated-, plan-paint-inputs-, plan-paint-tree-, ...
+artifact_prefix = "plan-paint-"
+# plan-paint-cache-<platform>.tar.gz in the shared build-<commit> releases.
+cache_asset_prefix = "plan-paint-cache-"
+native_workflow = ".github/workflows/build.yml"
+# "application (<runner>, <platform>, <shell>)".
+native_job = "application"
+
+[toolchain]
+# The Windows CLANG64 toolchain GUI.Forms publishes and builds its SDK with.
+repository = "malkuth-software/gui_forms"
+asset_prefix = "gui-forms-toolchain-"
+
+[tests]
+# Plan Paint names its tests paint-<area> (tests/icon_batch_tests.cpp is
+# paint-icon-batch), which no stem prefix describes; it uses no change
+# selection.
+name_prefixes = []
+
+# paint: the native job. LLVM 22 and the build tools; the X11 and
+# accessibility libraries GUI.Forms' Linux host links; the TIFF, WebP and
+# AV1 codecs Plan Paint imports; patchelf for packaging; Xvfb for the window
+# tests; Ghostscript for the print test.
+[linux_packages.paint]
+packages = [
+    "cmake", "ninja-build", "ccache", "clang-22", "generate-ninja", "pkg-config",
+    "libx11-dev", "libxext-dev", "libxrandr-dev", "libxcursor-dev", "libxfixes-dev", "libxi-dev",
+    "libatk1.0-dev", "libatk-bridge2.0-dev",
+    "libtiff-dev", "libwebp-dev", "libdav1d-dev",
+    "patchelf", "xvfb", "xauth", "ghostscript",
+]
+
+[build]
+configure_variables = []
+
+[cache_manifest]
+profile = "Plan Paint Release against the pinned GUI.Forms source"
+
+[cache_manifest.native_options]
+build_type = "Release"
+cxx_standard = 20
+bundled_tiff = true
+
+# harness/bootstrap.py: the notes clone with the plan-paint side branch as
+# the worktree notes-plan-paint, the in-house projects repository, and the
+# smoke build: scripts/smoke-build.py configures PLAN_PAINT_SMOKE (the
+# codec-free warp kernel and its test, without image codecs or GUI.Forms)
+# in .build/native-<platform>/plan-paint-smoke, builds it and runs
+# paint-warp. {python} is the interpreter running the bootstrap.
+[bootstrap]
+notes_repository = "malkuth-software/notes"
+notes_branch = "plan-paint"
+projects_repository = "malkuth-software/projects"
+smoke = ["{python}", "scripts/smoke-build.py"]
