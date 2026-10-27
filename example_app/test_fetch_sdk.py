@@ -179,13 +179,26 @@ class FetchTests(unittest.TestCase):
 
     def test_network_inputs_stop_the_build_unless_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            manifest: dict[str, Any] = {'network_inputs': [{'name': 'skia', 'revision': 'abc123'}]}
+            host: str = fetch_sdk.running_platform()
+            others: list[str] = [name for name in fetch_sdk.PLATFORMS if name != host]
+            manifest: dict[str, Any] = {'network_inputs': [
+                {'name': 'skia', 'platforms': [host], 'revision': 'abc123', 'note': 'large'},
+                {'name': 'elsewhere', 'platforms': others, 'sha256': '0' * 64}]}
             work: Workspace = Workspace(Path(directory), manifest)
-            with self.assertRaisesRegex(fetch_sdk.FetchError, 'name=skia, revision=abc123'):
+            with self.assertRaisesRegex(fetch_sdk.FetchError, r'downloads: skia, revision abc123\. Rerun'):
                 work.fetch()
             self.assertEqual(work.builds(), 0)
             work.fetch(allow_network_inputs=True)
             self.assertEqual((work.download.calls, work.builds()), (1, 1))
+
+    def test_network_inputs_of_other_targets_do_not_stop_the_build(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            host: str = fetch_sdk.running_platform()
+            others: list[str] = [name for name in fetch_sdk.PLATFORMS if name != host]
+            manifest: dict[str, Any] = {'network_inputs': [{'name': 'skia', 'platforms': others}]}
+            work: Workspace = Workspace(Path(directory), manifest)
+            work.fetch()
+            self.assertEqual(work.builds(), 1)
 
     def test_a_failed_build_leaves_no_record_and_builds_again(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

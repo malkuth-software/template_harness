@@ -21,8 +21,9 @@ refused until cross builds are admitted):
 2. Otherwise downloads the pinned archive, checks its SHA-256 against the
    lock before unpacking anything, and unpacks it into
    <cache>/gui-forms-sdk/<tag>/source/ (reused while its digest matches).
-3. Stops, listing them, when the manifest names inputs the build still
-   downloads (network_inputs), unless --allow-network-inputs is given.
+3. Stops, listing them, when the manifest names inputs the build for this
+   target still downloads (network_inputs whose platforms include the
+   target), unless --allow-network-inputs is given.
 4. Runs the build entry point with the harness toolchain into the install
    directory (its build tree is <install>.work/, kept for the next build),
    then writes the build record.
@@ -286,22 +287,30 @@ def build_entry(root: Path, manifest: dict[str, Any]) -> Path:
     return entry
 
 
-def network_inputs(manifest: dict[str, Any]) -> list[str]:
-    """What the build still downloads, one description each (the manifest's network_inputs)."""
+def network_inputs(manifest: dict[str, Any], target: str) -> list[str]:
+    """What the build for target still downloads, one description each.
+
+    The manifest's network_inputs entries name their target platforms; an
+    entry without a platforms list applies to every target. Each is described
+    by its name, its pin (revision or sha256) and where it comes from."""
     listed: Any = manifest.get('network_inputs', [])
     if type(listed) is not list:
         raise FetchError(MANIFEST_NAME + ': network_inputs must be a list')
     described: list[str] = []
     item: Any
     for item in listed:
-        if type(item) is dict:
-            parts: list[str] = []
-            key: str
-            for key in sorted(item):
-                parts.append(key + '=' + str(item[key]))
-            described.append(', '.join(parts))
-        else:
+        if type(item) is not dict:
             described.append(str(item))
+            continue
+        platforms: Any = item.get('platforms')
+        if type(platforms) is list and target not in platforms:
+            continue
+        text: str = str(item.get('name', 'unnamed input'))
+        key: str
+        for key in ('revision', 'sha256', 'upstream', 'fetched_by'):
+            if key in item:
+                text += ', ' + key + ' ' + str(item[key])
+        described.append(text)
     return described
 
 
@@ -419,7 +428,7 @@ def fetch_command(lock: Lock, target: str, cache: Path, jobs: int, allow_network
     root: Path = unpacked_source(lock, source, cache)
     manifest: dict[str, Any] = read_manifest(root)
     entry: Path = build_entry(root, manifest)
-    downloads: list[str] = network_inputs(manifest)
+    downloads: list[str] = network_inputs(manifest, target)
     if downloads and not allow_network_inputs:
         raise FetchError('the SDK build still downloads: ' + '; '.join(downloads)
                          + '. Rerun with --allow-network-inputs to let it.')
