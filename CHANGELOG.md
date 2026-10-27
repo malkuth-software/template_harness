@@ -45,6 +45,10 @@ and new form. Provisional rows there may change without an entry.
   in its `harness.lock` (`[harness] repository, commit`).
 
 ### Changed
+- The bootstrap's warning for a root-layout product also checks that the
+  checkout ignores `.toolchain/` and `.bootstrap/`. restore_local creates
+  them for the Windows toolchain and its downloads
+  (`restore_local.TOOLCHAIN_DIRECTORY`, `DOWNLOAD_DIRECTORY`).
 - On Linux, `restore_local.py toolchain` (and so the bootstrap) prints the
   Ubuntu package command with `HARNESS_PROJECT=<project file>` in front,
   because `install_linux_ci_packages.sh` reads the package set from it.

@@ -404,7 +404,8 @@ With `source_dir = "."`, step 1 clones the product into `DIR` itself.
 `DIR` must be empty or missing, or already that clone, which a re-run
 updates. Steps 1 to 3 then put `template_harness/`, `notes/`,
 `notes-<branch>/` and `projects/` inside the product's checkout, and the
-tools later add `.build/`, `.ccache/` and `.ci/` there. After the clones,
+tools later add `.build/`, `.ccache/`, `.ci/`, `.toolchain/` (the Windows
+toolchain) and `.bootstrap/` (downloads) there. After the clones,
 the bootstrap asks git whether the checkout ignores each of these
 (`git check-ignore`) and prints one warning naming any that are not.
 List them in the product's `.gitignore`.
@@ -486,7 +487,7 @@ A product has adopted the harness when all three of these hold:
 - [ ] `harness.lock` in the product, pinning a commit that contains the project file.
 - [ ] `harness.lock` and every forwarding file listed in `[state_machines] full_tree_triggers`, and in your own change selection.
 - [ ] Every CI job checks the product out at `<source_dir>` (at the root for `"."`), then the harness, then calls harness paths.
-- [ ] At the workspace root: `.gitignore` lists `template_harness/`, `notes/`, `notes-*/`, `projects/`, `.build/`, `.ccache/` and `.ci/`; the bootstrap warns about any it misses.
+- [ ] At the workspace root: `.gitignore` lists `template_harness/`, `notes/`, `notes-*/`, `projects/`, `.build/`, `.ccache/`, `.ci/`, `.toolchain/` and `.bootstrap/`; the bootstrap warns about any it misses.
 - [ ] Any `uses: …@<commit>` pin equals `harness.lock`.
 - [ ] Cache keys hash harness files and the project file, never shims.
 - [ ] Windows: a published toolchain release the restore can read, your own or GUI.Forms' (section 2).
