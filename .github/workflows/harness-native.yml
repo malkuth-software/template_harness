@@ -1,0 +1,271 @@
+name: Harness native build
+# One host's native build for a product that uses the harness: the host's
+# LLVM 22.1.8 toolchain, the compiler cache, then the product's own build
+# command. A product calls it once per host, for example:
+#
+#   jobs:
+#     native-windows:
+#       uses: malkuth-software/template_harness/.github/workflows/harness-native.yml@<commit>
+#       with:
+#         runner: windows-2022
+#         platform: windows-x64
+#         shell: 'msys2 {0}'
+#         product_path: my_product
+#         project: my_product/harness.toml
+#         build_command: python my_product/tools/ci_build.py --jobs 4
+#
+# GitHub runs a reusable workflow only from .github/workflows/, so the
+# harness's workflows/ entry lives here as harness-*.yml.
+#
+# The workspace root holds the product's checkout at product_path and the
+# harness's at harness_path; the harness commit comes from the product's
+# harness_lock ([harness] repository and commit). The harness's own workflows
+# (example.yml) pass harness_path equal to product_path, and the checkout is
+# shared.
+#
+# Per host:
+# - Windows: the CLANG64 toolchain the project's [toolchain] repository
+#   publishes, restored without MSYS2 mirrors (harness/windows_toolchain.py);
+#   it puts msys2.cmd on PATH, so shell 'msys2 {0}' works after it.
+# - macOS: Homebrew's llvm@22, and the macOS 14 minimum runtimes built by
+#   harness/build_macos_runtimes.py into .build/toolchain/ (cached), whose
+#   prefix is <env_prefix>_LLVM_RUNTIME, the variable harness/cmake/llvm22.cmake
+#   reads.
+# - Linux: the project file's [linux_packages.<linux_profile>] packages and
+#   apt.llvm.org's clang-22 (harness/install_linux_ci_packages.sh), with the
+#   downloaded packages kept in an Actions cache; linux_display runs the build
+#   command under Xvfb.
+#
+# Every host then checks the compiler (harness/compiler_identity.py: clang
+# 22.1.8 and ccache), restores the ccache directory, runs build_command from
+# the workspace root, and saves the ccache directory on a push.
+on:
+  workflow_call:
+    inputs:
+      runner:
+        type: string
+        required: true
+      platform:
+        description: windows-x64, macos-arm64, linux-x64 or linux-arm64
+        type: string
+        required: true
+      shell:
+        description: "The build command's shell: 'msys2 {0}' on Windows, bash elsewhere"
+        type: string
+        required: true
+      product_path:
+        description: The product's checkout directory under the workspace root
+        type: string
+        required: true
+      project:
+        description: The project file, relative to the workspace root
+        type: string
+        required: true
+      build_command:
+        description: Run from the workspace root once the toolchain and cache are in place
+        type: string
+        required: true
+      harness_path:
+        description: The harness checkout directory under the workspace root
+        type: string
+        default: template_harness
+      harness_lock:
+        description: The harness pin, relative to the product checkout
+        type: string
+        default: harness.lock
+      linux_profile:
+        description: The project file's [linux_packages.<profile>] for this build
+        type: string
+        default: toolkit
+      linux_display:
+        description: Run the build command under Xvfb on Linux (for tests that open windows)
+        type: boolean
+        default: true
+      macos_runtimes:
+        description: Build (or restore) the macOS 14 minimum LLVM runtimes
+        type: boolean
+        default: true
+      timeout_minutes:
+        type: number
+        default: 40
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    env:
+      HARNESS_WORKSPACE: ${{ github.workspace }}
+      HARNESS_PROJECT: ${{ github.workspace }}/${{ inputs.project }}
+      HARNESS_ROOT: ${{ github.workspace }}/${{ inputs.harness_path }}
+      OBJCXX: clang++
+      CC: clang
+      CXX: clang++
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_OBJCXX_COMPILER_LAUNCHER: ccache
+    defaults:
+      run:
+        shell: ${{ inputs.shell }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ${{ inputs.product_path }}
+      # The harness commit the product pins. Inputs reach scripts through the
+      # environment, never spliced into the script text.
+      - name: Read the harness pin
+        id: pin
+        if: inputs.harness_path != inputs.product_path
+        shell: bash
+        env:
+          LOCK: ${{ inputs.product_path }}/${{ inputs.harness_lock }}
+        run: |
+          python3 - "$LOCK" <<'EOF'
+          import os, sys, tomllib
+          with open(sys.argv[1], 'rb') as handle:
+              pin = tomllib.load(handle)['harness']
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('repository=' + pin['repository'] + '\n')
+              output.write('commit=' + pin['commit'] + '\n')
+          EOF
+      - uses: actions/checkout@v4
+        if: inputs.harness_path != inputs.product_path
+        with:
+          repository: ${{ steps.pin.outputs.repository }}
+          ref: ${{ steps.pin.outputs.commit }}
+          path: ${{ inputs.harness_path }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Read the project's names
+        id: project
+        shell: bash
+        run: |
+          python3 - <<'EOF'
+          import os, sys
+          sys.path.insert(0, os.path.join(os.environ['HARNESS_ROOT'], 'harness'))
+          import project
+          product = project.current()
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('name=' + product.name + '\n')
+              output.write('env-prefix=' + product.env_prefix + '\n')
+              output.write('toolchain-repository=' + product.toolchain_repository + '\n')
+          EOF
+      # Stdlib zstd unpacks the Windows toolchain; the build keeps 3.12.
+      - uses: actions/setup-python@v5
+        id: toolchain-python
+        if: runner.os == 'Windows'
+        with:
+          python-version: '3.14'
+          update-environment: false
+      # windows_toolchain.py reads releases from GITHUB_REPOSITORY; the
+      # toolchain is the project's [toolchain] repository's.
+      - name: Restore the published Windows toolchain without MSYS2 mirrors
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOLCHAIN_PYTHON: ${{ steps.toolchain-python.outputs.python-path }}
+          TOOLCHAIN_REPOSITORY: ${{ steps.project.outputs.toolchain-repository }}
+        run: GITHUB_REPOSITORY="$TOOLCHAIN_REPOSITORY" "$TOOLCHAIN_PYTHON" "$HARNESS_ROOT/harness/windows_toolchain.py" restore
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: |
+          brew install cmake ninja ccache llvm@22
+          echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
+      # llvm22.cmake reads $HARNESS_ENV_PREFIX_LLVM_RUNTIME.
+      - name: Select the macOS 14 runtime prefix
+        if: runner.os == 'macOS' && inputs.macos_runtimes
+        shell: bash
+        env:
+          ENV_PREFIX: ${{ steps.project.outputs.env-prefix }}
+        run: |
+          echo "HARNESS_ENV_PREFIX=$ENV_PREFIX" >> "$GITHUB_ENV"
+          echo "${ENV_PREFIX}_LLVM_RUNTIME=$PWD/.build/toolchain/llvm-22.1.8-macos14" >> "$GITHUB_ENV"
+      # The Ubuntu mirror is sometimes slow, so the downloaded packages are
+      # kept, one cache per runner image; the key hashes the install script
+      # and the project file, whose profile names the packages.
+      - name: Name the Linux package cache
+        id: linux-image
+        if: runner.os == 'Linux'
+        shell: bash
+        run: echo "image=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: linux-packages
+        if: runner.os == 'Linux'
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: ${{ steps.project.outputs.name }}-debs-v1-${{ inputs.linux_profile }}-${{ runner.arch }}-${{ hashFiles(format('{0}/harness/install_linux_ci_packages.sh', inputs.harness_path), inputs.project) }}-${{ steps.linux-image.outputs.image }}
+          restore-keys: ${{ steps.project.outputs.name }}-debs-v1-${{ inputs.linux_profile }}-${{ runner.arch }}-${{ hashFiles(format('{0}/harness/install_linux_ci_packages.sh', inputs.harness_path), inputs.project) }}-
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          PROFILE: ${{ inputs.linux_profile }}
+        run: sh "$HARNESS_ROOT/harness/install_linux_ci_packages.sh" "$PROFILE" "$RUNNER_TEMP/apt-archives"
+      - uses: actions/cache/save@v4
+        if: runner.os == 'Linux' && github.event_name == 'push' && steps.linux-packages.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: ${{ steps.linux-packages.outputs.cache-primary-key }}
+      - name: Identify and verify the LLVM release compiler
+        id: compiler
+        run: python "$HARNESS_ROOT/harness/compiler_identity.py"
+      - uses: actions/cache@v4
+        if: runner.os == 'macOS' && inputs.macos_runtimes
+        with:
+          path: .build/toolchain/llvm-22.1.8-macos14
+          key: ${{ steps.project.outputs.name }}-runtimes-v1-${{ inputs.platform }}-${{ steps.compiler.outputs.identity }}-${{ hashFiles(format('{0}/harness/build_macos_runtimes.py', inputs.harness_path), format('{0}/harness/macos_runtime_manifest.py', inputs.harness_path)) }}
+      - name: Build minimum-compatible macOS runtimes
+        if: runner.os == 'macOS' && inputs.macos_runtimes
+        shell: bash
+        env:
+          ENV_PREFIX: ${{ steps.project.outputs.env-prefix }}
+        run: |
+          variable="${ENV_PREFIX}_LLVM_RUNTIME"
+          runtime="${!variable}"
+          if [ ! -f "$runtime/runtime-manifest.json" ]; then
+            python "$HARNESS_ROOT/harness/build_macos_runtimes.py" --work "$RUNNER_TEMP/llvm-runtimes" --prefix "$runtime" --jobs 4
+          fi
+          python "$HARNESS_ROOT/harness/macos_runtime_manifest.py" "$runtime"
+          python "$HARNESS_ROOT/harness/audit_macos_minimum.py" "$runtime/lib"
+      - name: Configure the compiler cache
+        run: |
+          cache_dir="$PWD/.ccache"
+          cache_base="$PWD"
+          if command -v cygpath >/dev/null; then
+            cache_dir="$(cygpath -m "$cache_dir")"
+            cache_base="$(cygpath -m "$cache_base")"
+          fi
+          echo "CCACHE_DIR=$cache_dir" >> "$GITHUB_ENV"
+          echo "CCACHE_BASEDIR=$cache_base" >> "$GITHUB_ENV"
+          echo "CCACHE_COMPILERCHECK=content" >> "$GITHUB_ENV"
+          echo "CCACHE_MAXSIZE=500M" >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ${{ steps.project.outputs.name }}-objects-v1-${{ inputs.platform }}-${{ steps.compiler.outputs.identity }}-${{ github.sha }}
+          restore-keys: |
+            ${{ steps.project.outputs.name }}-objects-v1-${{ inputs.platform }}-${{ steps.compiler.outputs.identity }}-
+      - name: Build and test
+        env:
+          BUILD_COMMAND: ${{ inputs.build_command }}
+          LINUX_DISPLAY: ${{ inputs.linux_display }}
+        run: |
+          ccache --zero-stats
+          if [ "$RUNNER_OS" = Linux ] && [ "$LINUX_DISPLAY" = true ]; then
+            xvfb-run -a -s "-screen 0 1280x1024x24 -noreset" sh -c "$BUILD_COMMAND"
+          else
+            sh -c "$BUILD_COMMAND"
+          fi
+          ccache --show-stats
+      # Only a push saves objects: a pull request's cache reaches no other ref.
+      - uses: actions/cache/save@v4
+        if: ${{ !cancelled() && steps.compiler.outcome == 'success' && github.event_name == 'push' }}
+        with:
+          path: .ccache
+          key: ${{ steps.project.outputs.name }}-objects-v1-${{ inputs.platform }}-${{ steps.compiler.outputs.identity }}-${{ github.sha }}

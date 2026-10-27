@@ -1,0 +1,74 @@
+name: Example app
+# The harness's own consumer: example_app/ builds against the GUI.Forms SDK
+# pinned in example_app/gui_forms.lock, through the reusable workflows a
+# product calls (harness-*.yml), on each host GUI.Forms supports. Here the
+# harness is its own product: both checkouts are template_harness/, and the
+# project file is projects/example_app.toml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: example-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+jobs:
+  # The harness's tools and the example's SDK fetch, without the network.
+  python-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test the harness and the SDK fetch
+        run: |
+          python3 -B -m unittest discover -s harness -p "test_*.py"
+          python3 -B -m unittest discover -s example_app -p "test_*.py"
+  house-style:
+    uses: ./.github/workflows/harness-house-style.yml
+    with:
+      product_path: template_harness
+      harness_path: template_harness
+      paths: example_app/src example_app/tests
+      lifetime_paths: example_app/src example_app/tests
+  state-machines:
+    uses: ./.github/workflows/harness-state-machines.yml
+    with:
+      product_path: template_harness
+      harness_path: template_harness
+      project: template_harness/projects/example_app.toml
+      linux_profile: consumer
+      configure_command: python3 template_harness/example_app/ci_build.py --configure-only
+      build_dir: .build/native-linux-x64/example-app
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            platform: windows-x64
+            shell: 'msys2 {0}'
+          - runner: macos-15
+            platform: macos-arm64
+            shell: bash
+          - runner: ubuntu-24.04
+            platform: linux-x64
+            shell: bash
+          - runner: ubuntu-24.04-arm
+            platform: linux-arm64
+            shell: bash
+    uses: ./.github/workflows/harness-native.yml
+    with:
+      runner: ${{ matrix.runner }}
+      platform: ${{ matrix.platform }}
+      shell: ${{ matrix.shell }}
+      product_path: template_harness
+      harness_path: template_harness
+      project: template_harness/projects/example_app.toml
+      linux_profile: consumer
+      build_command: python template_harness/example_app/ci_build.py --jobs 4
+      timeout_minutes: 30

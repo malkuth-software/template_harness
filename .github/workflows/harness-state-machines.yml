@@ -1,0 +1,157 @@
+name: Harness state-machine gate
+# House style section 9 for new code: harness/check_state_machines.py fails on
+# any F1 (a switch without a default, not in the compliant form) or F2 (a
+# default that hides enumerators without a stated reason) in the translation
+# units a change can affect. The project file's [state_machines] table names
+# the first-party directories and areas, and its source_dir the root.
+#
+#   jobs:
+#     state-machines:
+#       uses: malkuth-software/template_harness/.github/workflows/harness-state-machines.yml@<commit>
+#       with:
+#         product_path: my_product
+#         project: my_product/harness.toml
+#         configure_command: cmake -S my_product -B build -G Ninja ...
+#         build_dir: build
+#
+# Scopes: a pull request checks what its C and C++ changes can affect against
+# its base, a merge group against the main commit it extends and a push
+# against the commit it replaced, and each passes at once when it changes no
+# C or C++ file. A manual or scheduled run, a push without a usable base and
+# a change to a full-tree trigger check the whole tree.
+#
+# One Linux host: the configure command needs only to write the tree's
+# compile commands (and any generated headers the checker builds), from the
+# workspace root, with the project's [linux_packages.<linux_profile>]
+# installed.
+on:
+  workflow_call:
+    inputs:
+      product_path:
+        description: The product's checkout directory under the workspace root
+        type: string
+        required: true
+      project:
+        description: The project file, relative to the workspace root
+        type: string
+        required: true
+      configure_command:
+        description: Configures a Ninja tree with compile commands, run from the workspace root
+        type: string
+        required: true
+      build_dir:
+        description: The configured tree, relative to the workspace root
+        type: string
+        required: true
+      harness_path:
+        description: The harness checkout directory under the workspace root
+        type: string
+        default: template_harness
+      harness_lock:
+        description: The harness pin, relative to the product checkout
+        type: string
+        default: harness.lock
+      linux_profile:
+        description: The project file's [linux_packages.<profile>] the configure step needs
+        type: string
+        default: toolkit
+permissions:
+  contents: read
+jobs:
+  state-machines:
+    name: state-machine-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HARNESS_WORKSPACE: ${{ github.workspace }}
+      HARNESS_PROJECT: ${{ github.workspace }}/${{ inputs.project }}
+      HARNESS_ROOT: ${{ github.workspace }}/${{ inputs.harness_path }}
+      BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+    steps:
+      # The whole history, so the changed paths come from the merge base.
+      - uses: actions/checkout@v4
+        with:
+          path: ${{ inputs.product_path }}
+          fetch-depth: 0
+      - name: Read the harness pin
+        id: pin
+        if: inputs.harness_path != inputs.product_path
+        env:
+          LOCK: ${{ inputs.product_path }}/${{ inputs.harness_lock }}
+        run: |
+          python3 - "$LOCK" <<'EOF'
+          import os, sys, tomllib
+          with open(sys.argv[1], 'rb') as handle:
+              pin = tomllib.load(handle)['harness']
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('repository=' + pin['repository'] + '\n')
+              output.write('commit=' + pin['commit'] + '\n')
+          EOF
+      - uses: actions/checkout@v4
+        if: inputs.harness_path != inputs.product_path
+        with:
+          repository: ${{ steps.pin.outputs.repository }}
+          ref: ${{ steps.pin.outputs.commit }}
+          path: ${{ inputs.harness_path }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Find the changed C and C++ files
+        id: scope
+        env:
+          PRODUCT_PATH: ${{ inputs.product_path }}
+        run: |
+          scope=full
+          if [ "$GITHUB_EVENT_NAME" != schedule ] && [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] \
+              && [ -n "$BASE" ] && git -C "$PRODUCT_PATH" cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            listed=$(python3 -B "$HARNESS_ROOT/harness/check_state_machines.py" --changed-from "$BASE" --list-changed)
+            if [ -z "$listed" ]; then
+              scope=none
+            elif [ "$listed" != every ]; then
+              scope=changed
+            fi
+            printf '%s\n' "$listed"
+          fi
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
+          echo "State-machine gate scope: $scope"
+      - name: Nothing to check
+        if: steps.scope.outputs.scope == 'none'
+        run: echo "No C or C++ file changed; the gate passes without a tree."
+      - name: Install the configure step's packages
+        if: steps.scope.outputs.scope != 'none'
+        env:
+          PROFILE: ${{ inputs.linux_profile }}
+        run: sh "$HARNESS_ROOT/harness/install_linux_ci_packages.sh" "$PROFILE" "$RUNNER_TEMP/apt-archives"
+      - name: Configure the tree
+        if: steps.scope.outputs.scope != 'none'
+        env:
+          CONFIGURE_COMMAND: ${{ inputs.configure_command }}
+        run: sh -c "$CONFIGURE_COMMAND"
+      - name: Check the state machines
+        if: steps.scope.outputs.scope != 'none'
+        shell: bash
+        env:
+          SCOPE: ${{ steps.scope.outputs.scope }}
+          BUILD_DIR: ${{ inputs.build_dir }}
+        run: |
+          set -o pipefail
+          changed=()
+          if [ "$SCOPE" = changed ]; then
+            changed=(--changed-from "$BASE")
+          fi
+          python3 -B "$HARNESS_ROOT/harness/check_state_machines.py" --build-dir "$BUILD_DIR" --jobs 4 \
+            --gate --json state-machines.json "${changed[@]}" | tee state-machines.txt
+      - name: Show the findings
+        if: always() && steps.scope.outputs.scope != 'none'
+        run: |
+          if [ -f state-machines.txt ]; then
+            { echo '```text'; head -200 state-machines.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.scope.outputs.scope != 'none'
+        with:
+          name: state-machine-findings
+          path: |
+            state-machines.json
+            state-machines.txt
+          if-no-files-found: ignore
