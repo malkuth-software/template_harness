@@ -1,0 +1,516 @@
+#1 stx_conv/src/plan.cpp:269 loop@254 append_basin | source_length_ < 5
+  254     for (std::int64_t cell = first; cell < last; ++cell) {
+  255         const std::int64_t origin = cell * denominator;
+      ...
+  266         } else {
+  267             segment.cell = static_cast<std::size_t>(cell);
+  268             segment.anchor = segment.cell;
+  269             if (source_length_ < 5) {
+  270                 segment.current_weights[0] = segment.anchor_weight * (a + Scalar(0.5) * extent);
+  271             } else {
+
+#2 stx_conv/src/profile.cpp:201 loop@199 synthesize_anchor | Accumulate
+  199     for (std::size_t lane = 0; lane < lanes; ++lane) {
+  200         const Scalar sample = weight * anchors[lane];
+  201         if constexpr (Accumulate) { output[lane] += sample; }
+  202         else { output[lane] = sample; }
+  203     }
+
+#3 stx_conv/src/profile.cpp:222 loop@215 synthesize_currents | Accumulate
+  215     for (std::size_t lane = 0; lane < lanes; ++lane) {
+  216         Scalar sample = anchor_weight * anchors[lane];
+  217         sample += w0 * currents[lane];
+  218         sample += w1 * currents[lanes + lane];
+  219         sample += w2 * currents[2 * lanes + lane];
+  220         sample += w3 * currents[3 * lanes + lane];
+  221         sample += w4 * currents[4 * lanes + lane];
+  222         if constexpr (Accumulate) { output[lane] += sample; }
+  223         else { output[lane] = sample; }
+  224     }
+
+#4 stx_png/src/decoder.cpp:242 loop@239 accept | !unicode
+  239         for (std::byte item : data) {
+  240             const unsigned value = byte(item);
+  241             if (value == 0) return false;
+  242             if (!unicode) continue;
+  243             if (remaining != 0) {
+  244                 if (value < lower || value > upper) return false;
+
+#5 stx_png/src/decoder.cpp:306 loop@302 metadata_field | ValidateText
+  302     for (unsigned field = 0; field < 2; ++field) {
+  303         const std::size_t begin = start;
+  304         while (start < data.size() && data[start] != std::byte{0}) ++start;
+  305         if (start == data.size()) return PngDecodeError::invalid_metadata;
+  306         if constexpr (ValidateText) {
+  307             if (field == 1 && !valid_png_text<true>(data.subspan(begin, start - begin))) {
+  308                 return PngDecodeError::invalid_metadata;
+
+#6 stx_png/src/decoder.cpp:474 loop@472 unfilter_left | Filter == 3
+  472     for (std::size_t index = 0; index < prefix; ++index) {
+  473         unsigned predictor = 0;
+  474         if constexpr (Filter == 3) predictor = byte(previous[index]) / 2;
+  475         if constexpr (Filter == 4) predictor = byte(previous[index]);
+  476         row[index] = static_cast<std::byte>((byte(row[index]) + predictor) & 255U);
+
+#7 stx_png/src/decoder.cpp:475 loop@472 unfilter_left | Filter == 4
+  472     for (std::size_t index = 0; index < prefix; ++index) {
+  473         unsigned predictor = 0;
+  474         if constexpr (Filter == 3) predictor = byte(previous[index]) / 2;
+  475         if constexpr (Filter == 4) predictor = byte(previous[index]);
+  476         row[index] = static_cast<std::byte>((byte(row[index]) + predictor) & 255U);
+  477     }
+
+#8 stx_png/src/decoder.cpp:481 loop@478 unfilter_left | Filter == 3
+  478     for (std::size_t index = prefix; index < row.size(); ++index) {
+  479         const unsigned left = byte(row[index - stride]);
+  480         unsigned predictor = left;
+  481         if constexpr (Filter == 3) predictor = (left + byte(previous[index])) / 2;
+  482         if constexpr (Filter == 4) predictor = paeth(left, byte(previous[index]), byte(previous[index - stride]));
+  483         row[index] = static_cast<std::byte>((byte(row[index]) + predictor) & 255U);
+
+#9 stx_png/src/decoder.cpp:482 loop@478 unfilter_left | Filter == 4
+  478     for (std::size_t index = prefix; index < row.size(); ++index) {
+  479         const unsigned left = byte(row[index - stride]);
+  480         unsigned predictor = left;
+  481         if constexpr (Filter == 3) predictor = (left + byte(previous[index])) / 2;
+  482         if constexpr (Filter == 4) predictor = paeth(left, byte(previous[index]), byte(previous[index - stride]));
+  483         row[index] = static_cast<std::byte>((byte(row[index]) + predictor) & 255U);
+  484     }
+
+#10 stx_png/src/decoder.cpp:510 loop@502 unfilter_sub | Stride * 2 < 16
+  502     for (; row.size() - index >= 16; index += 16) {
+  503         std::array<std::uint8_t, 16> block{};
+  504         for (unsigned lane = 0; lane < 16; ++lane) block[lane] = static_cast<std::uint8_t>(row[index + lane]);
+  505         // Seed one value per channel from the preceding reconstructed bytes.
+  506         for (unsigned lane = 0; lane < Stride; ++lane) {
+  507             block[lane] = static_cast<std::uint8_t>(block[lane] + byte(row[index - Stride + lane]));
+  508         }
+  509         block = prefix_stage<Stride>(block);
+  510         if constexpr (Stride * 2 < 16) block = prefix_stage<Stride * 2>(block);
+  511         if constexpr (Stride * 4 < 16) block = prefix_stage<Stride * 4>(block);
+  512         if constexpr (Stride * 8 < 16) block = prefix_stage<Stride * 8>(block);
+
+#11 stx_png/src/decoder.cpp:511 loop@502 unfilter_sub | Stride * 4 < 16
+  502     for (; row.size() - index >= 16; index += 16) {
+  503         std::array<std::uint8_t, 16> block{};
+  504         for (unsigned lane = 0; lane < 16; ++lane) block[lane] = static_cast<std::uint8_t>(row[index + lane]);
+  505         // Seed one value per channel from the preceding reconstructed bytes.
+  506         for (unsigned lane = 0; lane < Stride; ++lane) {
+  507             block[lane] = static_cast<std::uint8_t>(block[lane] + byte(row[index - Stride + lane]));
+  508         }
+  509         block = prefix_stage<Stride>(block);
+  510         if constexpr (Stride * 2 < 16) block = prefix_stage<Stride * 2>(block);
+  511         if constexpr (Stride * 4 < 16) block = prefix_stage<Stride * 4>(block);
+  512         if constexpr (Stride * 8 < 16) block = prefix_stage<Stride * 8>(block);
+  513         for (unsigned lane = 0; lane < 16; ++lane) row[index + lane] = static_cast<std::byte>(block[lane]);
+
+#12 stx_png/src/decoder.cpp:512 loop@502 unfilter_sub | Stride * 8 < 16
+  502     for (; row.size() - index >= 16; index += 16) {
+  503         std::array<std::uint8_t, 16> block{};
+  504         for (unsigned lane = 0; lane < 16; ++lane) block[lane] = static_cast<std::uint8_t>(row[index + lane]);
+  505         // Seed one value per channel from the preceding reconstructed bytes.
+  506         for (unsigned lane = 0; lane < Stride; ++lane) {
+  507             block[lane] = static_cast<std::uint8_t>(block[lane] + byte(row[index - Stride + lane]));
+  508         }
+  509         block = prefix_stage<Stride>(block);
+  510         if constexpr (Stride * 2 < 16) block = prefix_stage<Stride * 2>(block);
+  511         if constexpr (Stride * 4 < 16) block = prefix_stage<Stride * 4>(block);
+  512         if constexpr (Stride * 8 < 16) block = prefix_stage<Stride * 8>(block);
+  513         for (unsigned lane = 0; lane < 16; ++lane) row[index + lane] = static_cast<std::byte>(block[lane]);
+  514     }
+
+#13 stx_png/src/decoder.cpp:575 loop@572 scatter | Color == 3
+  572     for (std::size_t x = 0; x < pass.width; ++x) {
+  573         const std::size_t source = x * channels;
+  574         const unsigned first = sample<Depth>(row, source);
+  575         if constexpr (Color == 3) {
+  576             if (first >= plan.palette_count) return PngDecodeError::invalid_palette_index;
+  577             for (unsigned channel = 0; channel < 4; ++channel) rgba[destination + channel] = plan.palette[first][channel];
+
+#14 stx_png/src/decoder.cpp:583 loop@572 scatter | Color == 2 || Color == 6
+  572     for (std::size_t x = 0; x < pass.width; ++x) {
+  573         const std::size_t source = x * channels;
+      ...
+  580             unsigned green = first;
+  581             unsigned blue = first;
+  582             unsigned alpha = 65535;
+  583             if constexpr (Color == 2 || Color == 6) {
+  584                 green = sample<Depth>(row, source + 1);
+  585                 blue = sample<Depth>(row, source + 2);
+
+#15 stx_png/src/decoder.cpp:587 loop@572 scatter | Color == 4 || Color == 6
+  572     for (std::size_t x = 0; x < pass.width; ++x) {
+  573         const std::size_t source = x * channels;
+      ...
+  584                 green = sample<Depth>(row, source + 1);
+  585                 blue = sample<Depth>(row, source + 2);
+  586             }
+  587             if constexpr (Color == 4 || Color == 6) {
+  588                 alpha = sample<Depth>(row, source + channels - 1) * scale;
+  589             } else if constexpr (Color == 0 && Transparent) {
+
+#16 stx_png/src/decoder.cpp:589 loop@572 scatter | Color == 0 && Transparent
+  572     for (std::size_t x = 0; x < pass.width; ++x) {
+  573         const std::size_t source = x * channels;
+      ...
+  586             }
+  587             if constexpr (Color == 4 || Color == 6) {
+  588                 alpha = sample<Depth>(row, source + channels - 1) * scale;
+  589             } else if constexpr (Color == 0 && Transparent) {
+  590                 if (first == transparency[0]) alpha = 0;
+  591             } else if constexpr (Color == 2 && Transparent) {
+
+#17 stx_png/src/decoder.cpp:591 loop@572 scatter | Color == 2 && Transparent
+  572     for (std::size_t x = 0; x < pass.width; ++x) {
+  573         const std::size_t source = x * channels;
+      ...
+  588                 alpha = sample<Depth>(row, source + channels - 1) * scale;
+  589             } else if constexpr (Color == 0 && Transparent) {
+  590                 if (first == transparency[0]) alpha = 0;
+  591             } else if constexpr (Color == 2 && Transparent) {
+  592                 if (red == transparency[0] && green == transparency[1] &&
+  593                     blue == transparency[2]) alpha = 0;
+
+#18 stx_png/src/decoder.cpp:795 loop@778 measure_metadata | chunk.type == ztxt || chunk.type == itxt
+  778         for (;;) {
+  779             const std::span<const std::byte> pending = input.subspan(consumed);
+      ...
+  792                 return PngDecodeError::resource_limit;
+  793             }
+  794             if (step.total_output.value > size_max - completed_bytes) return PngDecodeError::resource_limit;
+  795             if (chunk.type == ztxt || chunk.type == itxt) {
+  796                 const std::span<const std::byte> decoded = scratch.first(step.output_produced);
+  797                 if (!text_scan.accept(decoded, chunk.type == itxt)) return PngDecodeError::invalid_metadata;
+
+#19 stx_png/src/encoder.cpp:59 loop@57 gather_row | input.alpha == PngSourceAlpha::opaque
+   57     for (std::uint32_t column = 0; column < input.width; ++column) {
+   58         const std::byte* pixel = source + static_cast<std::size_t>(column) * 4U;
+   59         if (input.alpha == PngSourceAlpha::opaque) {
+   60             line[at] = pixel[red];
+   61             line[at + 1U] = pixel[1];
+
+#20 stx_png/src/encoder.cpp:68 loop@57 gather_row | input.alpha == PngSourceAlpha::premultiplied
+   57     for (std::uint32_t column = 0; column < input.width; ++column) {
+   58         const std::byte* pixel = source + static_cast<std::size_t>(column) * 4U;
+      ...
+   65         }
+   66         const unsigned alpha = std::to_integer<unsigned>(pixel[3]);
+   67         std::array<std::byte, 3> colour{pixel[red], pixel[1], pixel[blue]};
+   68         if (input.alpha == PngSourceAlpha::premultiplied) {
+   69             for (std::size_t channel = 0; channel < 3U; ++channel) {
+   70                 const unsigned value = std::to_integer<unsigned>(colour[channel]);
+
+#21 stx_png/src/encoder.cpp:72 loop@69 gather_row | alpha != 0U
+   69             for (std::size_t channel = 0; channel < 3U; ++channel) {
+   70                 const unsigned value = std::to_integer<unsigned>(colour[channel]);
+   71                 unsigned straight = 0U;
+   72                 if (alpha != 0U) straight = std::min(255U, (value * 255U + alpha / 2U) / alpha);
+   73                 colour[channel] = static_cast<std::byte>(straight);
+   74             }
+
+#22 stx_png/src/encoder.cpp:111 loop@105 filter_row | filter == 1U
+  105     for (std::size_t index = 0; index < line.size(); ++index) {
+  106         const unsigned value = std::to_integer<unsigned>(line[index]);
+  107         const unsigned up = std::to_integer<unsigned>(above[index]);
+  108         const unsigned left = index < stride ? 0U : std::to_integer<unsigned>(line[index - stride]);
+  109         const unsigned corner = index < stride ? 0U : std::to_integer<unsigned>(above[index - stride]);
+  110         unsigned predicted = 0U;
+  111         if (filter == 1U) predicted = left;
+  112         if (filter == 2U) predicted = up;
+  113         if (filter == 3U) predicted = (left + up) / 2U;
+
+#23 stx_png/src/encoder.cpp:112 loop@105 filter_row | filter == 2U
+  105     for (std::size_t index = 0; index < line.size(); ++index) {
+  106         const unsigned value = std::to_integer<unsigned>(line[index]);
+  107         const unsigned up = std::to_integer<unsigned>(above[index]);
+  108         const unsigned left = index < stride ? 0U : std::to_integer<unsigned>(line[index - stride]);
+  109         const unsigned corner = index < stride ? 0U : std::to_integer<unsigned>(above[index - stride]);
+  110         unsigned predicted = 0U;
+  111         if (filter == 1U) predicted = left;
+  112         if (filter == 2U) predicted = up;
+  113         if (filter == 3U) predicted = (left + up) / 2U;
+  114         if (filter == 4U) predicted = paeth_predictor(left, up, corner);
+
+#24 stx_png/src/encoder.cpp:113 loop@105 filter_row | filter == 3U
+  105     for (std::size_t index = 0; index < line.size(); ++index) {
+  106         const unsigned value = std::to_integer<unsigned>(line[index]);
+  107         const unsigned up = std::to_integer<unsigned>(above[index]);
+  108         const unsigned left = index < stride ? 0U : std::to_integer<unsigned>(line[index - stride]);
+  109         const unsigned corner = index < stride ? 0U : std::to_integer<unsigned>(above[index - stride]);
+  110         unsigned predicted = 0U;
+  111         if (filter == 1U) predicted = left;
+  112         if (filter == 2U) predicted = up;
+  113         if (filter == 3U) predicted = (left + up) / 2U;
+  114         if (filter == 4U) predicted = paeth_predictor(left, up, corner);
+  115         output[1U + index] = static_cast<std::byte>((value - predicted) & 255U);
+
+#25 stx_png/src/encoder.cpp:114 loop@105 filter_row | filter == 4U
+  105     for (std::size_t index = 0; index < line.size(); ++index) {
+  106         const unsigned value = std::to_integer<unsigned>(line[index]);
+  107         const unsigned up = std::to_integer<unsigned>(above[index]);
+  108         const unsigned left = index < stride ? 0U : std::to_integer<unsigned>(line[index - stride]);
+  109         const unsigned corner = index < stride ? 0U : std::to_integer<unsigned>(above[index - stride]);
+  110         unsigned predicted = 0U;
+  111         if (filter == 1U) predicted = left;
+  112         if (filter == 2U) predicted = up;
+  113         if (filter == 3U) predicted = (left + up) / 2U;
+  114         if (filter == 4U) predicted = paeth_predictor(left, up, corner);
+  115         output[1U + index] = static_cast<std::byte>((value - predicted) & 255U);
+  116     }
+
+#26 stx_png/src/encoder.cpp:221 loop@218 encode_png | input.compression_level == 0
+  218         for (std::uint32_t row = 0; row < input.height; ++row) {
+  219             gather_row(input, row, line);
+  220             unsigned chosen = 0U;
+  221             if (input.compression_level == 0) {
+  222                 filter_row(0U, line, above, channels, std::span<std::byte>(candidates.data(), candidate_bytes));
+  223             } else {
+
+#27 stx_png/src/pixels.cpp:38 loop@33 convert_rows | Alpha == PixelAlpha::straight
+   33         for (std::uint32_t x = 0; x < width; ++x) {
+   34             const std::uint64_t r = samples[source];
+   35             const std::uint64_t g = samples[source + 1U];
+   36             const std::uint64_t b = samples[source + 2U];
+   37             const std::uint64_t a = samples[source + 3U];
+   38             if constexpr (Alpha == PixelAlpha::straight) {
+   39                 pixels[destination + red] = straight_channel(r);
+   40                 pixels[destination + 1U] = straight_channel(g);
+
+#28 stx_vorbis/src/c_adapter.cpp:206 loop@202 read_float | interleaved != nullptr
+  202     while (written < frames && handle.next() == Status::pcm) {
+  203         stx_vorbis::Decoder& decoder = handle.decoder();
+  204         const stx_vorbis::PcmView pcm = decoder.output();
+  205         const unsigned int count = std::min(frames - written, pcm.frames);
+  206         if (interleaved != nullptr) float_interleaved(pcm, interleaved + std::size_t{written} * channels, channels, count);
+  207         else float_planar(pcm, planar, channels, count, written);
+  208         const Status consumed = decoder.consume(one_frame ? pcm.frames : count); (void)consumed;
+
+#29 stx_vorbis/src/c_adapter.cpp:208 loop@202 read_float | one_frame
+  202     while (written < frames && handle.next() == Status::pcm) {
+  203         stx_vorbis::Decoder& decoder = handle.decoder();
+  204         const stx_vorbis::PcmView pcm = decoder.output();
+  205         const unsigned int count = std::min(frames - written, pcm.frames);
+  206         if (interleaved != nullptr) float_interleaved(pcm, interleaved + std::size_t{written} * channels, channels, count);
+  207         else float_planar(pcm, planar, channels, count, written);
+  208         const Status consumed = decoder.consume(one_frame ? pcm.frames : count); (void)consumed;
+  209         written += count;
+  210         if (one_frame) break;
+
+#30 stx_vorbis/src/c_adapter.cpp:210 loop@202 read_float | one_frame
+  202     while (written < frames && handle.next() == Status::pcm) {
+  203         stx_vorbis::Decoder& decoder = handle.decoder();
+  204         const stx_vorbis::PcmView pcm = decoder.output();
+  205         const unsigned int count = std::min(frames - written, pcm.frames);
+  206         if (interleaved != nullptr) float_interleaved(pcm, interleaved + std::size_t{written} * channels, channels, count);
+  207         else float_planar(pcm, planar, channels, count, written);
+  208         const Status consumed = decoder.consume(one_frame ? pcm.frames : count); (void)consumed;
+  209         written += count;
+  210         if (one_frame) break;
+  211     }
+  212     return static_cast<int>(written);
+
+#31 stx_vorbis/src/c_adapter.cpp:221 loop@217 read_short | interleaved != nullptr
+  217     while (written < frames && handle.next() == Status::pcm) {
+  218         stx_vorbis::Decoder& decoder = handle.decoder();
+  219         const stx_vorbis::PcmView pcm = decoder.output();
+  220         const unsigned int count = std::min(frames - written, pcm.frames);
+  221         if (interleaved != nullptr) short_interleaved(pcm, interleaved + std::size_t{written} * channels, channels, count);
+  222         else short_planar(pcm, planar, channels, count, written);
+  223         const Status consumed = decoder.consume(one_frame ? pcm.frames : count); (void)consumed;
+
+#32 stx_vorbis/src/c_adapter.cpp:223 loop@217 read_short | one_frame
+  217     while (written < frames && handle.next() == Status::pcm) {
+  218         stx_vorbis::Decoder& decoder = handle.decoder();
+  219         const stx_vorbis::PcmView pcm = decoder.output();
+  220         const unsigned int count = std::min(frames - written, pcm.frames);
+  221         if (interleaved != nullptr) short_interleaved(pcm, interleaved + std::size_t{written} * channels, channels, count);
+  222         else short_planar(pcm, planar, channels, count, written);
+  223         const Status consumed = decoder.consume(one_frame ? pcm.frames : count); (void)consumed;
+  224         written += count;
+  225         if (one_frame) break;
+
+#33 stx_vorbis/src/c_adapter.cpp:225 loop@217 read_short | one_frame
+  217     while (written < frames && handle.next() == Status::pcm) {
+  218         stx_vorbis::Decoder& decoder = handle.decoder();
+  219         const stx_vorbis::PcmView pcm = decoder.output();
+  220         const unsigned int count = std::min(frames - written, pcm.frames);
+  221         if (interleaved != nullptr) short_interleaved(pcm, interleaved + std::size_t{written} * channels, channels, count);
+  222         else short_planar(pcm, planar, channels, count, written);
+  223         const Status consumed = decoder.consume(one_frame ? pcm.frames : count); (void)consumed;
+  224         written += count;
+  225         if (one_frame) break;
+  226     }
+  227     return static_cast<int>(written);
+
+#34 stx_vorbis/src/ogg.cpp:250 loop@209 next | page_eos && segment_count == 0
+  209         while (true) {
+  210             if (page_size == 0) {
+      ...
+  247                 return emit_packet(packet, output, current_segment);
+  248             }
+  249             if (page_eos && !stream.assembly.empty()) return report(Status::truncated, false, stream.serial);
+  250             const bool empty_end = page_eos && segment_count == 0;
+  251             if (empty_end) {
+  252                 ended = OggStreamEnd{stream.serial, sequence, std::nullopt};
+
+#35 stx_vorbis/src/ogg.cpp:257 loop@209 next | page_eos
+  209         while (true) {
+  210             if (page_size == 0) {
+      ...
+  254             }
+  255             cursor += page_size;
+  256             page_size = 0;
+  257             if (page_eos) streams.erase(streams.begin() + static_cast<std::ptrdiff_t>(stream_index));
+  258             compact();
+  259             if (empty_end) return Status::event;
+
+#36 stx_vorbis/src/packet.cpp:157 loop@156 residue | pass == 0
+  156         while (partition < partitions) {
+  157             if (pass == 0) {
+  158                 for (unsigned int channel = 0; channel < vectors; ++channel) {
+  159                     unsigned int value = symbol(workspace, reader, classbook);
+
+#37 stx_vorbis/src/packet.cpp:180 loop@175 residue | configuration.type == 0
+  175                 for (unsigned int channel = 0; channel < vectors; ++channel) {
+  176                     const unsigned int classification = workspace.classifications[channel * class_stride + partition];
+  177                     const int selected = configuration.books[classification][pass];
+  178                     if (selected < 0) continue;
+  179                     const Codebook& book = setup.books[static_cast<std::size_t>(selected)];
+  180                     if (configuration.type == 0) {
+  181                         const unsigned int step = configuration.partition_size / book.dimensions;
+  182                         for (unsigned int column = 0; column < step; ++column) {
+
+#38 stx_vorbis/src/packet.cpp:197 loop@192 residue | configuration.type == 1
+  192                         while (position < configuration.partition_size) {
+  193                             const unsigned int entry = symbol(workspace, reader, book);
+  194                             const unsigned int count = std::min(book.dimensions, configuration.partition_size - position);
+  195                             charge(workspace, count);
+  196                             const std::size_t source = std::size_t{entry} * book.dimensions;
+  197                             if (configuration.type == 1) {
+  198                                 const std::size_t destination = std::size_t{workspace.bundle[channel]} * workspace.stride + offset + position;
+  199                                 for (unsigned int index = 0; index < count; ++index) workspace.spectrum[destination + index] += book.values[source + i
+
+#39 stx_vorbis/src/packet.cpp:351 loop@341 decode_packet | mode.large
+  341     for (unsigned int channel = 0; channel < channels; ++channel) {
+  342         const std::size_t base = std::size_t{channel} * workspace.stride;
+  343         const std::span<double> spectrum(workspace.spectrum.data() + base, bins);
+  344         const std::span<double> time(workspace.time.data() + 2 * base, block);
+  345         if (workspace.floor_present[channel]) {
+  346             charge(workspace, std::uint64_t{block} * ilog(block - 1));
+  347             for (unsigned int bin = 0; bin < bins; ++bin) {
+  348                 spectrum[bin] *= workspace.floor_curve[base + bin];
+  349                 require(std::isfinite(spectrum[bin]), Status::invalid_packet);
+  350             }
+  351             workspace.synthesize(workspace, setup, mode.large ? 1 : 0, spectrum, time);
+  352             window(time, setup, mode.large, previous_large, next_large);
+  353         } else std::fill(time.begin(), time.end(), 0.0);
+
+#40 stx_vorbis/src/setup.cpp:90 loop@87 parse_book | lookup == 1
+   87         for (std::uint32_t dimension = 0; dimension < book.dimensions; ++dimension) {
+   88             const std::size_t destination = std::size_t{entry} * book.dimensions + dimension;
+   89             std::size_t index = destination;
+   90             if (lookup == 1) { index = quotient % count; quotient /= static_cast<std::uint32_t>(count); }
+   91             const double value = static_cast<double>(multiplicands[index]) * delta + minimum + last;
+   92             require(std::isfinite(value));
+
+#41 stx_vorbis/src/setup.cpp:94 loop@87 parse_book | sequence
+   87         for (std::uint32_t dimension = 0; dimension < book.dimensions; ++dimension) {
+   88             const std::size_t destination = std::size_t{entry} * book.dimensions + dimension;
+   89             std::size_t index = destination;
+   90             if (lookup == 1) { index = quotient % count; quotient /= static_cast<std::uint32_t>(count); }
+   91             const double value = static_cast<double>(multiplicands[index]) * delta + minimum + last;
+   92             require(std::isfinite(value));
+   93             book.values[destination] = value;
+   94             if (sequence) last = value;
+   95         }
+   96     }
+
+#42 stx_vorbis/src/setup.cpp:363 loop@361 parse_setup | synthesis == Synthesis::automatic
+  361     for (unsigned int index = 0; index < 2; ++index) {
+  362         const unsigned int block = setup.identification.blocks[index];
+  363         if (synthesis == Synthesis::automatic) {
+  364             setup.bfft_plans[index].emplace(block, *memory);
+  365             prepare_window(setup.transforms[index], block);
+
+#43 stx_zlib/src/deflate.cpp:192 loop@191 search_match | Checked
+  191     for (unsigned searched = 0; searched < attempts && (link & 65535U) != 65535U; ++searched) {
+  192         if constexpr (Checked) {
+  193             if (best.work == allowance) {
+  194                 best.exhausted = true;
+
+#44 stx_zlib/src/deflate.cpp:217 loop@216 search_match | Checked
+  216             while (maximum - length >= 8) {
+  217                 if constexpr (Checked) {
+  218                     if (allowance - best.work < 8) {
+  219                         best.exhausted = true;
+
+#45 stx_zlib/src/deflate.cpp:230 loop@216 search_match | std::endian::native == std::endian::little
+  216             while (maximum - length >= 8) {
+  217                 if constexpr (Checked) {
+      ...
+  227                 std::memcpy(&right, data_.data() + position + length, 8);
+  228                 if (left != right) {
+  229                     const std::uint64_t difference = left ^ right;
+  230                     if constexpr (std::endian::native == std::endian::little) {
+  231                         length += static_cast<unsigned>(std::countr_zero(difference)) / 8;
+  232                         mismatch = true;
+
+#46 stx_zlib/src/deflate.cpp:233 loop@216 search_match | std::endian::native == std::endian::big
+  216             while (maximum - length >= 8) {
+  217                 if constexpr (Checked) {
+      ...
+  230                     if constexpr (std::endian::native == std::endian::little) {
+  231                         length += static_cast<unsigned>(std::countr_zero(difference)) / 8;
+  232                         mismatch = true;
+  233                     } else if constexpr (std::endian::native == std::endian::big) {
+  234                         length += static_cast<unsigned>(std::countl_zero(difference)) / 8;
+  235                         mismatch = true;
+
+#47 stx_zlib/src/deflate.cpp:242 loop@241 search_match | Checked
+  241             while (!mismatch && length < maximum) {
+  242                 if constexpr (Checked) {
+  243                     if (best.work == allowance) {
+  244                         best.exhausted = true;
+
+#48 stx_zlib/src/deflate.cpp:813 loop@775 process | flush == DeflateFlush::none
+  775     while (phase_ != Phase::failed && phase_ != Phase::done) {
+  776         if (pending_read_ != pending_size_) {
+      ...
+  810             }
+  811             // Keep an exact full block until finality is known. Input/output
+  812             // segmentation consequently cannot change the BFINAL decision.
+  813             if (flush == DeflateFlush::none) break;
+  814             if (!finish_boundary(flush)) break;
+  815             continue;
+
+#49 stx_zlib/src/deflate.cpp:827 loop@775 process | options_.format == DeflateFormat::zlib
+  775     while (phase_ != Phase::failed && phase_ != Phase::done) {
+  776         if (pending_read_ != pending_size_) {
+      ...
+  824             if (count > allowance) count = static_cast<std::size_t>(allowance);
+  825             if (!charge(2 * count)) break;
+  826             std::memcpy(data_.data() + history_live_ + block_live_, input.data() + read, count);
+  827             if (options_.format == DeflateFormat::zlib) adler_ = adler32_update(adler_, input.subspan(read, count));
+  828             read += count;
+  829             block_live_ += count;
+
+#50 stx_zlib/src/deflate.cpp:833 loop@775 process | flush == DeflateFlush::none
+  775     while (phase_ != Phase::failed && phase_ != Phase::done) {
+  776         if (pending_read_ != pending_size_) {
+      ...
+  830             input_total_.value += count;
+  831             continue;
+  832         }
+  833         if (flush == DeflateFlush::none) break;
+  834         if (!finish_boundary(flush)) break;
+  835     }
+
+#51 stx_zlib/src/inflate.cpp:269 loop@265 make_fixed_tree | !distance_alphabet
+  265     for (unsigned symbol_value = 0; symbol_value < count; ++symbol_value) {
+  266         unsigned length = 5;
+  267         unsigned code = symbol_value;
+  268         unsigned index = symbol_value;
+  269         if (!distance_alphabet) {
+  270             if (symbol_value < 144) {
+  271                 length = 8;
+

@@ -1,0 +1,103 @@
+318 [('controls', 151), ('core', 102), ('stx_png', 24), ('stx_vorbis', 15), ('stx_zlib', 9), ('host-windows', 8), ('stx_conv', 3), ('demo', 2), ('render', 2), ('audio', 1), ('host-linux', 1)]
+src/core/background_worker/background_worker.cpp:76 [for if] post_from_worker | !wait_for_room | reads wait_for_room, unchanged in the loop
+src/core/binding/binding_source/binding_source.cpp:541 [range-for conditional] transfer_bindings | source_to_control | reads source_to_control, unchanged in the loop
+src/core/control/control/control.cpp:2318 [for if] end_init | initialization_depth_ != 0 | reads initialization_depth_, unchanged in the loop
+src/core/control/control/control.cpp:2521 [range-for conditional] arrange | mirrored | reads mirrored, unchanged in the loop
+src/core/control/control/control.cpp:2555 [range-for conditional] arrange | mirrored | reads mirrored, unchanged in the loop
+src/core/docking/dock_drop_targets/dock_drop_targets.cpp:230 [for if] find_dock_drop_target | hit.edge | reads hit, unchanged in the loop
+src/core/docking/dock_layout/dock_layout_edits.cpp:231 [for if] remember | place.region == DockRegion::auto_hidden && entry != nullptr | reads entry, place, unchanged in the loop
+src/core/docking/dock_layout/dock_layout_edits.cpp:236 [for if] remember | place.region == DockRegion::floating && site != nullptr | reads place, site, unchanged in the loop
+src/core/docking/dock_layout/dock_layout_edits.cpp:243 [for if] remember | place.region == DockRegion::main_tools || place.region == DockRegion:: | reads place, unchanged in the loop
+src/core/docking/dock_layout/dock_layout_persistence.cpp:925 [range-for conditional] ensure_records | node.kind == DockNodeKind::tool_stack | reads node, unchanged in the loop
+src/core/drawing/bitmap/bitmap.cpp:190 [for if] adjusted | !adjustment.color_matrix.has_value() | reads adjustment, unchanged in the loop
+src/core/engine/authored_gradient/authored_gradient.cpp:70 [for conditional] place_stops | line > 0.0 | reads line, unchanged in the loop
+src/core/engine/feature_samples/engine_feature_samples.cpp:606 [for or] feature_sample_image_pixels | row == 1U || row == side - 2U | reads row, side, unchanged in the loop
+src/core/engine/motion_clock/motion_clock.cpp:84 [range-for if] stop_ambient | repaint | reads repaint, unchanged in the loop
+src/core/engine/part_table/engine_part_table.cpp:177 [for if] assemble_slices | across.outcome != SliceAxisOutcome::sliced | reads across, unchanged in the loop
+src/core/engine/part_table/engine_part_table.cpp:614 [for if] lend_image_variants | images == nullptr | reads images, unchanged in the loop
+src/core/engine/primitives/bulge/bulge_primitives.cpp:599 [for conditional] fill | gold | reads gold, unchanged in the loop
+src/core/engine/primitives/light/glass_primitive.cpp:190 [for if] fill | sampled | reads sampled, unchanged in the loop
+src/core/engine/primitives/light/glass_primitive.cpp:194 [for if] fill | filtered | reads filtered, unchanged in the loop
+src/core/engine/primitives/light/glass_primitive.cpp:196 [for if] fill | flattened_over_backplane | reads flattened_over_backplane, unchanged in the loop
+src/core/engine/primitives/light/glass_primitive.cpp:198 [for if] fill | filtered | reads filtered, unchanged in the loop
+src/core/engine/primitives/light/glass_primitive.cpp:201 [for if] fill | flattened | reads flattened, unchanged in the loop
+src/core/engine/primitives/material/material_primitive.cpp:553 [range-for conditional] resolve_look_at | outline.uniform | reads outline, unchanged in the loop
+src/core/engine/primitives/material/material_primitive.cpp:1112 [for if] material_pixel | cached | reads cached, unchanged in the loop
+src/core/engine/primitives/material/material_primitive.cpp:1279 [for and] add_drop_shadow | source_row >= 0 && source_row < high | reads high, source_row, unchanged in the loop
+src/core/engine/primitives/material/material_primitive.cpp:1609 [range-for conditional] axis_reach | across | reads across, unchanged in the loop
+src/core/engine/primitives/relief/relief_primitives.cpp:574 [for conditional] fill | upright | reads upright, unchanged in the loop
+src/core/engine/primitives/relief/relief_primitives.cpp:575 [for conditional] fill | upright | reads upright, unchanged in the loop
+src/core/engine/primitives/relief/relief_primitives.cpp:609 [for conditional] fill | upright | reads upright, unchanged in the loop
+src/core/engine/primitives/relief/relief_primitives.cpp:610 [for conditional] fill | upright | reads upright, unchanged in the loop
+src/core/engine/primitives/relief/relief_primitives.cpp:649 [for if] fill | row_ink | reads row_ink, unchanged in the loop
+src/core/engine/theme_rules/theme_rules.cpp:415 [for if] place_images | sizes != nullptr && !(*sizes).image_sizes.empty() | reads sizes, unchanged in the loop
+src/core/engine/theme_rules/theme_rules.cpp:425 [for if] place_images | positions != nullptr && !(*positions).image_positions.empty() | reads positions, unchanged in the loop
+src/core/engine/theme_rules/theme_rules.cpp:468 [for conditional] compose_fills | modes.empty() | reads modes, unchanged in the loop
+src/core/engine/theme_rules/theme_rules.cpp:895 [for conditional] add_rules | engine_table | reads engine_table, unchanged in the loop
+src/core/engine/theme_rules/theme_rules.cpp:1140 [range-for if] add_recipe_fields | on_part | reads on_part, unchanged in the loop
+src/core/engine/theme_rules/theme_rules.cpp:1472 [range-for if] resolve_transitions | same_primitive | reads same_primitive, unchanged in the loop
+src/core/host/image/clipboard_dib.cpp:113 [for conditional] decode_clipboard_dib | top_down | reads top_down, unchanged in the loop
+src/core/host/image/clipboard_dib.cpp:118 [for if] decode_clipboard_dib | bits == 24U | reads bits, unchanged in the loop
+src/core/image/color_conversion.cpp:197 [for conditional] convert_samples_to_srgb | stated_gamma | reads stated_gamma, unchanged in the loop
+src/core/layout/block_flow_solver/block_flow_solver.cpp:236 [for conditional] place_inline_run | right_to_left | reads right_to_left, unchanged in the loop
+src/core/layout/block_flow_solver/block_flow_solver.cpp:319 [range-for if] block_flow_intrinsic_width | kind == BlockFlowIntrinsicKind::min_content | reads kind, unchanged in the loop
+src/core/layout/flex_solver/flex_solver.cpp:355 [for if] resolve_flex_main_sizes | !available.definite | reads available, unchanged in the loop
+src/core/layout/flex_solver/flex_solver.cpp:366 [for conditional] resolve_flex_main_sizes | growing | reads growing, unchanged in the loop
+src/core/layout/flex_solver/flex_solver.cpp:396 [for conditional] resolve_flex_main_sizes | growing | reads growing, unchanged in the loop
+src/core/layout/flex_solver/flex_solver.cpp:410 [for if] resolve_flex_main_sizes | remaining != 0.0 && growing | reads growing, remaining, unchanged in the loop
+src/core/layout/flex_solver/flex_solver.cpp:412 [for if] resolve_flex_main_sizes | remaining != 0.0 && scaled_shrink > 0.0 | reads remaining, scaled_shrink, unchanged in the loop
+src/core/layout/flex_solver/flex_solver.cpp:534 [range-for conditional] place_flex_items | main_space.definite | reads main_space, unchanged in the loop
+src/core/layout/flex_solver/flex_solver.cpp:602 [for conditional] place_flex_items | main_reversed | reads main_reversed, unchanged in the loop
+src/core/layout/flex_solver/flex_solver.cpp:604 [for conditional] place_flex_items | cross_reversed | reads cross_reversed, unchanged in the loop
+src/core/layout/flex_solver/flex_solver.cpp:605 [for if] place_flex_items | horizontal | reads horizontal, unchanged in the loop
+src/core/layout/grid_solver/grid_solver.cpp:376 [while if] share_equally | limited | reads limited, unchanged in the loop
+src/core/layout/grid_solver/grid_solver.cpp:418 [for conditional] share_by_fraction | fractions > 0.0 | reads fractions, unchanged in the loop
+src/core/layout/grid_solver/grid_solver.cpp:475 [range-for if] run_spanning_step | step.flexible_only | reads step, unchanged in the loop
+src/core/layout/grid_solver/grid_solver.cpp:493 [for conditional] run_spanning_step | candidates == 0U | reads candidates, unchanged in the loop
+src/core/layout/grid_solver/grid_solver.cpp:510 [for if] run_spanning_step | step.target == SizeTarget::base | reads step, unchanged in the loop
+src/core/layout/grid_solver/grid_solver.cpp:514 [for if] run_spanning_step | step.marks_growable | reads step, unchanged in the loop
+src/core/layout/grid_solver/grid_solver.cpp:826 [range-for if] line_index | axis == GridAxis::columns | reads axis, unchanged in the loop
+src/core/layout/grid_solver/grid_solver.cpp:826 [range-for conditional] line_index | start_side | reads start_side, unchanged in the loop
+src/core/layout/grid_solver/grid_solver.cpp:827 [range-for conditional] line_index | start_side | reads start_side, unchanged in the loop
+src/core/layout/grid_solver/grid_solver.cpp:1001 [for if] build_tracks | pattern == 0 | reads pattern, unchanged in the loop
+src/core/layout/grid_solver/grid_solver.cpp:1162 [for conditional] place_grid_items | dense | reads dense, unchanged in the loop
+src/core/layout/grid_solver/grid_solver.cpp:1183 [for if] place_grid_items | dense | reads dense, unchanged in the loop
+src/core/layout/grid_solver/grid_solver.cpp:1191 [for if] place_grid_items | dense | reads dense, unchanged in the loop
+src/core/layout/grid_solver/grid_solver.cpp:1606 [for if] arrange_grid_items | mirrored | reads mirrored, unchanged in the loop
+src/core/layout/style_reader/layout_style_reader.cpp:1848 [for conditional] append_track_list | list.auto_repeat == AutoRepeatKind::auto_fill | reads list, unchanged in the loop
+src/core/live_surface/surface/live_surface.cpp:97 [for if] try_acquire_write | preserve_published_contents && (*state_).published_slot < (*state_).bu | reads preserve_published_contents, state_, unchanged in the 
+src/core/pages/page_set/page_set.cpp:571 [for if] drain_notifications | !*alive | reads alive, unchanged in the loop
+src/core/text/composite/text_composite.cpp:242 [for if] composite_text_coverage | !target.opaque | reads target, unchanged in the loop
+src/core/text/prepared/prepared_storage.cpp:312 [for if] validate_prepared_input | text.empty() | reads text, unchanged in the loop
+src/core/text_shaping/validation/text_shaping_validation.cpp:102 [range-for conditional] validate_glyph_run | request.direction == TextDirection::left_to_right | reads request, unchanged in the loop
+src/core/theme/part_painting/part_painting.cpp:159 [for if] fill_arrow_strips | horizontal_strips | reads horizontal_strips, unchanged in the loop
+src/core/theme_language/material/theme_material_lowering.cpp:582 [for if] read_stops | kind == MaterialFillKind::conic_gradient | reads kind, unchanged in the loop
+src/core/theme_language/material/theme_material_lowering.cpp:808 [for if] push_fills | !box_relative | reads box_relative, unchanged in the loop
+src/core/theme_language/material/theme_material_lowering.cpp:1075 [for if] lower_edges | style_at | reads style_at, unchanged in the loop
+src/core/theme_language/material/theme_material_lowering.cpp:1080 [for if] lower_edges | width_at | reads width_at, unchanged in the loop
+src/core/theme_language/material/theme_material_lowering.cpp:1084 [for if] lower_edges | colour_at | reads colour_at, unchanged in the loop
+src/core/theme_language/motion/theme_motion_lowering.cpp:477 [range-for if] lower_shorthand | parts.size() != 1U | reads parts, unchanged in the loop
+src/core/theme_language/motion/theme_motion_lowering.cpp:503 [range-for if] lower_properties | parts.size() != 1U | reads parts, unchanged in the loop
+src/core/theme_language/motion/theme_motion_lowering.cpp:527 [range-for if] lower_times | delays | reads delays, unchanged in the loop
+src/core/theme_language/motion/theme_motion_lowering.cpp:779 [for if] build_declared_transitions | !written.durations.empty() | reads written, unchanged in the loop
+src/core/theme_language/motion/theme_motion_lowering.cpp:781 [for if] build_declared_transitions | !written.timings.empty() | reads written, unchanged in the loop
+src/core/theme_language/motion/theme_motion_lowering.cpp:783 [for if] build_declared_transitions | !written.delays.empty() | reads written, unchanged in the loop
+src/core/theme_language/motion/theme_motion_lowering.cpp:786 [for conditional] build_declared_transitions | primitive == nullptr | reads primitive, unchanged in the loop
+src/core/theme_language/motion/theme_motion_lowering.cpp:846 [for conditional] group_transitions | rule.specificity | reads rule, unchanged in the loop
+src/core/theme_language/value/theme_value.cpp:323 [for conditional] hex_colour | short_form | reads short_form, unchanged in the loop
+src/core/theme_language/value/theme_value.cpp:324 [for conditional] hex_colour | short_form | reads short_form, unchanged in the loop
+src/core/threading/atomic_pool/atomic_pool.c:48 [for if] gui_forms_atomic_pool_worker | pool->terminate | reads pool, unchanged in the loop
+src/core/types/painter/painter.cpp:115 [for if] fill_linear_gradient | horizontal | reads horizontal, unchanged in the loop
+src/core/window/backplane/window_backplane.cpp:42 [for conditional] copy_framebuffer_rows | direction == FramebufferCopy::into_framebuffer | reads direction, unchanged in the loop
+src/core/window/backplane/window_backplane.cpp:43 [for conditional] copy_framebuffer_rows | direction == FramebufferCopy::into_framebuffer | reads direction, unchanged in the loop
+src/core/window/backplane/window_backplane.cpp:45 [for conditional] copy_framebuffer_rows | swap | reads swap, unchanged in the loop
+src/core/window/backplane/window_backplane.cpp:46 [for conditional] copy_framebuffer_rows | swap | reads swap, unchanged in the loop
+src/core/window/engine_inputs/window_engine_inputs.cpp:136 [for if] damage_backplane_readers | damage != nullptr | reads damage, unchanged in the loop
+src/core/window/inspection/window_visual_inspection.cpp:264 [while if] visual_inspection_snapshot | options.include_display_operations | reads options, unchanged in the loop
+src/core/window/presentation/window_presentation.cpp:455 [for if] paint_rectangles | starts_clear | reads starts_clear, unchanged in the loop
+src/core/window/presentation/window_presentation.cpp:696 [range-for if] set_live_surface_idle_wake_handler | live_surface_idle_wake_ | reads live_surface_idle_wake_, unchanged in the loop
+src/core/window/scheduler/window_scheduler.cpp:27 [range-for if] next_wake | occluded_ | reads occluded_, unchanged in the loop
+src/core/window/scheduler/window_scheduler.cpp:189 [range-for if] poll_frame_schedule | occluded_ | reads occluded_, unchanged in the loop
+src/core/window/window.cpp:1392 [for conditional] move_focus_region | forward | reads forward, unchanged in the loop
+src/core/xml/xml_reader/xml_reader.cpp:245 [while if] read_prolog | input_[offset_] != '<' | reads input_, offset_, unchanged in the loop
+src/core/xml/xml_reader/xml_reader.cpp:263 [while if] read_epilogue | input_[offset_] == '<' | reads input_, offset_, unchanged in the loop

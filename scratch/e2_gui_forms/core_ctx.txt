@@ -1,0 +1,1017 @@
+#1 src/core/background_worker/background_worker.cpp:76 loop@69 post_from_worker | !wait_for_room
+   69     for (;;) {
+   70         try {
+   71             DispatchOperation operation = post_dispatch(run.dispatcher, {}, false,
+   72                                                         std::function<void()>(delivery));
+   73             static_cast<void>(operation);
+   74             return true;
+   75         } catch (const std::length_error&) {
+   76             if (!wait_for_room) return false;
+   77             std::this_thread::sleep_for(std::chrono::milliseconds(1));
+   78         } catch (const std::logic_error&) {
+
+#2 src/core/binding/binding_source/binding_source.cpp:541 loop@539 transfer_bindings | source_to_control
+  539     for (const std::weak_ptr<gui_forms::Binding>& item : snapshot) {
+  540         if (const std::shared_ptr<gui_forms::Binding> binding = item.lock(); binding && (*binding).is_alive()) {
+  541             accepted = (source_to_control ? (*binding).read_value()
+  542                                           : (*binding).write_value()) && accepted;
+  543         }
+
+#3 src/core/control/control/control.cpp:2318 loop@2312 end_init | initialization_depth_ != 0
+ 2312     for (std::size_t index = 0; index < changes.size(); ++index) {
+ 2313         if (!is_alive()) return;
+ 2314         changes[index].publication();
+ 2315         // A callback may deliberately begin a new initialization transaction.
+ 2316         // Do not deliver the previous transaction's remaining observers into
+ 2317         // that newly partial state; retain them in original order instead.
+ 2318         if (initialization_depth_ != 0) {
+ 2319             for (++index; index < changes.size(); ++index) {
+ 2320                 publish_change(changes[index].event_key,
+
+#4 src/core/control/control/control.cpp:2521 loop@2496 arrange | mirrored
+ 2496     for (const Ptr& child : retained) {
+ 2497         if (!is_current_layout_child(child) || !(*child).visible_ ||
+      ...
+ 2518                    ? (*child).requested_bounds_.height : desired.height);
+ 2519         const Rect slot = take_dock_slot((*child).dock_, width, height, remaining);
+ 2520         (*child).anchor_reference_.reset();
+ 2521         set_child_layout(child, mirrored ? mirror_horizontally(slot, viewport) : slot);
+ 2522     }
+ 2523 
+
+#5 src/core/control/control/control.cpp:2555 loop@2524 arrange | mirrored
+ 2524     for (const Ptr& child : retained) {
+ 2525         if (!is_current_layout_child(child) || !(*child).visible_ ||
+      ...
+ 2552         const Rect anchored = anchored_bounds((*(*child).anchor_reference_).bounds,
+ 2553                                               (*(*child).anchor_reference_).client, client,
+ 2554                                               (*child).anchor_);
+ 2555         set_child_layout(child, mirrored ? mirror_horizontally(anchored, viewport) : anchored);
+ 2556     }
+ 2557 }
+
+#6 src/core/docking/dock_drop_targets/dock_drop_targets.cpp:230 loop@227 find_dock_drop_target | hit.edge
+  227     for (std::size_t index = 0; index < targets.size(); ++index) {
+  228         const DockDropTarget& target = targets[index];
+  229         if (target.zone != hit.zone) continue;
+  230         if (hit.edge) {
+  231             if (target.kind == DockDropTargetKind::edge) return index;
+  232             continue;
+
+#7 src/core/docking/dock_layout/dock_layout_edits.cpp:231 loop@228 remember | place.region == DockRegion::auto_hidden && entry != nullptr
+  228         for (std::size_t index = 0; index < stack.panels.size(); ++index) {
+  229             DockPanelRecord* record = find_dock_record(state_, stack.panels[index]);
+  230             if (record == nullptr) continue;
+  231             if (place.region == DockRegion::auto_hidden && entry != nullptr) {
+  232                 const DockAutoHideMemory memory{
+  233                     .stack = stack_id, .edge = (*entry).edge, .extent = (*entry).extent};
+
+#8 src/core/docking/dock_layout/dock_layout_edits.cpp:236 loop@228 remember | place.region == DockRegion::floating && site != nullptr
+  228         for (std::size_t index = 0; index < stack.panels.size(); ++index) {
+  229             DockPanelRecord* record = find_dock_record(state_, stack.panels[index]);
+  230             if (record == nullptr) continue;
+  231             if (place.region == DockRegion::auto_hidden && entry != nullptr) {
+  232                 const DockAutoHideMemory memory{
+  233                     .stack = stack_id, .edge = (*entry).edge, .extent = (*entry).extent};
+  234                 (*record).auto_hidden = memory;
+  235                 (*record).last_placement = DockPlacementKind::auto_hidden;
+  236             } else if (place.region == DockRegion::floating && site != nullptr) {
+  237                 DockFloatingMemory memory{};
+  238                 memory.site = (*site).id;
+
+#9 src/core/docking/dock_layout/dock_layout_edits.cpp:243 loop@228 remember | place.region == DockRegion::main_tools || place.region == DockRegion::document_area
+  228         for (std::size_t index = 0; index < stack.panels.size(); ++index) {
+  229             DockPanelRecord* record = find_dock_record(state_, stack.panels[index]);
+      ...
+  240                 memory.monitor_id = (*site).monitor_id;
+  241                 (*record).floating = std::move(memory);
+  242                 (*record).last_placement = DockPlacementKind::floating;
+  243             } else if (place.region == DockRegion::main_tools ||
+  244                        place.region == DockRegion::document_area) {
+  245                 const DockDockedMemory memory{.stack = stack_id,
+
+#10 src/core/docking/dock_layout/dock_layout_persistence.cpp:925 loop@921 ensure_records | node.kind == DockNodeKind::tool_stack
+  921             for (const DockPanelId& panel : node.panels) {
+  922                 if (detail::find_dock_record(state_, panel) != nullptr) continue;
+  923                 DockPanelRecord record{};
+  924                 record.id = panel;
+  925                 record.kind = node.kind == DockNodeKind::tool_stack ? DockPanelKind::tool : DockPanelKind::document;
+  926                 pending_records_.push_back(std::move(record));
+  927             }
+
+#11 src/core/drawing/bitmap/bitmap.cpp:190 loop@181 adjusted | !adjustment.color_matrix.has_value()
+  181         for (std::uint32_t x = 0; x < (*storage_).width; ++x) {
+  182             Color input = load_color(*storage_, x, y);
+  183             std::vector<ImageAttributesSnapshot::ColorRemap>::const_iterator
+  184                 remap = adjustment.remap_table.begin();
+  185             while (remap != adjustment.remap_table.end() &&
+  186                    (*remap).old_color.argb() != input.argb()) {
+  187                 ++remap;
+  188             }
+  189             if (remap != adjustment.remap_table.end()) input = (*remap).new_color;
+  190             if (!adjustment.color_matrix.has_value()) {
+  191                 store_color(*(*result).storage_, x, y, input);
+  192                 continue;
+
+#12 src/core/engine/authored_gradient/authored_gradient.cpp:70 loop@65 place_stops | line > 0.0
+   65     for (std::size_t index = 0U; index < count; ++index) {
+   66         const AuthoredGradientStop& stop = stops[index];
+   67         GradientStop place{};
+   68         place.color = stop.colour;
+   69         if (stop.positioned) {
+   70             const double along = line > 0.0 ? stop.position.units / line : 0.0;
+   71             place.offset = stop.position.fraction + along;
+   72         } else if (index == 0U) {
+
+#13 src/core/engine/feature_samples/engine_feature_samples.cpp:606 loop@599 feature_sample_image_pixels | row == 1U || row == side - 2U
+  599         for (std::uint32_t column = 0U; column < side; ++column) {
+  600             // BGRA, premultiplied: red, green, blue and white quadrants.
+  601             std::array<std::uint8_t, 4> bgra{255U, 255U, 255U, 255U};
+  602             if (row < half && column < half) bgra = {0U, 0U, 255U, 255U};
+  603             if (row < half && column >= half) bgra = {0U, 255U, 0U, 255U};
+  604             if (row >= half && column < half) bgra = {255U, 0U, 0U, 255U};
+  605             // The ring one pixel in: grey at half alpha.
+  606             const bool on_ring_row = (row == 1U || row == side - 2U) && column >= 1U && column <= side - 2U;
+  607             const bool on_ring_column = (column == 1U || column == side - 2U) && row >= 1U && row <= side - 2U;
+  608             if (on_ring_row || on_ring_column) bgra = {64U, 64U, 64U, 128U};
+
+#14 src/core/engine/motion_clock/motion_clock.cpp:84 loop@80 stop_ambient | repaint
+   80     for (AmbientRecord& existing : ambient_) {
+   81         if (!existing.live) continue;
+   82         existing.live = false;
+   83         ambient_live_ = ambient_live_ - 1U;
+   84         if (repaint) (*window_).repaint_engine_part(existing.part_slot, existing.part_generation);
+   85     }
+   86     disarm_when_idle();
+
+#15 src/core/engine/part_table/engine_part_table.cpp:177 loop@173 assemble_slices | across.outcome != SliceAxisOutcome::sliced
+  173     for (std::uint32_t row = 0U; row < to.height; ++row) {
+  174         const std::uint32_t source_row = reference_index(row, plan.down, to.height, from.height);
+  175         const std::uint8_t* const from_row = source.data() + static_cast<std::size_t>(source_row) * reference.row_bytes();
+  176         std::uint8_t* const to_row = destination.pixels.data() + static_cast<std::size_t>(row) * destination.row_bytes;
+  177         if (across.outcome != SliceAxisOutcome::sliced) {
+  178             std::memcpy(to_row, from_row, row_length);
+  179             continue;
+
+#16 src/core/engine/part_table/engine_part_table.cpp:614 loop@588 lend_image_variants | images == nullptr
+  588     for (std::size_t index = 0U; index < count; ++index) {
+  589         const ImageVariantRequest& asked = wanted[index];
+      ...
+  611             awaited = pattern_generation_;
+  612             continue;
+  613         }
+  614         if (images == nullptr) continue;
+  615         const std::shared_ptr<PartRaster> made = engine_primitives::make_image_variant(*images, asked);
+  616         if (!made) continue;
+
+#17 src/core/engine/primitives/bulge/bulge_primitives.cpp:599 loop@590 fill | gold
+  590         for (std::size_t i = 0U; i < lattice.columns; ++i) {
+  591             const DotSpan columns = dot_span(lattice, i, destination.extent.width);
+  592             if (columns.first >= columns.end) break;
+  593             const double x = lattice_sample(lattice, i);
+  594             const DotTone tone = dot_tone(fields, gains, x, y);
+  595             // The threshold is indexed by the lattice index (x >> 1 and
+  596             // y >> 1 of the studies' odd logical positions).
+  597             const std::size_t threshold_index = (j & 3U) * 4U + (i & 3U);
+  598             const double threshold = (bayer[threshold_index] + 0.5) / 16.0;
+  599             const DotChoice choice = gold ? gold_dot(palette, extremes, amplitude, tone, threshold)
+  600                                           : plain_dot(palette, extremes, amplitude, tone, threshold);
+  601             if (!choice.shown) continue;
+
+#18 src/core/engine/primitives/light/glass_primitive.cpp:190 loop@188 fill | sampled
+  188         for (std::size_t column = 0U; column < width; ++column) {
+  189             Unit pixel{};
+  190             if (sampled) {
+  191                 const std::size_t at = row * blurred.stride + column * lanes;
+  192                 pixel = Unit{unit_lane(blurred.pixels[at]), unit_lane(blurred.pixels[at + 1U]),
+
+#19 src/core/engine/primitives/light/glass_primitive.cpp:194 loop@188 fill | filtered
+  188         for (std::size_t column = 0U; column < width; ++column) {
+  189             Unit pixel{};
+  190             if (sampled) {
+  191                 const std::size_t at = row * blurred.stride + column * lanes;
+  192                 pixel = Unit{unit_lane(blurred.pixels[at]), unit_lane(blurred.pixels[at + 1U]),
+  193                              unit_lane(blurred.pixels[at + 2U]), unit_lane(blurred.pixels[at + 3U])};
+  194                 if (filtered) pixel = colour_filtered(filter, pixel);
+  195             }
+  196             if (flattened_over_backplane) {
+
+#20 src/core/engine/primitives/light/glass_primitive.cpp:196 loop@188 fill | flattened_over_backplane
+  188         for (std::size_t column = 0U; column < width; ++column) {
+  189             Unit pixel{};
+  190             if (sampled) {
+  191                 const std::size_t at = row * blurred.stride + column * lanes;
+  192                 pixel = Unit{unit_lane(blurred.pixels[at]), unit_lane(blurred.pixels[at + 1U]),
+  193                              unit_lane(blurred.pixels[at + 2U]), unit_lane(blurred.pixels[at + 3U])};
+  194                 if (filtered) pixel = colour_filtered(filter, pixel);
+  195             }
+  196             if (flattened_over_backplane) {
+  197                 pixel = backplane_pixel(*target.backplane, margin, column, row);
+  198                 if (filtered) pixel = colour_filtered(filter, pixel);
+
+#21 src/core/engine/primitives/light/glass_primitive.cpp:198 loop@188 fill | filtered
+  188         for (std::size_t column = 0U; column < width; ++column) {
+  189             Unit pixel{};
+  190             if (sampled) {
+  191                 const std::size_t at = row * blurred.stride + column * lanes;
+  192                 pixel = Unit{unit_lane(blurred.pixels[at]), unit_lane(blurred.pixels[at + 1U]),
+  193                              unit_lane(blurred.pixels[at + 2U]), unit_lane(blurred.pixels[at + 3U])};
+  194                 if (filtered) pixel = colour_filtered(filter, pixel);
+  195             }
+  196             if (flattened_over_backplane) {
+  197                 pixel = backplane_pixel(*target.backplane, margin, column, row);
+  198                 if (filtered) pixel = colour_filtered(filter, pixel);
+  199             }
+  200             blend_over(pixel, over);
+
+#22 src/core/engine/primitives/light/glass_primitive.cpp:201 loop@188 fill | flattened
+  188         for (std::size_t column = 0U; column < width; ++column) {
+  189             Unit pixel{};
+      ...
+  198                 if (filtered) pixel = colour_filtered(filter, pixel);
+  199             }
+  200             blend_over(pixel, over);
+  201             if (flattened) pixel = opaque_of(pixel);
+  202             const double coverage = shape_coverage(shape, box, scale, static_cast<std::int64_t>(column),
+  203                                                    static_cast<std::int64_t>(row));
+
+#23 src/core/engine/primitives/material/material_primitive.cpp:553 loop@541 resolve_look_at | outline.uniform
+  541     for (const MaterialGlow& glow : material.glows) {
+  542         const double spread = glow.spread * scale;
+  543         ResolvedShadow resolved{};
+  544         resolved.inverse_sigma = inverse_sigma_of(glow.blur_radius, scale);
+  545         resolved.colour = glow.color;
+  546         resolved.additive = true;
+  547         resolved.over = glow.placement == MaterialGlowPlacement::over;
+  548         resolved.shape = Rect{box.x - spread, box.y - spread, box.width + spread * 2.0, box.height + spread * 2.0};
+  549         // A uniform glow of negative spread may have a negative radius: as
+  550         // zero, it bounds nothing (outer_coverage).
+  551         const GrownOutline grown_outline = grown(outline, resolved.shape, spread);
+  552         resolved.outline = grown_outline.shape;
+  553         resolved.radius = outline.uniform ? radius + spread : grown_outline.radius;
+  554         if (resolved.shape.width <= 0.0 || resolved.shape.height <= 0.0) continue;
+  555         look.outer[look.outer_count] = resolved;
+
+#24 src/core/engine/primitives/material/material_primitive.cpp:1112 loop@1109 material_pixel | cached
+ 1109     for (std::size_t index = 0U; index < look.outer_count; ++index) {
+ 1110         const ResolvedShadow& shadow = look.outer[index];
+ 1111         double coverage = 0.0;
+ 1112         if (cached) {
+ 1113             const std::size_t at = index * integrals.width + static_cast<std::size_t>(x);
+ 1114             coverage = outer_coverage(shadow, integrals.across[at], integrals.down[index],
+
+#25 src/core/engine/primitives/material/material_primitive.cpp:1279 loop@1277 add_drop_shadow | source_row >= 0 && source_row < high
+ 1277         for (std::int64_t column = 0; column < wide; ++column) {
+ 1278             const std::int64_t source_column = column - filters.shadow_x;
+ 1279             const bool within = source_row >= 0 && source_row < high && source_column >= 0 && source_column < wide;
+ 1280             double coverage = 0.0;
+ 1281             if (within) {
+
+#26 src/core/engine/primitives/material/material_primitive.cpp:1609 loop@1607 axis_reach | across
+ 1607     for (const MaterialShadow& shadow : material.shadows) {
+ 1608         const double spread = shadow.spread * scale;
+ 1609         const double offset = (across ? shadow.offset.x : shadow.offset.y) * scale;
+ 1610         if (!shadow.inset) {
+ 1611             const double corner = std::max(0.0, radius + spread);
+
+#27 src/core/engine/primitives/relief/relief_primitives.cpp:574 loop@573 fill | upright
+  573         for (std::uint32_t column = 0U; column < destination.extent.width; ++column) {
+  574             const double along_pixel = upright ? static_cast<double>(row) : static_cast<double>(column);
+  575             const double across_pixel = upright ? static_cast<double>(column) : static_cast<double>(row);
+  576             const double weight = fade_weight((along_pixel + 0.5) / length) *
+
+#28 src/core/engine/primitives/relief/relief_primitives.cpp:575 loop@573 fill | upright
+  573         for (std::uint32_t column = 0U; column < destination.extent.width; ++column) {
+  574             const double along_pixel = upright ? static_cast<double>(row) : static_cast<double>(column);
+  575             const double across_pixel = upright ? static_cast<double>(column) : static_cast<double>(row);
+  576             const double weight = fade_weight((along_pixel + 0.5) / length) *
+  577                                   interval_overlap(along_pixel, 0.0, length);
+
+#29 src/core/engine/primitives/relief/relief_primitives.cpp:609 loop@608 fill | upright
+  608         for (std::uint32_t column = 0U; column < destination.extent.width; ++column) {
+  609             const double along_pixel = upright ? static_cast<double>(row) : static_cast<double>(column);
+  610             const double across_pixel = upright ? static_cast<double>(column) : static_cast<double>(row);
+  611             const double coverage = interval_overlap(across_pixel, first, first + line) *
+
+#30 src/core/engine/primitives/relief/relief_primitives.cpp:610 loop@608 fill | upright
+  608         for (std::uint32_t column = 0U; column < destination.extent.width; ++column) {
+  609             const double along_pixel = upright ? static_cast<double>(row) : static_cast<double>(column);
+  610             const double across_pixel = upright ? static_cast<double>(column) : static_cast<double>(row);
+  611             const double coverage = interval_overlap(across_pixel, first, first + line) *
+  612                                     interval_overlap(along_pixel, 0.0, length);
+
+#31 src/core/engine/primitives/relief/relief_primitives.cpp:649 loop@647 fill | row_ink
+  647         for (std::uint32_t column = 0U; column < destination.extent.width; ++column) {
+  648             bool inked = false;
+  649             if (row_ink) {
+  650                 for (double x = 1.0; x + 2.0 <= logical_width; x += 4.0) {
+  651                     const double left = std::floor(x * scale + 0.5);
+
+#32 src/core/engine/theme_rules/theme_rules.cpp:415 loop@412 place_images | sizes != nullptr && !(*sizes).image_sizes.empty()
+  412     for (std::size_t from_top = 0U; from_top < image_count; ++from_top) {
+  413         MaterialFillLayer& layer = material.fills[material.fills.size() - 1U - from_top];
+  414         if (layer.kind != MaterialFillKind::image || layer.image_mode == MaterialImageMode::nine_patch) continue;
+  415         if (sizes != nullptr && !(*sizes).image_sizes.empty()) {
+  416             const std::vector<MaterialImageSize>& written = (*sizes).image_sizes;
+  417             size_image(written[from_top % written.size()], box, layer);
+
+#33 src/core/engine/theme_rules/theme_rules.cpp:425 loop@412 place_images | positions != nullptr && !(*positions).image_positions.empty()
+  412     for (std::size_t from_top = 0U; from_top < image_count; ++from_top) {
+  413         MaterialFillLayer& layer = material.fills[material.fills.size() - 1U - from_top];
+      ...
+  422             const bool alone = written[from_top % written.size()] == MaterialImageRepeat::no_repeat;
+  423             layer.image_mode = alone ? MaterialImageMode::single : MaterialImageMode::tile;
+  424         }
+  425         if (positions != nullptr && !(*positions).image_positions.empty()) {
+  426             const std::vector<MaterialImagePosition>& written = (*positions).image_positions;
+  427             const MaterialImagePosition& position = written[from_top % written.size()];
+
+#34 src/core/engine/theme_rules/theme_rules.cpp:468 loop@466 compose_fills | modes.empty()
+  466         for (std::size_t from_top = 0U; from_top < image_count; ++from_top) {
+  467             MaterialFillLayer& layer = material.fills[material.fills.size() - 1U - from_top];
+  468             layer.blend = modes.empty() ? MaterialBlendMode::normal : modes[from_top % modes.size()];
+  469         }
+  470     }
+
+#35 src/core/engine/theme_rules/theme_rules.cpp:895 loop@886 add_rules | engine_table
+  886     for (std::size_t index = 0; index < sheet.rules.size(); ++index) {
+  887         const ThemeRule& rule = sheet.rules[index];
+  888         const EngineVersion needed = rule.requires_engine.value_or(sheet.requires_engine);
+  889         if (current_engine_version < needed) {
+  890             result.diagnostics_.push_back(diagnostic(RuleDiagnosticKind::needs_newer_engine, index, rule, {}));
+  891             continue;
+  892         }
+  893         // The engine's own table is all built_in; a theme authors only the
+  894         // four authored levels.
+  895         const bool level_allowed = engine_table ? rule.level == CascadeLevel::built_in : authored(rule.level);
+  896         if (!level_allowed) {
+  897             result.diagnostics_.push_back(diagnostic(RuleDiagnosticKind::level_not_authored, index, rule, {}));
+
+#36 src/core/engine/theme_rules/theme_rules.cpp:1140 loop@1133 add_recipe_fields | on_part
+ 1133     for (const RecipeDeclaration& declaration : rule.recipe_fields) {
+ 1134         const std::size_t position = static_cast<std::size_t>(declaration.field);
+ 1135         const std::string_view name = recipe_field_name(declaration.field);
+ 1136         if (position >= recipe_field_count) {
+ 1137             diagnostics.push_back(diagnostic(RuleDiagnosticKind::recipe_field_invalid, index, rule, {}));
+ 1138             continue;
+ 1139         }
+ 1140         if (on_part) {
+ 1141             diagnostics.push_back(diagnostic(RuleDiagnosticKind::recipe_field_on_part, index, rule, name));
+ 1142             continue;
+
+#37 src/core/engine/theme_rules/theme_rules.cpp:1472 loop@1461 resolve_transitions | same_primitive
+ 1461         for (const CompiledTransition& transition : rule.transitions) {
+ 1462             if (transition.property == PresentationProperty::opacity) {
+ 1463                 opacity = &transition;
+ 1464             } else if (transition.property == PresentationProperty::scale) {
+ 1465                 scale = &transition;
+ 1466             } else if (transition.property == PresentationProperty::face) {
+ 1467                 face = &transition;
+ 1468             } else if (transition.property == PresentationProperty::translate_x) {
+ 1469                 across = &transition;
+ 1470             } else if (transition.property == PresentationProperty::translate_y) {
+ 1471                 down = &transition;
+ 1472             } else if (same_primitive) {
+ 1473                 parameters[transition.parameter] = &transition;
+ 1474             }
+
+#38 src/core/host/image/clipboard_dib.cpp:113 loop@112 decode_clipboard_dib | top_down
+  112     image.width = width;
+  113     image.height = height;
+  114     image.row_bytes = static_cast<std::uint64_t>(width) * 4U;
+  115     image.pixels.resize(static_cast<std::size_t>(pixel_count * 4U));
+
+#39 src/core/host/image/clipboard_dib.cpp:118 loop@116 decode_clipboard_dib | bits == 24U
+  116     for (std::uint32_t y = 0; y < height; ++y) {
+  117         const std::uint32_t source_y = top_down ? y : height - 1U - y;
+  118         const std::byte* source = bytes.data() + start + static_cast<std::size_t>(stride) * source_y;
+  119         std::byte* target = image.pixels.data() + static_cast<std::size_t>(image.row_bytes) * y;
+  120         for (std::uint32_t x = 0; x < width; ++x) {
+
+#40 src/core/image/color_conversion.cpp:197 loop@195 convert_samples_to_srgb | stated_gamma
+  195     for (std::size_t index = 0; index < entries; ++index) {
+  196         const double encoded = static_cast<double>(index * step) / 65535.0;
+  197         work.linear[index] = stated_gamma ? engine_power(encoded, exponent) : srgb_decode(encoded);
+  198     }
+  199 
+
+#41 src/core/layout/block_flow_solver/block_flow_solver.cpp:236 loop@234 place_inline_run | right_to_left
+  234         for (std::size_t index = start; index < stop; ++index) {
+  235             const BlockFlowItemInput& item = items[index];
+  236             const double x = right_to_left ? available - advance - item.margin.right - item.width
+  237                                            : advance + item.margin.left;
+  238             const double y = top + inline_item_top(item, metrics, container.strut.x_height);
+
+#42 src/core/layout/block_flow_solver/block_flow_solver.cpp:319 loop@313 block_flow_intrinsic_width | kind == BlockFlowIntrinsicKind::min_content
+  313     for (const BlockFlowItemInput& item : items) {
+  314         const double outer = outer_width(item);
+  315         if (item.level == BlockFlowLevel::block) {
+  316             widest = std::max(widest, run);
+  317             run = 0.0;
+  318             widest = std::max(widest, outer);
+  319         } else if (kind == BlockFlowIntrinsicKind::min_content) {
+  320             run = std::max(run, outer);
+  321         } else {
+
+#43 src/core/layout/flex_solver/flex_solver.cpp:355 loop@342 resolve_flex_main_sizes | !available.definite
+  342     for (std::size_t line_index = 0U; line_index < workspace.lines_.size(); ++line_index) {
+  343         FlexLine& current = workspace.lines_[line_index];
+      ...
+  352             fixed_extent += margins;
+  353             hypothetical_extent += workspace.items_[index].hypothetical_main + margins;
+  354         }
+  355         if (!available.definite) {
+  356             current.main_extent = hypothetical_extent;
+  357             continue;
+
+#44 src/core/layout/flex_solver/flex_solver.cpp:366 loop@362 resolve_flex_main_sizes | growing
+  362         for (std::size_t position = first; position < last; ++position) {
+  363             const std::uint32_t index = workspace.order_[position];
+  364             const FlexItemInput& item = items[index];
+  365             FlexItemResult& result = workspace.items_[index];
+  366             const double factor = growing ? item.grow.value() : item.shrink.value();
+  367             const bool inflexible = factor <= 0.0 ||
+  368                                     (growing && result.flex_base_size > result.hypothetical_main) ||
+
+#45 src/core/layout/flex_solver/flex_solver.cpp:396 loop@388 resolve_flex_main_sizes | growing
+  388             for (std::size_t position = first; position < last; ++position) {
+  389                 const std::uint32_t index = workspace.order_[position];
+  390                 const FlexItemResult& result = workspace.items_[index];
+  391                 if (workspace.frozen_[index] != 0U) {
+  392                     remaining -= result.main_size;
+  393                     continue;
+  394                 }
+  395                 remaining -= result.flex_base_size;
+  396                 factors += growing ? items[index].grow.value() : items[index].shrink.value();
+  397                 scaled_shrink += items[index].shrink.value() * result.flex_base_size;
+  398             }
+
+#46 src/core/layout/flex_solver/flex_solver.cpp:410 loop@404 resolve_flex_main_sizes | remaining != 0.0 && growing
+  404             for (std::size_t position = first; position < last; ++position) {
+  405                 const std::uint32_t index = workspace.order_[position];
+  406                 if (workspace.frozen_[index] != 0U) continue;
+  407                 const FlexItemInput& item = items[index];
+  408                 const FlexItemResult& result = workspace.items_[index];
+  409                 double target = result.flex_base_size;
+  410                 if (remaining != 0.0 && growing) {
+  411                     target = result.flex_base_size + remaining * (item.grow.value() / factors);
+  412                 } else if (remaining != 0.0 && scaled_shrink > 0.0) {
+
+#47 src/core/layout/flex_solver/flex_solver.cpp:412 loop@404 resolve_flex_main_sizes | remaining != 0.0 && scaled_shrink > 0.0
+  404             for (std::size_t position = first; position < last; ++position) {
+  405                 const std::uint32_t index = workspace.order_[position];
+  406                 if (workspace.frozen_[index] != 0U) continue;
+  407                 const FlexItemInput& item = items[index];
+  408                 const FlexItemResult& result = workspace.items_[index];
+  409                 double target = result.flex_base_size;
+  410                 if (remaining != 0.0 && growing) {
+  411                     target = result.flex_base_size + remaining * (item.grow.value() / factors);
+  412                 } else if (remaining != 0.0 && scaled_shrink > 0.0) {
+  413                     const double ratio = item.shrink.value() * result.flex_base_size / scaled_shrink;
+  414                     target = result.flex_base_size - std::abs(remaining) * ratio;
+
+#48 src/core/layout/flex_solver/flex_solver.cpp:534 loop@531 place_flex_items | main_space.definite
+  531     for (const FlexLine& line : workspace.lines_) {
+  532         const std::size_t first = line.first;
+  533         const std::size_t last = first + line.count;
+  534         double free_main = main_space.definite ? main_space.extent - line.main_extent : 0.0;
+  535         std::size_t auto_margins = 0U;
+  536         for (std::size_t position = first; position < last; ++position) {
+
+#49 src/core/layout/flex_solver/flex_solver.cpp:602 loop@561 place_flex_items | main_reversed
+  561         for (std::size_t position = first; position < last; ++position) {
+  562             const std::uint32_t index = workspace.order_[position];
+      ...
+  599             const double cross_position = line.cross_position + fixed_length(margins.cross_start) + cross_offset;
+  600 
+  601             const double physical_main =
+  602                 main_reversed ? main_extent - main_position - result.main_size : main_position;
+  603             const double physical_cross =
+  604                 cross_reversed ? cross_extent - cross_position - result.cross_size : cross_position;
+
+#50 src/core/layout/flex_solver/flex_solver.cpp:604 loop@561 place_flex_items | cross_reversed
+  561         for (std::size_t position = first; position < last; ++position) {
+  562             const std::uint32_t index = workspace.order_[position];
+      ...
+  601             const double physical_main =
+  602                 main_reversed ? main_extent - main_position - result.main_size : main_position;
+  603             const double physical_cross =
+  604                 cross_reversed ? cross_extent - cross_position - result.cross_size : cross_position;
+  605             if (horizontal) {
+  606                 result.bounds = Rect{physical_main, physical_cross, result.main_size, result.cross_size};
+
+#51 src/core/layout/flex_solver/flex_solver.cpp:605 loop@561 place_flex_items | horizontal
+  561         for (std::size_t position = first; position < last; ++position) {
+  562             const std::uint32_t index = workspace.order_[position];
+      ...
+  602                 main_reversed ? main_extent - main_position - result.main_size : main_position;
+  603             const double physical_cross =
+  604                 cross_reversed ? cross_extent - cross_position - result.cross_size : cross_position;
+  605             if (horizontal) {
+  606                 result.bounds = Rect{physical_main, physical_cross, result.main_size, result.cross_size};
+  607             } else {
+
+#52 src/core/layout/grid_solver/grid_solver.cpp:376 loop@368 share_equally | limited
+  368     while (remaining > distribution_tolerance) {
+  369         std::uint32_t open = 0U;
+  370         for (std::uint32_t index = range.start; index < range.end; ++index) {
+  371             if (frozen[index] == 0U) ++open;
+  372         }
+  373         if (open == 0U) break;
+  374         const double share = remaining / static_cast<double>(open);
+  375         bool froze = false;
+  376         if (limited) {
+  377             for (std::uint32_t index = range.start; index < range.end; ++index) {
+  378                 if (frozen[index] != 0U) continue;
+
+#53 src/core/layout/grid_solver/grid_solver.cpp:418 loop@416 share_by_fraction | fractions > 0.0
+  416     for (std::uint32_t index = range.start; index < range.end; ++index) {
+  417         if (frozen[index] != 0U) continue;
+  418         const double ratio = fractions > 0.0 ? functions[index].maximum_value / fractions : 0.0;
+  419         incurred[index] += proportional * ratio + equal;
+  420     }
+
+#54 src/core/layout/grid_solver/grid_solver.cpp:475 loop@460 run_spanning_step | step.flexible_only
+  460     for (const std::uint32_t item : group) {
+  461         const TrackRange range = item_range((*view.results)[item].area, view.axis);
+      ...
+  472         const double contribution = step_contribution(step, view, item, tracks, functions, gap);
+  473         const double space = contribution - spanned - inner_gaps(tracks, range, gap);
+  474         if (space <= distribution_tolerance) continue;
+  475         if (step.flexible_only) {
+  476             share_by_fraction(functions, range, space, scratch);
+  477         } else {
+
+#55 src/core/layout/grid_solver/grid_solver.cpp:493 loop@489 run_spanning_step | candidates == 0U
+  489                 for (std::uint32_t index = range.start; index < range.end; ++index) {
+  490                     const bool is_affected = affected(step.tracks, functions[index], false);
+  491                     const bool candidate =
+  492                         is_affected &&
+  493                         (candidates == 0U
+  494                              ? step.target == SizeTarget::base ||
+  495                                    functions[index].maximum != Breadth::fit_content
+
+#56 src/core/layout/grid_solver/grid_solver.cpp:510 loop@507 run_spanning_step | step.target == SizeTarget::base
+  507     for (std::size_t index = 0U; index < tracks.size(); ++index) {
+  508         if (planned[index] <= 0.0) continue;
+  509         GridTrack& track = tracks[index];
+  510         if (step.target == SizeTarget::base) {
+  511             track.base += planned[index];
+  512         } else if (std::isinf(track.growth_limit)) {
+
+#57 src/core/layout/grid_solver/grid_solver.cpp:514 loop@507 run_spanning_step | step.marks_growable
+  507     for (std::size_t index = 0U; index < tracks.size(); ++index) {
+  508         if (planned[index] <= 0.0) continue;
+  509         GridTrack& track = tracks[index];
+  510         if (step.target == SizeTarget::base) {
+  511             track.base += planned[index];
+  512         } else if (std::isinf(track.growth_limit)) {
+  513             track.growth_limit = track.base + planned[index];
+  514             if (step.marks_growable) (*scratch.growable)[index] = 1U;
+  515         } else {
+  516             track.growth_limit += planned[index];
+
+#58 src/core/layout/grid_solver/grid_solver.cpp:826 loop@824 line_index | axis == GridAxis::columns
+  824     for (const GridNamedArea& area : areas.areas) {
+  825         if (area.name != line.area) continue;
+  826         if (axis == GridAxis::columns) return start_side ? area.column_start : area.column_end;
+  827         return start_side ? area.row_start : area.row_end;
+  828     }
+
+#59 src/core/layout/grid_solver/grid_solver.cpp:826 loop@824 line_index | start_side
+  824     for (const GridNamedArea& area : areas.areas) {
+  825         if (area.name != line.area) continue;
+  826         if (axis == GridAxis::columns) return start_side ? area.column_start : area.column_end;
+  827         return start_side ? area.row_start : area.row_end;
+  828     }
+
+#60 src/core/layout/grid_solver/grid_solver.cpp:827 loop@824 line_index | start_side
+  824     for (const GridNamedArea& area : areas.areas) {
+  825         if (area.name != line.area) continue;
+  826         if (axis == GridAxis::columns) return start_side ? area.column_start : area.column_end;
+  827         return start_side ? area.row_start : area.row_end;
+  828     }
+  829     // No such area: every implicit line bears the name, so the first one
+
+#61 src/core/layout/grid_solver/grid_solver.cpp:1001 loop@992 build_tracks | pattern == 0
+  992     for (std::size_t index = 0U; index < count; ++index) {
+  993         GridTrack& track = tracks[index];
+  994         track = GridTrack{};
+  995         const std::int64_t position = static_cast<std::int64_t>(index) - static_cast<std::int64_t>(leading);
+  996         if (position >= 0 && position < template_count) {
+  997             track.sizing = explicit_sizes[static_cast<std::size_t>(position)];
+  998             continue;
+  999         }
+ 1000         track.implicit = position < 0 || position >= static_cast<std::int64_t>(explicit_count);
+ 1001         if (pattern == 0) continue;
+ 1002         std::int64_t entry = 0;
+ 1003         if (position < 0) {
+
+#62 src/core/layout/grid_solver/grid_solver.cpp:1162 loop@1157 place_grid_items | dense
+ 1157     for (std::size_t index = 0U; index < count; ++index) {
+ 1158         AxisPlacement& across = across_placements[index];
+ 1159         const AxisPlacement& lane = lane_placements[index];
+ 1160         if (across.definite || !lane.definite) continue;
+ 1161         const std::size_t lane_start = static_cast<std::size_t>(lane.start);
+ 1162         std::size_t cell = dense ? 0U : workspace.lane_cursors_[lane_start];
+ 1163         while (!occupancy.free(lane_start, lane.span, cell, across.span)) ++cell;
+ 1164         if (cell + across.span > occupancy.across() && !occupancy.widen(cell + across.span)) {
+
+#63 src/core/layout/grid_solver/grid_solver.cpp:1183 loop@1176 place_grid_items | dense
+ 1176     for (std::size_t index = 0U; index < count; ++index) {
+ 1177         AxisPlacement& across = across_placements[index];
+ 1178         AxisPlacement& lane = lane_placements[index];
+ 1179         if (lane.definite) continue;
+ 1180         const std::size_t width = occupancy.across();
+ 1181         if (across.definite) {
+ 1182             const std::size_t cell = static_cast<std::size_t>(across.start);
+ 1183             if (dense) {
+ 1184                 cursor_lane = 0U;
+ 1185             } else if (cell < cursor_cell) {
+
+#64 src/core/layout/grid_solver/grid_solver.cpp:1191 loop@1176 place_grid_items | dense
+ 1176     for (std::size_t index = 0U; index < count; ++index) {
+ 1177         AxisPlacement& across = across_placements[index];
+      ...
+ 1188             cursor_cell = cell;
+ 1189             while (!occupancy.free(cursor_lane, lane.span, cell, across.span)) ++cursor_lane;
+ 1190         } else {
+ 1191             if (dense) {
+ 1192                 cursor_lane = 0U;
+ 1193                 cursor_cell = 0U;
+
+#65 src/core/layout/grid_solver/grid_solver.cpp:1606 loop@1563 arrange_grid_items | mirrored
+ 1563     for (std::size_t index = 0U; index < count; ++index) {
+ 1564         const GridItemInput& item = items[index];
+      ...
+ 1603         const PlacedSpan vertical = place_in_area(row_input);
+ 1604 
+ 1605         double x = area_x + horizontal.offset;
+ 1606         if (mirrored) x = mirror_width - (x + horizontal.size);
+ 1607         result.bounds = Rect{x, area_y + vertical.offset, horizontal.size, vertical.size};
+ 1608     }
+
+#66 src/core/layout/style_reader/layout_style_reader.cpp:1848 loop@1845 append_track_list | list.auto_repeat == AutoRepeatKind::auto_fill
+ 1845     for (std::size_t index = 0U; index <= list.tracks.size(); ++index) {
+ 1846         if (list.auto_repeat != AutoRepeatKind::none && index == list.auto_repeat_index) {
+ 1847             if (written) text += ' ';
+ 1848             text += list.auto_repeat == AutoRepeatKind::auto_fill ? "repeat(auto-fill, " : "repeat(auto-fit, ";
+ 1849             append_track_sizes(text, list.auto_repeat_tracks);
+ 1850             text += ')';
+
+#67 src/core/live_surface/surface/live_surface.cpp:97 loop@92 try_acquire_write | preserve_published_contents && (*state_).published_slot < (*state_).buffers.size()
+   92     for (std::size_t slot = 0; slot < (*state_).buffers.size(); ++slot) {
+   93         if (slot == (*state_).published_slot ||
+   94             (*state_).buffers[slot].use_count() != 1) {
+   95             continue;
+   96         }
+   97         if (preserve_published_contents &&
+   98             (*state_).published_slot < (*state_).buffers.size()) {
+   99             (*(*state_).buffers[slot]).pixels =
+
+#68 src/core/pages/page_set/page_set.cpp:571 loop@564 drain_notifications | !*alive
+  564     for (std::size_t index = 0U; index < notifications_.size(); ++index) {
+  565         const Notification notification = notifications_[index];
+  566         if (notification.kind == Notification::Kind::pages) {
+  567             pages_changed_.emit(notification.pages);
+  568         } else {
+  569             selected_page_changed_.emit(notification.selection);
+  570         }
+  571         if (!*alive) {
+  572             return;
+  573         }
+
+#69 src/core/text/composite/text_composite.cpp:242 loop@228 composite_text_coverage | !target.opaque
+  228         for (std::int64_t x = left; x < right; ++x) {
+  229             const std::uint64_t text = coverage.pixels[source_row + static_cast<std::size_t>(x - coverage.left)];
+      ...
+  239             const unsigned green = blend_channel(source_green, (previous >> shifts.green) & 255U, alpha);
+  240             const unsigned blue = blend_channel(source_blue, (previous >> shifts.blue) & 255U, alpha);
+  241             unsigned result_alpha = 255U;
+  242             if (!target.opaque) result_alpha = blend_channel(source_alpha, (previous >> shifts.alpha) & 255U, alpha);
+  243             pixel = (red << shifts.red) | (green << shifts.green) | (blue << shifts.blue) | (result_alpha << shifts.alpha);
+  244         }
+
+#70 src/core/text/prepared/prepared_storage.cpp:312 loop@305 validate_prepared_input | text.empty()
+  305     for (std::size_t index = 0; index < endpoints.size(); ++index) {
+  306         const PreparedSourceEndpoint& endpoint = endpoints[index];
+  307         if (index != 0 && (endpoint.source.value <= endpoints[index - 1U].source.value ||
+  308                           endpoint.display.value <= endpoints[index - 1U].display.value)) return PreparedTextStatus::invalid_input;
+  309         if (endpoint.source.value < key.source.begin.value || endpoint.source.value > key.source.end.value ||
+  310             endpoint.display.value < key.display_begin.value || endpoint.display.value > key.display_end.value ||
+  311             !scalar_edge(text, endpoint.display.value - key.display_begin.value)) return PreparedTextStatus::invalid_input;
+  312         if (text.empty()) continue;
+  313         while (map_index + 1U < mapping.size() && mapping[map_index].end.value < endpoint.display.value) ++map_index;
+  314         const DocumentMapSpan& span = mapping[map_index];
+
+#71 src/core/text_shaping/validation/text_shaping_validation.cpp:102 loop@93 validate_glyph_run | request.direction == TextDirection::left_to_right
+   93   for (const GlyphPlacement &glyph : run.glyphs) {
+   94     if (glyph.cluster < request.range.start ||
+   95         glyph.cluster >= request.range.end) {
+   96       return GlyphRunError::cluster_out_of_range;
+   97     }
+   98     if (!text.is_grapheme_boundary(glyph.cluster)) {
+   99       return GlyphRunError::cluster_splits_grapheme;
+  100     }
+  101     if (previous) {
+  102       const bool ordered = request.direction == TextDirection::left_to_right
+  103                                ? *previous <= glyph.cluster
+  104                                : *previous >= glyph.cluster;
+
+#72 src/core/theme/part_painting/part_painting.cpp:159 loop@155 fill_arrow_strips | horizontal_strips
+  155     for (int row = 0; row < rows; ++row) {
+  156         const double extent = static_cast<double>(row);
+  157         const double position = first + step * static_cast<double>(row);
+  158         const double length = extent * 2.0 + 1.0;
+  159         if (horizontal_strips) {
+  160             painter.fill_rect({centre - extent, position, length, 1.0}, color);
+  161         } else {
+
+#73 src/core/theme_language/material/theme_material_lowering.cpp:582 loop@580 read_stops | kind == MaterialFillKind::conic_gradient
+  580         for (std::size_t index = next(argument.first); index < argument.end; index = next(index)) {
+  581             stop.positioned = true;
+  582             if (kind == MaterialFillKind::conic_gradient) {
+  583                 double fraction = 0.0;
+  584                 if (!read_turn_fraction(index, fraction)) return false;
+
+#74 src/core/theme_language/material/theme_material_lowering.cpp:808 loop@795 push_fills | !box_relative
+  795     for (std::size_t from_top = written.size(); from_top > 0U; --from_top) {
+  796         const WrittenLayer& source = written[from_top - 1U];
+      ...
+  805         checked.fills.push_back(layer);
+  806         if (!fixed) layer = MaterialFillLayer{};
+  807         declaration.fills.push_back(layer);
+  808         if (!box_relative) continue;
+  809         AuthoredGradient entry = fixed ? AuthoredGradient{} : source.gradient;
+  810         if (fixed) entry.kind = MaterialFillKind::solid;
+
+#75 src/core/theme_language/material/theme_material_lowering.cpp:1075 loop@1071 lower_edges | style_at
+ 1071     for (std::size_t edge = first_edge; edge < first_edge + edge_count; ++edge) {
+ 1072         MaterialDeclaration styled = initial_field(edge_field(edge, 0U));
+ 1073         MaterialDeclaration wide = initial_field(edge_field(edge, 1U));
+ 1074         MaterialDeclaration coloured = initial_field(edge_field(edge, 2U));
+ 1075         if (style_at) {
+ 1076             styled.initial = false;
+ 1077             styled.border_style = style.border_style;
+
+#76 src/core/theme_language/material/theme_material_lowering.cpp:1080 loop@1071 lower_edges | width_at
+ 1071     for (std::size_t edge = first_edge; edge < first_edge + edge_count; ++edge) {
+ 1072         MaterialDeclaration styled = initial_field(edge_field(edge, 0U));
+ 1073         MaterialDeclaration wide = initial_field(edge_field(edge, 1U));
+ 1074         MaterialDeclaration coloured = initial_field(edge_field(edge, 2U));
+ 1075         if (style_at) {
+ 1076             styled.initial = false;
+ 1077             styled.border_style = style.border_style;
+ 1078             styled.edge_lines = style.edge_lines;
+ 1079         }
+ 1080         if (width_at) {
+ 1081             wide.initial = false;
+ 1082             wide.number = width;
+
+#77 src/core/theme_language/material/theme_material_lowering.cpp:1084 loop@1071 lower_edges | colour_at
+ 1071     for (std::size_t edge = first_edge; edge < first_edge + edge_count; ++edge) {
+ 1072         MaterialDeclaration styled = initial_field(edge_field(edge, 0U));
+      ...
+ 1081             wide.initial = false;
+ 1082             wide.number = width;
+ 1083         }
+ 1084         if (colour_at) {
+ 1085             coloured.initial = false;
+ 1086             coloured.colour = colour;
+
+#78 src/core/theme_language/motion/theme_motion_lowering.cpp:477 loop@473 lower_shorthand | parts.size() != 1U
+  473     for (const ComponentRange part : parts) {
+  474         SingleTransition single{};
+  475         if (!read_single(part, single)) return false;
+  476         if (single.none) {
+  477             if (parts.size() != 1U) {
+  478                 return fail(DiagnosticCode::value_syntax, value_.components[part.first].token, "none alone");
+  479             }
+
+#79 src/core/theme_language/motion/theme_motion_lowering.cpp:503 loop@496 lower_properties | parts.size() != 1U
+  496     for (const ComponentRange part : parts) {
+  497         if (part.first == part.end || next(part.first) != part.end) {
+  498             const std::uint32_t token = part.first < value_.components.size() ? value_.components[part.first].token
+  499                                                                                : start_;
+  500             return fail(DiagnosticCode::value_syntax, token, "one property");
+  501         }
+  502         if (keyword(part.first, "none")) {
+  503             if (parts.size() != 1U) {
+  504                 return fail(DiagnosticCode::value_syntax, value_.components[part.first].token, "none alone");
+  505             }
+
+#80 src/core/theme_language/motion/theme_motion_lowering.cpp:527 loop@519 lower_times | delays
+  519     for (const ComponentRange part : parts) {
+  520         if (part.first == part.end || next(part.first) != part.end) {
+  521             const std::uint32_t token = part.first < value_.components.size() ? value_.components[part.first].token
+  522                                                                                : start_;
+  523             return fail(DiagnosticCode::value_syntax, token, "one time");
+  524         }
+  525         double seconds = 0.0;
+  526         if (!read_time(part.first, delays, seconds)) return false;
+  527         if (delays) {
+  528             delays_.push_back(interval_of(seconds));
+  529         } else {
+
+#81 src/core/theme_language/motion/theme_motion_lowering.cpp:779 loop@776 build_declared_transitions | !written.durations.empty()
+  776     for (std::size_t index = 0U; index < written.properties.size(); ++index) {
+  777         const TransitionTarget& target = written.properties[index];
+  778         FrameInterval duration{};
+  779         if (!written.durations.empty()) duration = written.durations[index % written.durations.size()];
+  780         TimingFunction timing{};
+  781         if (!written.timings.empty()) timing = written.timings[index % written.timings.size()];
+
+#82 src/core/theme_language/motion/theme_motion_lowering.cpp:781 loop@776 build_declared_transitions | !written.timings.empty()
+  776     for (std::size_t index = 0U; index < written.properties.size(); ++index) {
+  777         const TransitionTarget& target = written.properties[index];
+  778         FrameInterval duration{};
+  779         if (!written.durations.empty()) duration = written.durations[index % written.durations.size()];
+  780         TimingFunction timing{};
+  781         if (!written.timings.empty()) timing = written.timings[index % written.timings.size()];
+  782         FrameInterval delay{};
+  783         if (!written.delays.empty()) delay = written.delays[index % written.delays.size()];
+
+#83 src/core/theme_language/motion/theme_motion_lowering.cpp:783 loop@776 build_declared_transitions | !written.delays.empty()
+  776     for (std::size_t index = 0U; index < written.properties.size(); ++index) {
+  777         const TransitionTarget& target = written.properties[index];
+  778         FrameInterval duration{};
+  779         if (!written.durations.empty()) duration = written.durations[index % written.durations.size()];
+  780         TimingFunction timing{};
+  781         if (!written.timings.empty()) timing = written.timings[index % written.timings.size()];
+  782         FrameInterval delay{};
+  783         if (!written.delays.empty()) delay = written.delays[index % written.delays.size()];
+  784         if (target.kind == TransitionTargetKind::parameter) {
+  785             const std::optional<std::size_t> found =
+
+#84 src/core/theme_language/motion/theme_motion_lowering.cpp:786 loop@776 build_declared_transitions | primitive == nullptr
+  776     for (std::size_t index = 0U; index < written.properties.size(); ++index) {
+  777         const TransitionTarget& target = written.properties[index];
+  778         FrameInterval duration{};
+  779         if (!written.durations.empty()) duration = written.durations[index % written.durations.size()];
+  780         TimingFunction timing{};
+  781         if (!written.timings.empty()) timing = written.timings[index % written.timings.size()];
+  782         FrameInterval delay{};
+  783         if (!written.delays.empty()) delay = written.delays[index % written.delays.size()];
+  784         if (target.kind == TransitionTargetKind::parameter) {
+  785             const std::optional<std::size_t> found =
+  786                 primitive == nullptr ? std::optional<std::size_t>{} : find_parameter(*primitive, target.name);
+  787             if (!found) {
+  788                 problem.code = DiagnosticCode::value_form_not_admitted;
+
+#85 src/core/theme_language/motion/theme_motion_lowering.cpp:846 loop@842 group_transitions | rule.specificity
+  842             for (std::size_t position = 0U; position < rule.declarations.size(); ++position) {
+  843                 const RuleDeclaration& declaration = rule.declarations[position];
+  844                 if (declaration.property != property || declaration.kind != RuleValueKind::number) continue;
+  845                 Refinement refinement{};
+  846                 refinement.specificity = rule.specificity ? *rule.specificity : rule_specificity(rule.selector);
+  847                 refinement.rule = index;
+  848                 refinement.declaration = true;
+
+#86 src/core/theme_language/value/theme_value.cpp:323 loop@321 hex_colour | short_form
+  321     for (std::size_t channel = 0U; channel < channel_count; ++channel) {
+  322         // A short form's digit d stands for dd.
+  323         const int high = short_form ? values[channel] : values[channel * 2U];
+  324         const int low = short_form ? values[channel] : values[channel * 2U + 1U];
+  325         channels[channel] = static_cast<std::uint8_t>(high * 16 + low);
+
+#87 src/core/theme_language/value/theme_value.cpp:324 loop@321 hex_colour | short_form
+  321     for (std::size_t channel = 0U; channel < channel_count; ++channel) {
+  322         // A short form's digit d stands for dd.
+  323         const int high = short_form ? values[channel] : values[channel * 2U];
+  324         const int low = short_form ? values[channel] : values[channel * 2U + 1U];
+  325         channels[channel] = static_cast<std::uint8_t>(high * 16 + low);
+  326     }
+
+#88 src/core/threading/atomic_pool/atomic_pool.c:48 loop@42 gui_forms_atomic_pool_worker | pool->terminate
+   42     for (;;) {
+   43         while (!pool->terminate &&
+   44                !valid_ticket(atomic_load_explicit(&pool->remaining,
+   45                                                   memory_order_relaxed))) {
+   46             (void)pthread_cond_wait(&pool->work_cv, &pool->sleep_lock);
+   47         }
+   48         if (pool->terminate) {
+   49             (void)pthread_mutex_unlock(&pool->sleep_lock);
+   50             return NULL;
+
+#89 src/core/types/painter/painter.cpp:115 loop@111 fill_linear_gradient | horizontal
+  111     for (unsigned slice = 0; slice < slices; ++slice) {
+  112         const double first = static_cast<double>(slice) / slices;
+  113         const double next = static_cast<double>(slice + 1U) / slices;
+  114         const Color color = sample_gradient(stops, (first + next) * 0.5);
+  115         if (horizontal) {
+  116             fill_rect({rect.x + rect.width * first, rect.y,
+  117                        rect.width * (next - first), rect.height}, color);
+
+#90 src/core/window/backplane/window_backplane.cpp:42 loop@39 copy_framebuffer_rows | direction == FramebufferCopy::into_framebuffer
+   39     for (std::size_t row = 0U; row < rows; ++row) {
+   40         std::uint8_t* const raster = image.pixels.data() + row * image.row_bytes;
+   41         std::uint8_t* const native = reinterpret_cast<std::uint8_t*>(pixels.data() + row * framebuffer_row);
+   42         std::uint8_t* const to = direction == FramebufferCopy::into_framebuffer ? native : raster;
+   43         const std::uint8_t* const from = direction == FramebufferCopy::into_framebuffer ? raster : native;
+   44         for (std::size_t lane = 0U; lane < row_length; lane += 4U) {
+
+#91 src/core/window/backplane/window_backplane.cpp:43 loop@39 copy_framebuffer_rows | direction == FramebufferCopy::into_framebuffer
+   39     for (std::size_t row = 0U; row < rows; ++row) {
+   40         std::uint8_t* const raster = image.pixels.data() + row * image.row_bytes;
+   41         std::uint8_t* const native = reinterpret_cast<std::uint8_t*>(pixels.data() + row * framebuffer_row);
+   42         std::uint8_t* const to = direction == FramebufferCopy::into_framebuffer ? native : raster;
+   43         const std::uint8_t* const from = direction == FramebufferCopy::into_framebuffer ? raster : native;
+   44         for (std::size_t lane = 0U; lane < row_length; lane += 4U) {
+   45             const std::uint8_t red = swap ? from[lane + 2U] : from[lane];
+
+#92 src/core/window/backplane/window_backplane.cpp:45 loop@44 copy_framebuffer_rows | swap
+   44         for (std::size_t lane = 0U; lane < row_length; lane += 4U) {
+   45             const std::uint8_t red = swap ? from[lane + 2U] : from[lane];
+   46             const std::uint8_t blue = swap ? from[lane] : from[lane + 2U];
+   47             to[lane] = red;
+
+#93 src/core/window/backplane/window_backplane.cpp:46 loop@44 copy_framebuffer_rows | swap
+   44         for (std::size_t lane = 0U; lane < row_length; lane += 4U) {
+   45             const std::uint8_t red = swap ? from[lane + 2U] : from[lane];
+   46             const std::uint8_t blue = swap ? from[lane] : from[lane + 2U];
+   47             to[lane] = red;
+   48             to[lane + 1U] = from[lane + 1U];
+
+#94 src/core/window/engine_inputs/window_engine_inputs.cpp:136 loop@133 damage_backplane_readers | damage != nullptr
+  133     for (std::size_t slot = 0; slot < engine_parts_.slot_count(); ++slot) {
+  134         const EnginePartRecord* const record = engine_parts_.record_in_slot(slot);
+  135         if (record == nullptr || !(*record).reads_backplane) continue;
+  136         if (damage != nullptr) {
+  137             const Control::Ptr recorded_by = find((*record).painted_by);
+  138             if (!recorded_by || (*recorded_by).window_ != this) continue;
+
+#95 src/core/window/inspection/window_visual_inspection.cpp:264 loop@173 visual_inspection_snapshot | options.include_display_operations
+  173     while (!pending.empty()) {
+  174         PendingInspectionNode current = std::move(pending.back());
+      ...
+  261                     (*chunk).logical_bounds() == Rect{0.0, 0.0,
+  262                         (*control).arranged_bounds_.width,
+  263                         (*control).arranged_bounds_.height};
+  264                 if (options.include_display_operations) {
+  265                     const std::size_t count = std::min(
+  266                         options.maximum_operations_per_control,
+
+#96 src/core/window/presentation/window_presentation.cpp:455 loop@452 paint_rectangles | starts_clear
+  452         for (std::size_t index = 0; index < painted.size(); ++index) {
+  453             candidate.save();
+  454             candidate.clip_rect(painted[index]);
+  455             if (starts_clear) {
+  456                 PaintGroup cleared{};
+  457                 cleared.bounds = painted[index];
+
+#97 src/core/window/presentation/window_presentation.cpp:696 loop@693 set_live_surface_idle_wake_handler | live_surface_idle_wake_
+  693     for (LiveSurfaceRegistrationMap::value_type& entry : live_surface_registrations_) {
+  694         LiveSurfaceRegistration& registration = entry.second;
+  695         registration.idle_wake.disconnect();
+  696         if (live_surface_idle_wake_) {
+  697             registration.idle_wake = (*registration.surface).connect_presentation_wake(
+  698                 detail::WakeIdleLiveSurface(live_surface_idle_wake_));
+
+#98 src/core/window/scheduler/window_scheduler.cpp:27 loop@17 next_wake | occluded_
+   17     for (const std::shared_ptr<gui_forms::detail::ScheduledFrameRequest>& request : frame_requests_) {
+   18         if (!(*request).connected()) {
+   19             continue;
+   20         }
+   21         if ((*request).kind == detail::FrameRequestKind::ui_timer) {
+   22             if (!result || (*request).deadline < *result) {
+   23                 result = (*request).deadline;
+   24             }
+   25             continue;
+   26         }
+   27         if (occluded_) {
+   28             continue;
+   29         }
+
+#99 src/core/window/scheduler/window_scheduler.cpp:189 loop@165 poll_frame_schedule | occluded_
+  165     for (const std::shared_ptr<gui_forms::detail::ScheduledFrameRequest>& request : requests) {
+  166         if (!(*request).connected() || (*request).deadline > now) {
+      ...
+  186             }
+  187             continue;
+  188         }
+  189         if (occluded_) {
+  190             result.suppressed_by_occlusion = true;
+  191             continue;
+
+#100 src/core/window/window.cpp:1392 loop@1391 move_focus_region | forward
+ 1391     for (std::size_t step = 0; step < attempts; ++step) {
+ 1392         const std::size_t index = forward ? (origin + 1U + step) % count : (origin + count - 1U - step) % count;
+ 1393         if (focus_into_region(focus_regions_[index])) return true;
+ 1394     }
+
+#101 src/core/xml/xml_reader/xml_reader.cpp:245 loop@242 read_prolog | input_[offset_] != '<'
+  242         while (true) {
+  243             skip_space();
+  244             if (at_end()) return fail(XmlError::missing_root_element, offset_);
+  245             if (input_[offset_] != '<') {
+  246                 const bool character = check_character_at(offset_);
+  247                 if (!character) return false;
+
+#102 src/core/xml/xml_reader/xml_reader.cpp:263 loop@260 read_epilogue | input_[offset_] == '<'
+  260         while (true) {
+  261             skip_space();
+  262             if (at_end()) return true;
+  263             if (input_[offset_] == '<') {
+  264                 bool was_markup = false;
+  265                 if (!read_misc_markup(was_markup)) return false;
+

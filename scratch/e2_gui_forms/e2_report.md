@@ -1,0 +1,23 @@
+loop branches: 737 units, 7259 branches in loops (7259 open, 0 decided)
+by class: invariant 550, edge 260, validation 897, control 1219, data 4333
+by branch: if 5949, conditional 673, and 494, or 128, switch 15
+
+| Area | invariant | edge | validation | control | data |
+|---|---|---|---|---|---|
+| audio | 1 | 3 | 12 | 19 | 11 |
+| c-abi | 0 | 0 | 8 | 12 | 28 |
+| controls | 153 | 66 | 202 | 335 | 1433 |
+| core | 102 | 46 | 459 | 327 | 1221 |
+| fuzz | 1 | 3 | 13 | 2 | 27 |
+| host | 0 | 0 | 1 | 6 | 19 |
+| host-linux | 1 | 0 | 8 | 0 | 4 |
+| host-macos | 0 | 0 | 1 | 2 | 9 |
+| host-windows | 8 | 2 | 1 | 56 | 120 |
+| render | 2 | 0 | 18 | 8 | 26 |
+| runtime | 0 | 0 | 0 | 0 | 2 |
+| stx_conv | 11 | 10 | 6 | 6 | 30 |
+| stx_png | 24 | 4 | 60 | 18 | 39 |
+| stx_vorbis | 15 | 2 | 24 | 39 | 90 |
+| stx_zlib | 10 | 10 | 14 | 25 | 46 |
+| tests | 222 | 107 | 49 | 353 | 1162 |
+| tools | 0 | 7 | 21 | 11 | 66 |

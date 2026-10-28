@@ -1,0 +1,1582 @@
+#1 src/controls/backstage_view/backstage_view.cpp:439 loop@436 on_semantic_child_action | action == SemanticAction::select || action == SemanticAction::press
+  436     for (std::size_t item = 0; item < items_.size(); ++item) {
+  437         if (node_id(view_id, items_[item].stable_id) != id) continue;
+  438         const bool topic = items_[item].kind == BackstageItemKind::topic;
+  439         const bool fits = topic ? action == SemanticAction::select || action == SemanticAction::press
+  440                                 : action == SemanticAction::press;
+  441         if (!fits || !item_enabled(items_[item])) return false;
+
+#2 src/controls/button_base/button_base.cpp:740 loop@737 paint_button_content | text_alignment_ == ContentAlignment::top_center || text_alignment_ == ContentAlignment::middle_center || text_alignment_ == ContentAlignment::bottom_center
+  737         for (std::size_t index = 0; index < lines.size(); ++index) {
+  738             const Size measured = line_sizes[index];
+  739             double x = text_rect.x;
+  740             if (text_alignment_ == ContentAlignment::top_center ||
+  741                 text_alignment_ == ContentAlignment::middle_center ||
+  742                 text_alignment_ == ContentAlignment::bottom_center) {
+
+#3 src/controls/button_base/button_base.cpp:744 loop@737 paint_button_content | text_alignment_ == ContentAlignment::top_right || text_alignment_ == ContentAlignment::middle_right || text_alignment_ == ContentAlignment::bottom_right
+  737         for (std::size_t index = 0; index < lines.size(); ++index) {
+  738             const Size measured = line_sizes[index];
+  739             double x = text_rect.x;
+  740             if (text_alignment_ == ContentAlignment::top_center ||
+  741                 text_alignment_ == ContentAlignment::middle_center ||
+  742                 text_alignment_ == ContentAlignment::bottom_center) {
+  743                 x += (text_rect.width - measured.width) * 0.5;
+  744             } else if (text_alignment_ == ContentAlignment::top_right ||
+  745                        text_alignment_ == ContentAlignment::middle_right ||
+  746                        text_alignment_ == ContentAlignment::bottom_right) {
+
+#4 src/controls/collections/choice_group.cpp:126 loop@123 apply_selection | selected < 0
+  123     for (std::size_t index = 0U; index < (*revision).entries.size(); ++index) {
+  124         Button& button = *(*(*revision).entries[index]).button;
+  125         button.set_selected(static_cast<int>(index) == selected);
+  126         button.set_tab_stop(static_cast<int>(index) == (selected < 0 ? 0 : selected));
+  127         if (!is_alive() || revision_ != revision) return;
+  128     }
+
+#5 src/controls/collections/choice_group.cpp:153 loop@151 set_items | revision_
+  151     for (const ChoiceItem& value : (*next).items) {
+  152         std::shared_ptr<Entry> entry{};
+  153         if (revision_) {
+  154             for (const std::shared_ptr<Entry>& candidate : (*revision_).entries) {
+  155                 if ((*candidate).id == value.id) { entry = candidate; break; }
+
+#6 src/controls/collections/choice_group.cpp:250 loop@249 on_key | backward
+  249     for (int attempt = 0; attempt < count; ++attempt) {
+  250         if (backward) next = next == 0 ? count - 1 : next - 1;
+  251         else next = next + 1 == count ? 0 : next + 1;
+  252         const std::shared_ptr<Button> button = (*(*revision).entries[static_cast<std::size_t>(next)]).button;
+
+#7 src/controls/collections/command_bar.cpp:107 loop@105 set_items | revision_
+  105     for (const CommandItem& value : (*next).items) {
+  106         std::shared_ptr<Entry> entry{};
+  107         if (revision_) {
+  108             for (const std::shared_ptr<Entry>& candidate : (*revision_).entries) {
+  109                 if ((*candidate).id == value.id) { entry = candidate; break; }
+
+#8 src/controls/collections/command_bar.cpp:216 loop@215 on_key | backward
+  215     for (int attempt = 0; attempt < count; ++attempt) {
+  216         if (backward) current = current == 0 ? count - 1 : current - 1;
+  217         else current = current + 1 == count ? 0 : current + 1;
+  218         const std::shared_ptr<Button> button = (*(*revision).entries[static_cast<std::size_t>(current)]).button;
+
+#9 src/controls/collections/expandable_sections.cpp:122 loop@120 set_items | revision_
+  120     for (const SectionItem& value : (*next).items) {
+  121         std::shared_ptr<Entry> item{};
+  122         if (revision_) {
+  123             for (const std::shared_ptr<Entry>& candidate : (*revision_).entries) {
+  124                 if ((*candidate).id == value.id) { item = candidate; break; }
+
+#10 src/controls/collections/expandable_sections.cpp:199 loop@192 on_toggled | expanded && single_open_
+  192     for (std::size_t index = 0U; index < (*revision).entries.size(); ++index) {
+  193         Entry& item = *(*revision).entries[index];
+  194         if (item.id != id) continue;
+  195         (*item.heading).set_expanded_state(expanded);
+  196         if (!is_alive() || revision_ != revision) return;
+  197         (*item.content).set_visible(expanded);
+  198         if (!is_alive() || revision_ != revision) return;
+  199         if (expanded && single_open_) {
+  200             for (const std::shared_ptr<Entry>& other : (*revision).entries) {
+  201                 if ((*other).id != id) (*(*other).heading).set_checked(false);
+
+#11 src/controls/data_grid_view/data_grid_view.cpp:1463 loop@1462 set_row_selected | selected
+ 1462         for (std::size_t column = 0; column < columns_.size(); ++column) {
+ 1463             if (selected) insert_selected_cell(row_id, column);
+ 1464             else erase_selected_cell(row_id, column);
+ 1465         }
+
+#12 src/controls/data_grid_view/data_grid_view.cpp:2253 loop@2231 semantic_virtual_children | row_headers_visible_
+ 2231     for (std::size_t position = std::min(first_row_, row_end); position < row_end; ++position) {
+ 2232         const DataGridViewRowPosition row{position};
+      ...
+ 2250         row_node.actions = {SemanticAction::focus, SemanticAction::select};
+ 2251         // A drawn row header is published first in its row (owner decision,
+ 2252         // stage A gap 4), named as the row is; pressing it clicks it.
+ 2253         if (row_headers_visible_) {
+ 2254             const RowParts placed_row = row_parts(row, layout);
+ 2255             SemanticNode header{};
+
+#13 src/controls/docking/dock_navigator/dock_navigator.cpp:398 loop@395 on_semantic_child_action | action == SemanticAction::press
+  395         for (std::size_t index = 0; index < held.size(); ++index) {
+  396             if (entry_identity(list, held[index].panel) != stable_id) continue;
+  397             static_cast<void>(select(list, index));
+  398             if (action == SemanticAction::press) static_cast<void>(choose());
+  399             return true;
+  400         }
+
+#14 src/controls/docking/dock_site/dock_site.cpp:1107 loop@1105 plan_bands_and_collapse | maximized_
+ 1105     for (std::size_t attempt = 0; attempt <= edges.size(); ++attempt) {
+ 1106         collapsed_ = plan_collapse(Size{area.width, area.height});
+ 1107         if (maximized_) break;
+ 1108         assign_collapsed_edges(area, collapsed_);
+ 1109         bool added = false;
+
+#15 src/controls/docking/dock_site/dock_site.cpp:2290 loop@2277 semantic_virtual_children | enabled
+ 2277     for (std::size_t seam = 0; seam < seams_.size(); ++seam) {
+ 2278         const SeamSlot& slot = seams_[seam];
+      ...
+ 2287         node.value = std::to_string(static_cast<long long>(std::lround(slot.first)));
+ 2288         node.bounds = to_window(absolute, slot.bar);
+ 2289         node.states = SemanticState::visible | SemanticState::focusable;
+ 2290         if (enabled) node.states |= SemanticState::enabled;
+ 2291         if (focused_ && keyboard_seam_ == seam) node.states |= SemanticState::focused;
+ 2292         node.actions = {SemanticAction::focus, SemanticAction::increment, SemanticAction::decrement,
+
+#16 src/controls/docking/dock_site/dock_site.cpp:2315 loop@2313 on_semantic_child_action | action == SemanticAction::focus
+ 2313     for (std::size_t seam = 0; seam < seams_.size(); ++seam) {
+ 2314         if (seam_identity(seams_[seam].split) != stable_id) continue;
+ 2315         if (action == SemanticAction::focus) return focus_seam(seam);
+ 2316         if (action == SemanticAction::increment) return move_seam(seam, keyboard_increment_);
+ 2317         if (action == SemanticAction::decrement) return move_seam(seam, -keyboard_increment_);
+
+#17 src/controls/docking/dock_site/dock_site.cpp:2316 loop@2313 on_semantic_child_action | action == SemanticAction::increment
+ 2313     for (std::size_t seam = 0; seam < seams_.size(); ++seam) {
+ 2314         if (seam_identity(seams_[seam].split) != stable_id) continue;
+ 2315         if (action == SemanticAction::focus) return focus_seam(seam);
+ 2316         if (action == SemanticAction::increment) return move_seam(seam, keyboard_increment_);
+ 2317         if (action == SemanticAction::decrement) return move_seam(seam, -keyboard_increment_);
+ 2318         if (action != SemanticAction::set_value) return false;
+
+#18 src/controls/docking/dock_site/dock_site.cpp:2317 loop@2313 on_semantic_child_action | action == SemanticAction::decrement
+ 2313     for (std::size_t seam = 0; seam < seams_.size(); ++seam) {
+ 2314         if (seam_identity(seams_[seam].split) != stable_id) continue;
+ 2315         if (action == SemanticAction::focus) return focus_seam(seam);
+ 2316         if (action == SemanticAction::increment) return move_seam(seam, keyboard_increment_);
+ 2317         if (action == SemanticAction::decrement) return move_seam(seam, -keyboard_increment_);
+ 2318         if (action != SemanticAction::set_value) return false;
+ 2319         double requested = 0.0;
+
+#19 src/controls/docking/dock_site/dock_site.cpp:2318 loop@2313 on_semantic_child_action | action != SemanticAction::set_value
+ 2313     for (std::size_t seam = 0; seam < seams_.size(); ++seam) {
+ 2314         if (seam_identity(seams_[seam].split) != stable_id) continue;
+ 2315         if (action == SemanticAction::focus) return focus_seam(seam);
+ 2316         if (action == SemanticAction::increment) return move_seam(seam, keyboard_increment_);
+ 2317         if (action == SemanticAction::decrement) return move_seam(seam, -keyboard_increment_);
+ 2318         if (action != SemanticAction::set_value) return false;
+ 2319         double requested = 0.0;
+ 2320         const char* const begin = value.data();
+
+#20 src/controls/docking/dock_site/dock_site_auto_hide.cpp:230 loop@229 collect_side_panels | pass == 0
+  229         for (const StackSlot& slot : stacks_) {
+  230             const bool behind = pass == 0 ? slot.auto_hidden : (slot.side_tabbed && !slot.auto_hidden);
+  231             if (!behind || slot.edge != edge) continue;
+  232             const DockNode* const node = layout.find_node(slot.stack);
+
+#21 src/controls/gallery/pages/retained-layout-panels.cpp:68 loop@58 build_flow_cards | index < 2U
+   58             for (std::size_t item_index = 0U; item_index < 5U; ++item_index) {
+   59                 std::shared_ptr<Button> item = make_control<Button>(
+   60                     StableId("gallery.layout.flow." + std::to_string(index) +
+   61                              ".item." + std::to_string(item_index)),
+   62                     std::string(1U, static_cast<char>('A' + item_index)));
+   63                 (*item).set_visual_style(item_index % 2U == 0U
+   64                                              ? ButtonVisualStyle::command
+   65                                              : ButtonVisualStyle::standard);
+   66                 (*item).set_requested_bounds(
+   67                     {0.0, 0.0,
+   68                      index < 2U ? 48.0 + static_cast<double>(item_index % 2U) * 10.0
+   69                                 : 52.0,
+   70                      index < 2U ? 26.0 : 19.0});
+
+#22 src/controls/gallery/pages/retained-layout-panels.cpp:70 loop@58 build_flow_cards | index < 2U
+   58             for (std::size_t item_index = 0U; item_index < 5U; ++item_index) {
+   59                 std::shared_ptr<Button> item = make_control<Button>(
+   60                     StableId("gallery.layout.flow." + std::to_string(index) +
+   61                              ".item." + std::to_string(item_index)),
+   62                     std::string(1U, static_cast<char>('A' + item_index)));
+   63                 (*item).set_visual_style(item_index % 2U == 0U
+   64                                              ? ButtonVisualStyle::command
+   65                                              : ButtonVisualStyle::standard);
+   66                 (*item).set_requested_bounds(
+   67                     {0.0, 0.0,
+   68                      index < 2U ? 48.0 + static_cast<double>(item_index % 2U) * 10.0
+   69                                 : 52.0,
+   70                      index < 2U ? 26.0 : 19.0});
+   71                 (*item).set_margin({3.0, 2.0, 3.0, 2.0});
+   72                 (*flow).add_child(item);
+
+#23 src/controls/gallery_controls.cpp:693 loop@685 arrange_children | (*specification_).layout == LayoutKind::flex_row
+  685     for (const Control::Ptr& child : children()) {
+  686         if (!(*child).visible()) {
+  687             continue;
+  688         }
+  689         const dml::NodeSpec* gallery_child = dml::find((*child).stable_id().value());
+  690         if (gallery_child == nullptr) {
+  691             throw std::logic_error("Gallery child has no compiled DML specification");
+  692         }
+  693         const int preferred = (*specification_).layout == LayoutKind::flex_row
+  694                                   ? (*gallery_child).preferred_width
+  695                                   : (*gallery_child).preferred_height;
+
+#24 src/controls/gallery_controls.cpp:722 loop@714 arrange_children | (*specification_).layout == LayoutKind::flex_row
+  714     for (const Control::Ptr& child : children()) {
+  715         if (!(*child).visible()) {
+  716             continue;
+  717         }
+  718         const dml::NodeSpec* gallery_child = dml::find((*child).stable_id().value());
+  719         if (gallery_child == nullptr) {
+  720             throw std::logic_error("Gallery child has no compiled DML specification");
+  721         }
+  722         const int preferred = (*specification_).layout == LayoutKind::flex_row
+  723                                   ? (*gallery_child).preferred_width
+  724                                   : (*gallery_child).preferred_height;
+
+#25 src/controls/gallery_controls.cpp:727 loop@714 arrange_children | (*specification_).layout == LayoutKind::flex_row
+  714     for (const Control::Ptr& child : children()) {
+  715         if (!(*child).visible()) {
+      ...
+  724                                   : (*gallery_child).preferred_height;
+  725         const double child_extent = preferred > 0 ? static_cast<double>(preferred) : flexible_extent;
+  726         Rect bounds = content;
+  727         if ((*specification_).layout == LayoutKind::flex_row) {
+  728             bounds.x = cursor;
+  729             bounds.width = child_extent;
+
+#26 src/controls/guidance/error_provider/error_provider.cpp:452 loop@443 update_binding | !data_member_.empty()
+  443     for (const std::shared_ptr<gui_forms::Binding>& binding : bindings) {
+  444         if (binding) active_bindings.insert(binding.get());
+  445         Control* raw = binding ? (*binding).target() : nullptr;
+  446         const std::shared_ptr<gui_forms::Control> target = raw ? (*raw).weak_from_this().lock() : nullptr;
+  447         if (!target || !can_extend(target)) continue;
+  448         Aggregate& aggregate = aggregates[(*target).runtime_id().value];
+  449         aggregate.target = target;
+  450         append_unique_error(aggregate.errors, (*source).current_error({}));
+  451         std::string field = (*binding).data_member();
+  452         if (!data_member_.empty()) field = data_member_ + "." + field;
+  453         std::string record_error = (*source).current_error(field);
+  454         if (record_error.empty() && !data_member_.empty()) {
+
+#27 src/controls/label/label.cpp:482 loop@479 layout_label_text | alignment_ == HorizontalAlignment::center
+  479     for (std::size_t index = 0; index < layout.lines.size(); ++index) {
+  480         const double text_width = metrics[index].logical_size.width;
+  481         double x = 2.0;
+  482         if (alignment_ == HorizontalAlignment::center) {
+  483             x = std::max(2.0, (arranged.width - text_width) * 0.5);
+  484         } else if (alignment_ == HorizontalAlignment::far) {
+
+#28 src/controls/label/label.cpp:484 loop@479 layout_label_text | alignment_ == HorizontalAlignment::far
+  479     for (std::size_t index = 0; index < layout.lines.size(); ++index) {
+  480         const double text_width = metrics[index].logical_size.width;
+  481         double x = 2.0;
+  482         if (alignment_ == HorizontalAlignment::center) {
+  483             x = std::max(2.0, (arranged.width - text_width) * 0.5);
+  484         } else if (alignment_ == HorizontalAlignment::far) {
+  485             x = std::max(2.0, arranged.width - text_width - 2.0);
+  486         }
+
+#29 src/controls/menu/menu_strip/menu_strip.cpp:218 loop@216 item_bounds | use_mnemonic_
+  216     for (std::size_t index = 0; index < items_.size(); ++index) {
+  217         if (!items_[index].visible) continue;
+  218         const std::string display = use_mnemonic_
+  219             ? menu_display_text(items_[index].text) : items_[index].text;
+  220         const ResolvedTextLayout normal = resolve_text_layout_utf8(display, normal_font);
+
+#30 src/controls/menu/menu_strip/menu_strip.cpp:328 loop@299 on_paint | use_mnemonic_
+  299     for (std::size_t index = 0; index < items_.size(); ++index) {
+  300         if (!items_[index].visible) continue;
+      ...
+  325                                              effective_text_scale(),
+  326                                 item.y + std::max(font.size,
+  327                                     item.height * 0.5 + font.size * 0.35)},
+  328                                use_mnemonic_
+  329                                    ? menu_display_text(items_[index].text)
+  330                                    : items_[index].text,
+
+#31 src/controls/menu/menu_strip/menu_strip.cpp:433 loop@427 semantic_virtual_children | use_mnemonic_
+  427     for (std::size_t index = 0; index < items_.size(); ++index) {
+  428         if (!items_[index].visible) continue;
+  429         SemanticNode node{};
+  430         node.stable_id = items_[index].stable_id;
+  431         node.runtime_id = virtual_semantic_runtime_id(node.stable_id);
+  432         node.role = SemanticRole::menu_bar_item;
+  433         node.name = use_mnemonic_
+  434             ? menu_display_text(items_[index].text) : items_[index].text;
+  435         if (use_mnemonic_) node.access_key = mnemonic_access_key(items_[index].text);
+
+#32 src/controls/menu/menu_strip/menu_strip.cpp:435 loop@427 semantic_virtual_children | use_mnemonic_
+  427     for (std::size_t index = 0; index < items_.size(); ++index) {
+  428         if (!items_[index].visible) continue;
+  429         SemanticNode node{};
+  430         node.stable_id = items_[index].stable_id;
+  431         node.runtime_id = virtual_semantic_runtime_id(node.stable_id);
+  432         node.role = SemanticRole::menu_bar_item;
+  433         node.name = use_mnemonic_
+  434             ? menu_display_text(items_[index].text) : items_[index].text;
+  435         if (use_mnemonic_) node.access_key = mnemonic_access_key(items_[index].text);
+  436         node.bounds = {absolute.x + bounds[index].x, absolute.y + bounds[index].y,
+  437                        bounds[index].width, bounds[index].height};
+
+#33 src/controls/pages/page_strip/page_strip.cpp:391 loop@388 measure_tabs | mnemonics_enabled_
+  388     for (std::size_t position = 0; position < count; ++position) {
+  389         const PageRecord& record = (*pages_).record_at(PagePosition{position});
+  390         TabSlot& tab = layout_.tabs[position];
+  391         if (mnemonics_enabled_) {
+  392             tab.label = parse_mnemonic_text(record.title).display_text;
+  393         } else {
+
+#34 src/controls/pages/page_strip/page_strip.cpp:405 loop@388 measure_tabs | item_sizing_ != PageItemSizing::fixed
+  388     for (std::size_t position = 0; position < count; ++position) {
+  389         const PageRecord& record = (*pages_).record_at(PagePosition{position});
+      ...
+  402         double natural = fixed;
+  403         if (tab.collapsed) {
+  404             natural = padding * 2.0 + image_size * scale;
+  405         } else if (item_sizing_ != PageItemSizing::fixed) {
+  406             double content = padding * 2.0;
+  407             if (tab.has_icon) content += image_size * scale;
+
+#35 src/controls/pages/page_strip/page_strip.cpp:661 loop@660 layout_shrink | widths_frozen_
+  660     while (front < count) {
+  661         const double least = widths_frozen_ ? layout_.tabs[front].width : std::min(layout_.tabs[front].width, minimum);
+  662         if (used + least > area) break;
+  663         used += least;
+
+#36 src/controls/pages/page_strip/page_strip.cpp:675 loop@673 layout_shrink | widths_frozen_
+  673         while (front > pinned && used > area) {
+  674             --front;
+  675             const double dropped = widths_frozen_ ? layout_.tabs[front].width
+  676                                                   : std::min(layout_.tabs[front].width, minimum);
+  677             used -= dropped;
+
+#37 src/controls/pages/page_strip/page_strip.cpp:1956 loop@1953 prepare_list_commands | mnemonics_enabled_
+ 1953     for (std::size_t position = 0; position < count; ++position) {
+ 1954         const PageRecord& record = (*pages_).record_at(PagePosition{position});
+ 1955         Command& command = *list_commands_[position];
+ 1956         command.set_text(mnemonics_enabled_ ? record.title : literal_menu_text(record.title));
+ 1957         command.set_checked(selected && *selected == position);
+ 1958         command.set_enabled(true);
+
+#38 src/controls/pages/page_strip/page_strip.cpp:2087 loop@2079 semantic_virtual_children | mnemonics_enabled_
+ 2079     for (std::size_t position = 0; position < count; ++position) {
+ 2080         const PageRecord& record = (*pages_).record_at(PagePosition{position});
+ 2081         const Rect bounds = placed.tabs[position].bounds;
+ 2082         SemanticNode node{};
+ 2083         node.stable_id = tab_identity(record.id);
+ 2084         node.runtime_id = virtual_semantic_runtime_id(node.stable_id);
+ 2085         node.role = SemanticRole::tab;
+ 2086         node.name = placed.tabs[position].label;
+ 2087         if (mnemonics_enabled_) node.access_key = mnemonic_access_key(record.title);
+ 2088         if (record.pinned) node.description = "pinned";
+ 2089         if (record.pinned && record.modified) node.description += ", ";
+
+#39 src/controls/pages/page_strip/page_strip.cpp:2095 loop@2079 semantic_virtual_children | enabled
+ 2079     for (std::size_t position = 0; position < count; ++position) {
+ 2080         const PageRecord& record = (*pages_).record_at(PagePosition{position});
+      ...
+ 2092         node.set_size = count;
+ 2093         node.controlled_panel = page_panel_identity(record.id);
+ 2094         node.states = SemanticState::focusable;
+ 2095         if (enabled) node.states |= SemanticState::enabled;
+ 2096         if (!bounds.empty()) {
+ 2097             node.bounds = to_window(absolute, bounds);
+
+#40 src/controls/panel/combo_box/combo_box.cpp:823 loop@819 on_paint | themed
+  819     for (int row = 0; row < 4; ++row) {
+  820         painter.fill_rect({std::floor(center_x) - 3.0 + row,
+  821                            std::floor(center_y) + direction * (row - 1.0),
+  822                            7.0 - row * 2.0, 1.0},
+  823                           themed ? button_recipe.glyph : style().dark_border);
+  824     }
+  825     // The drop_down style's editor shows its own text; otherwise the field
+
+#41 src/controls/panel/date_time_picker/calendar_popup/calendar_popup.hpp:264 loop@244 semantic_virtual_children | focused_
+  244         for (std::size_t cell = 0U; cell < dates.size(); ++cell) {
+  245             const DateTimeValue date = dates[cell];
+      ...
+  261             if (date.year == selected_.year && date.month == selected_.month &&
+  262                 date.day == selected_.day) {
+  263                 node.states |= SemanticState::selected;
+  264                 if (focused_) node.states |= SemanticState::focused;
+  265             }
+  266             nodes.push_back(std::move(node));
+
+#42 src/controls/panel/date_time_picker/calendar_popup/calendar_popup.hpp:295 loop@290 on_semantic_child_action | action == SemanticAction::press
+  290         for (const DateTimeValue date : cell_dates()) {
+  291             if (date_stable_id(date) != stable_id) continue;
+  292             if (!civil_in_range(date, minimum_, maximum_)) return false;
+  293             selected_ = std::clamp(date, minimum_, maximum_);
+  294             invalidate(Dirty::paint | Dirty::semantics);
+  295             if (action == SemanticAction::press) committed_.emit(selected_);
+  296             return true;
+  297         }
+
+#43 src/controls/panel/date_time_picker/date_time_utilities.cpp:122 loop@79 format_date_time | value.hour % 12U == 0U
+   79     for (std::size_t index = 0U; index < pattern.size();) {
+   80         if (pattern[index] == '\'') {
+      ...
+  119                                   : std::to_string(value.hour);
+  120             break;
+  121         case 'h': {
+  122             const unsigned hour = value.hour % 12U == 0U ? 12U : value.hour % 12U;
+  123             result += count >= 2U ? padded(hour, 2U) : std::to_string(hour);
+  124             break;
+
+#44 src/controls/panel/date_time_picker/date_time_utilities.cpp:135 loop@79 format_date_time | value.hour < 12U
+   79     for (std::size_t index = 0U; index < pattern.size();) {
+   80         if (pattern[index] == '\'') {
+      ...
+  132                                   : std::to_string(value.second);
+  133             break;
+  134         case 't': {
+  135             const std::string& designator = value.hour < 12U
+  136                 ? provider.am_designator : provider.pm_designator;
+  137             result += count == 1U && !designator.empty()
+
+#45 src/controls/panel/instrument_rack/rack_module_panel/rack_module_panel.cpp:67 loop@66 arrange | total_weight > 0.0
+   66     for (std::size_t index = 0; index < fields.size(); ++index) {
+   67         const double weight = total_weight > 0.0
+   68             ? field_weights[index] / total_weight
+   69             : 1.0 / static_cast<double>(fields.size());
+
+#46 src/controls/panel/list_box/list_box.cpp:305 loop@293 on_paint | focused_
+  293     for (std::size_t index = top_index_; index < end; ++index) {
+  294         const double y = 2.0 + static_cast<double>(index - top_index_) * row_height;
+  295         const bool selected = detail::binary_search_contains(
+  296             std::span<const std::size_t>(selected_), index);
+  297         const bool hovered = hovered_index_ == index;
+  298         const Rect row{2.0, y, std::max(0.0, bounds.width - 4.0), row_height};
+  299         const ControlVisualRecipe& row_recipe = effective_theme().resolve(
+  300             ControlVisualRole::selection,
+  301             visual_context(hovered, false, selected, focused_));
+  302         if (themed && (selected || hovered)) {
+  303             paint_surface_material(painter, row, row_recipe.material);
+  304         } else if (selected) {
+  305             painter.fill_rect(row, focused_ ? style().accent
+  306                                             : style().accent_light);
+  307         } else if (hovered) {
+
+#47 src/controls/panel/list_box/list_box.cpp:315 loop@293 on_paint | themed
+  293     for (std::size_t index = top_index_; index < end; ++index) {
+  294         const double y = 2.0 + static_cast<double>(index - top_index_) * row_height;
+      ...
+  312                                 y + std::max(font.size,
+  313                                              row_height * 0.5 + 4.0)},
+  314                                items_[index], font,
+  315                                themed ? (selected || hovered
+  316                                              ? row_recipe.text
+  317                                              : editor_recipe.text)
+
+#48 src/controls/panel/list_box/list_box.cpp:325 loop@293 on_paint | themed
+  293     for (std::size_t index = top_index_; index < end; ++index) {
+  294         const double y = 2.0 + static_cast<double>(index - top_index_) * row_height;
+      ...
+  322         if (focused_ && active_index_ == index) {
+  323             painter.stroke_rect({3.5, y + 1.5, std::max(0.0, bounds.width - 7.0),
+  324                                  std::max(0.0, row_height - 3.0)},
+  325                                 themed ? row_recipe.focus_ring
+  326                                        : selected ? style().highlight
+  327                                                   : style().accent,
+
+#49 src/controls/panel/list_box/list_box.cpp:328 loop@293 on_paint | themed
+  293     for (std::size_t index = top_index_; index < end; ++index) {
+  294         const double y = 2.0 + static_cast<double>(index - top_index_) * row_height;
+      ...
+  325                                 themed ? row_recipe.focus_ring
+  326                                        : selected ? style().highlight
+  327                                                   : style().accent,
+  328                                 themed ? row_recipe.focus_width : 1.0);
+  329         }
+  330     }
+
+#50 src/controls/panel/list_view/list_view.cpp:877 loop@872 layout_for | details
+  872     for (int pass = 0; pass < 3; ++pass) {
+  873         const double bar_width = vertical ? scroll_bar_extent : 0.0;
+  874         const double bar_height = horizontal ? scroll_bar_extent : 0.0;
+  875         area = {content.x, content.y + header_height, std::max(0.0, content.width - bar_width),
+  876                 std::max(0.0, content.height - header_height - bar_height)};
+  877         if (details) {
+  878             placed.per_line = 1U;
+  879         } else if (list) {
+
+#51 src/controls/panel/list_view/list_view.cpp:879 loop@872 layout_for | list
+  872     for (int pass = 0; pass < 3; ++pass) {
+  873         const double bar_width = vertical ? scroll_bar_extent : 0.0;
+  874         const double bar_height = horizontal ? scroll_bar_extent : 0.0;
+  875         area = {content.x, content.y + header_height, std::max(0.0, content.width - bar_width),
+  876                 std::max(0.0, content.height - header_height - bar_height)};
+  877         if (details) {
+  878             placed.per_line = 1U;
+  879         } else if (list) {
+  880             placed.per_line = fitting_lines(area.height, row);
+  881         } else {
+
+#52 src/controls/panel/list_view/list_view.cpp:885 loop@872 layout_for | list
+  872     for (int pass = 0; pass < 3; ++pass) {
+  873         const double bar_width = vertical ? scroll_bar_extent : 0.0;
+      ...
+  882             placed.per_line = fitting_lines(area.width, placed.cell.width);
+  883         }
+  884         placed.line_count = ceiling_quotient(placed.shown_count, placed.per_line);
+  885         placed.page_lines = fitting_lines(list ? area.width : area.height, line_extent);
+  886         const bool overflows = placed.line_count > placed.page_lines;
+  887         const bool next_vertical = !list && overflows;
+
+#53 src/controls/panel/list_view/list_view.cpp:1269 loop@1264 paint_item | owner_drawn
+ 1264         for (std::size_t column = 1; column < columns_.size(); ++column) {
+ 1265             if (!column_visible(placed, column)) continue;
+ 1266             const Rect header = column_cell(placed, column);
+ 1267             const Rect sub_cell{header.x, cell.y, header.width, cell.height};
+ 1268             const SubItemParts sub = sub_item_parts(placed, index, column, sub_cell);
+ 1269             if (owner_drawn) {
+ 1270                 ItemContentPaint request{.painter = painter,
+ 1271                                          .index = index,
+
+#54 src/controls/panel/list_view/list_view.cpp:1980 loop@1967 semantic_virtual_children | enabled
+ 1967     for (std::size_t column = 0; column < columns_.size(); ++column) {
+ 1968         if (!column_visible(placed, column)) continue;
+      ...
+ 1977         if (sort_column_ == column && sort_order_ == ListViewSortOrder::descending) node.value = "descending";
+ 1978         node.bounds = {absolute.x + bounds.x, absolute.y + bounds.y, bounds.width, bounds.height};
+ 1979         node.states = SemanticState::visible;
+ 1980         if (enabled) node.states |= SemanticState::enabled;
+ 1981         node.actions = {SemanticAction::press};
+ 1982         nodes.push_back(std::move(node));
+
+#55 src/controls/panel/list_view/list_view.cpp:1994 loop@1987 semantic_virtual_children | view_ == ListViewView::details
+ 1987     for (std::size_t index = first; index < end; ++index) {
+ 1988         const ListViewItem& item = item_at(index, scratch);
+ 1989         const Rect bounds = Rect::intersection(item_bounds(placed, index), placed.viewport);
+ 1990         SemanticNode node{};
+ 1991         node.stable_id = item.stable_id;
+ 1992         node.runtime_id = virtual_semantic_runtime_id(node.stable_id);
+ 1993         node.name = item.text;
+ 1994         if (view_ == ListViewView::details) {
+ 1995             node.role = SemanticRole::row;
+ 1996             node.row_index = index + 1U;
+
+#56 src/controls/panel/list_view/list_view.cpp:1999 loop@1987 semantic_virtual_children | check_boxes_
+ 1987     for (std::size_t index = first; index < end; ++index) {
+ 1988         const ListViewItem& item = item_at(index, scratch);
+ 1989         const Rect bounds = Rect::intersection(item_bounds(placed, index), placed.viewport);
+ 1990         SemanticNode node{};
+ 1991         node.stable_id = item.stable_id;
+ 1992         node.runtime_id = virtual_semantic_runtime_id(node.stable_id);
+ 1993         node.name = item.text;
+ 1994         if (view_ == ListViewView::details) {
+ 1995             node.role = SemanticRole::row;
+ 1996             node.row_index = index + 1U;
+ 1997             append_row_cells(placed, index, item, node);
+ 1998         } else {
+ 1999             node.role = check_boxes_ ? SemanticRole::check_list_item : SemanticRole::list_item;
+ 2000         }
+ 2001         node.bounds = {absolute.x + bounds.x, absolute.y + bounds.y, bounds.width, bounds.height};
+
+#57 src/controls/panel/list_view/list_view.cpp:2003 loop@1987 semantic_virtual_children | enabled
+ 1987     for (std::size_t index = first; index < end; ++index) {
+ 1988         const ListViewItem& item = item_at(index, scratch);
+      ...
+ 2000         }
+ 2001         node.bounds = {absolute.x + bounds.x, absolute.y + bounds.y, bounds.width, bounds.height};
+ 2002         node.states = SemanticState::visible | SemanticState::focusable;
+ 2003         if (enabled) node.states |= SemanticState::enabled;
+ 2004         if (selected_[index] != 0U) node.states |= SemanticState::selected;
+ 2005         if (focused_ && focused_index_ == index) node.states |= SemanticState::focused;
+
+#58 src/controls/panel/list_view/list_view.cpp:2006 loop@1987 semantic_virtual_children | check_boxes_
+ 1987     for (std::size_t index = first; index < end; ++index) {
+ 1988         const ListViewItem& item = item_at(index, scratch);
+      ...
+ 2003         if (enabled) node.states |= SemanticState::enabled;
+ 2004         if (selected_[index] != 0U) node.states |= SemanticState::selected;
+ 2005         if (focused_ && focused_index_ == index) node.states |= SemanticState::focused;
+ 2006         if (check_boxes_) {
+ 2007             node.value = item.checked ? "checked" : "unchecked";
+ 2008             node.states |= SemanticState::checkable;
+
+#59 src/controls/panel/list_view/list_view.cpp:2040 loop@2025 append_row_cells | enabled
+ 2025     for (std::size_t column = 0; column < columns_.size(); ++column) {
+ 2026         const Rect extent = column_cell(placed, column);
+      ...
+ 2037         cell.column_index = column + 1U;
+ 2038         cell.bounds = {absolute.x + bounds.x, absolute.y + bounds.y, bounds.width, bounds.height};
+ 2039         cell.states = SemanticState::visible;
+ 2040         if (enabled) cell.states |= SemanticState::enabled;
+ 2041         row_node.children.push_back(std::move(cell));
+ 2042     }
+
+#60 src/controls/panel/list_view/list_view.cpp:2062 loop@2060 on_semantic_child_action | action != SemanticAction::press
+ 2060     for (std::size_t column = 0; column < columns_.size(); ++column) {
+ 2061         if (id != column_identity(list_id, columns_[column].stable_id)) continue;
+ 2062         if (action != SemanticAction::press) return false;
+ 2063         request_column_click(column);
+ 2064         return true;
+
+#61 src/controls/panel/masked_text_box/masked_text_box.cpp:174 loop@172 filter_paste | overwrite_mode_
+  172     for (const std::string_view piece : pieces) {
+  173         MaskEditResult placed;
+  174         if (overwrite_mode_) {
+  175             placed = candidate.replace_at(piece, next);
+  176         } else {
+
+#62 src/controls/panel/masked_text_box/masked_text_provider/masked_text_provider.cpp:386 loop@368 place | placement == Placement::insert
+  368     for (const char32_t character : characters) {
+  369         if (next < slots_.size() && slots_[next].kind == SlotKind::literal) {
+      ...
+  383         if (hint != MaskResultHint::success && hint != MaskResultHint::character_escaped) {
+  384             return MaskEditResult{hint, MaskPosition(next)};
+  385         }
+  386         if (placement == Placement::insert) {
+  387             const MaskEditResult shifted = shift_right(values, next);
+  388             if (!shifted.succeeded()) return shifted;
+
+#63 src/controls/panel/masked_text_box/masked_text_provider/masked_text_provider.cpp:492 loop@489 to_string | literals
+  489     for (std::size_t index = 0U; index < end; ++index) {
+  490         const MaskSlot& slot = slots_[index];
+  491         if (slot.kind == SlotKind::literal) {
+  492             if (literals) text += input_control_detail::utf8_scalar(slot.literal);
+  493         } else if (values_[index].assigned) {
+  494             text += input_control_detail::utf8_scalar(values_[index].character);
+
+#64 src/controls/panel/masked_text_box/masked_text_provider/masked_text_provider.cpp:495 loop@489 to_string | prompts
+  489     for (std::size_t index = 0U; index < end; ++index) {
+  490         const MaskSlot& slot = slots_[index];
+  491         if (slot.kind == SlotKind::literal) {
+  492             if (literals) text += input_control_detail::utf8_scalar(slot.literal);
+  493         } else if (values_[index].assigned) {
+  494             text += input_control_detail::utf8_scalar(values_[index].character);
+  495         } else if (prompts) {
+  496             text += input_control_detail::utf8_scalar(prompt_character_);
+  497         } else {
+
+#65 src/controls/panel/month_calendar/month_calendar.cpp:708 loop@684 on_paint | show_week_numbers_
+  684     for (std::size_t month = 0U; month < month_count(); ++month) {
+  685         const MonthParts parts = month_parts(month);
+      ...
+  705         rule.role = PartRole::divider;
+  706         rule.bounds = parts.weekday_rule.bounds;
+  707         paint_part(painter, *this, rule);
+  708         if (show_week_numbers_) {
+  709             for (std::size_t row = 0U; row < week_rows(month); ++row) {
+  710                 label.bounds = week_parts(month, row).week_label.bounds;
+
+#66 src/controls/panel/month_calendar/month_calendar.cpp:1117 loop@1116 realized_item_count | show_week_numbers_
+ 1116     for (std::size_t month = 0U; month < months; ++month) {
+ 1117         if (show_week_numbers_) count += week_rows(month);
+ 1118         const DateTimeValue start = month_start(month);
+ 1119         count += days_in_month(start.year, start.month);
+
+#67 src/controls/panel/object_view/object_view.cpp:519 loop@516 select_all | selection_mode_ == ObjectSelectionMode::single
+  516     for (const ObjectViewItem& item : items_) {
+  517         if (item.enabled) {
+  518             ids.push_back(item.stable_id);
+  519             if (selection_mode_ == ObjectSelectionMode::single) break;
+  520         }
+  521     }
+
+#68 src/controls/panel/object_view/object_view.cpp:936 loop@924 on_paint | focused_
+  924     for (std::size_t index = first; index < end; ++index) {
+  925         const ObjectViewItem& item = items_[index];
+  926         const Rect cell = item_bounds(index);
+  927         painter.save();
+  928         painter.clip_rect({cell.x + 1.0, cell.y + 1.0,
+  929                            std::max(0.0, cell.width - 2.0),
+  930                            std::max(0.0, cell.height - 2.0)});
+  931         const bool selected = is_selected(item.stable_id);
+  932         const bool active = focused_ && item.stable_id == focused_id_;
+  933         if (selected) {
+  934             painter.fill_rect({cell.x + 1.0, cell.y + 1.0,
+  935                                cell.width - 2.0, cell.height - 2.0},
+  936                               focused_ ? style().accent_light
+  937                                        : with_alpha(style().accent_light, 190));
+  938             painter.stroke_rect({cell.x + 1.5, cell.y + 1.5,
+
+#69 src/controls/panel/object_view/object_view.cpp:947 loop@924 on_paint | view_mode_ == ObjectViewMode::icons
+  924     for (std::size_t index = first; index < end; ++index) {
+  925         const ObjectViewItem& item = items_[index];
+      ...
+  944             painter.fill_rect({cell.x + 1.0, cell.y + 1.0,
+  945                                cell.width - 2.0, cell.height - 2.0}, style().face_light);
+  946         }
+  947         if (view_mode_ == ObjectViewMode::icons) {
+  948             const double glyph_width = std::min(46.0, cell.width - 18.0);
+  949             const Rect glyph_bounds{cell.x + (cell.width - glyph_width) * .5,
+
+#70 src/controls/panel/object_view/object_view.cpp:967 loop@961 on_paint | item.enabled
+  961             for (const std::string& line : label.lines) {
+  962                 const Size measured = painter.measure_text_utf8(line, font);
+  963                 const double text_x = cell.x +
+  964                     std::max(4.0, (cell.width - measured.width) * .5);
+  965                 painter.draw_text_utf8(
+  966                     {text_x, baseline}, line, font,
+  967                     item.enabled ? style().text : style().disabled_text);
+  968                 baseline += line_height;
+  969             }
+
+#71 src/controls/panel/object_view/object_view.cpp:1244 loop@1236 semantic_virtual_children | table
+ 1236     for (std::size_t index = first; index < end; ++index) {
+ 1237         const ObjectViewItem& item = items_[index];
+ 1238         const Rect local = item_bounds(index);
+ 1239         SemanticNode node{};
+ 1240         node.stable_id = item.stable_id;
+ 1241         node.runtime_id = virtual_semantic_runtime_id(node.stable_id);
+ 1242         // Only the visible items are described; their positions still count
+ 1243         // the whole collection.
+ 1244         if (table) {
+ 1245             node.role = SemanticRole::row;
+ 1246             node.row_index = index + 1U;
+
+#72 src/controls/panel/object_view/object_view.cpp:1288 loop@1277 append_column_headers | details_sort_.direction == ObjectSortDirection::ascending
+ 1277     for (std::size_t column = 0U; column < details_columns_.size(); ++column) {
+ 1278         const Rect bounds = Rect::intersection(column_bounds(column), band);
+ 1279         if (bounds.empty()) continue;
+ 1280         const ObjectDetailsColumn& definition = details_columns_[column];
+ 1281         SemanticNode node{};
+ 1282         node.stable_id = view_id + ".column." + definition.id.value;
+ 1283         node.runtime_id = virtual_semantic_runtime_id(node.stable_id);
+ 1284         node.role = SemanticRole::column_header;
+ 1285         node.column_index = column + 1U;
+ 1286         node.name = definition.label;
+ 1287         if (!details_sort_.column.value.empty() && definition.id == details_sort_.column) {
+ 1288             node.value = details_sort_.direction == ObjectSortDirection::ascending ? "ascending" : "descending";
+ 1289         }
+ 1290         node.bounds = {absolute.x + bounds.x, absolute.y + bounds.y, bounds.width, bounds.height};
+
+#73 src/controls/panel/object_view/object_view.cpp:1740 loop@1723 paint_details | details_sort_.direction == ObjectSortDirection::ascending
+ 1723     for (std::size_t visible = 0U; visible < visible_count; ++visible) {
+ 1724         const std::size_t index = visible_columns[visible];
+      ...
+ 1737         if (sorted) {
+ 1738             const double center = cell.x + cell.width - 10.0;
+ 1739             const double y = cell.y + cell.height * .5;
+ 1740             const double direction = details_sort_.direction == ObjectSortDirection::ascending ? -3.0 : 3.0;
+ 1741             painter.draw_line({center - 3.0, y - direction}, {center, y + direction}, style().text, 1.0);
+ 1742             painter.draw_line({center, y + direction}, {center + 3.0, y - direction}, style().text, 1.0);
+
+#74 src/controls/panel/object_view/object_view.cpp:1756 loop@1749 paint_details | focused_
+ 1749     for (std::size_t item_index_value = first; item_index_value < end; ++item_index_value) {
+ 1750         const ObjectViewItem& item = items_[item_index_value];
+ 1751         const Rect row = item_bounds(item_index_value);
+ 1752         if (row.y >= bounds.height - 2.0) break;
+ 1753         ++details_paint_work_.rows;
+ 1754         const bool selected = is_selected(item.stable_id);
+ 1755         if (selected) {
+ 1756             painter.fill_rect(row, focused_ ? style().accent_light : with_alpha(style().accent_light, 190));
+ 1757             painter.stroke_rect({row.x + .5, row.y + .5, std::max(0.0, row.width - 1.0), row.height - 1.0}, style().accent, 1.0);
+ 1758         } else if (hovered_index_ == item_index_value) painter.fill_rect(row, style().face_light);
+
+#75 src/controls/panel/property_grid/property_grid.cpp:657 loop@645 rebuild | sort == PropertySort::alphabetical
+  645         for (const PropertyDescriptor& descriptor : visible) {
+  646             const std::optional<BindingValue> value = (*object).property_value(descriptor.name);
+  647             if (!value) continue;
+  648             const std::string canonical = registered_name(descriptor.name);
+  649             const PropertyValueOrigin origin =
+  650                 (*object).property_value_origin(descriptor.name);
+  651             std::vector<PropertyRowSpec> projected_rows;
+  652             append_projected_rows(
+  653                 projected_rows, descriptor, *value, descriptor.name,
+  654                 display_spelling(descriptor.name),
+  655                 description_for(descriptor, origin), {}, 0U,
+  656                 descriptor.writable, {}, true);
+  657             if (sort == PropertySort::alphabetical) {
+  658                 alphabetical.rows.insert(alphabetical.rows.end(),
+  659                     std::make_move_iterator(projected_rows.begin()),
+
+#76 src/controls/panel/property_grid/property_grid.cpp:914 loop@895 set_value | reset
+  895             for (const Control::Ptr& candidate : objects) {
+  896                 const std::optional<PropertyDescriptor> candidate_descriptor = (*candidate).property_descriptor(
+      ...
+  911                         "Every selected owner must expose the same property path");
+  912                 }
+  913                 BindingValue next_property = *previous_property;
+  914                 if (reset) {
+  915                     if (!(*candidate_descriptor).resettable) {
+  916                         throw std::invalid_argument(
+
+#77 src/controls/panel/property_grid/property_grid.cpp:923 loop@895 set_value | target_spec.path.empty()
+  895             for (const Control::Ptr& candidate : objects) {
+  896                 const std::optional<PropertyDescriptor> candidate_descriptor = (*candidate).property_descriptor(
+      ...
+  920                     const std::optional<BindingValue> converted = convert_property_value(
+  921                         value, target_spec.descriptor);
+  922                     const std::optional<BindingValue> next = converted
+  923                         ? (target_spec.path.empty()
+  924                                ? std::optional<BindingValue>{*converted}
+  925                                : replace_at(*previous_property,
+
+#78 src/controls/panel/property_grid/property_grid.cpp:961 loop@960 set_value | reset
+  960                 for (; applied < edits.size(); ++applied) {
+  961                     if (reset) {
+  962                         if (!(*edits[applied].object).reset_property(
+  963                                 edits[applied].descriptor.name)) {
+
+#79 src/controls/panel/property_list/property_list.cpp:385 loop@370 recompute_geometry | stacked
+  370             for (RowState& state : rows) {
+  371                 if (state.group_index != group_index) continue;
+      ...
+  382                 const bool interactive = editable || row.resettable;
+  383                 double height = ((interactive ? property_editor_height
+  384                                               : property_row_height) + row_extra) * s;
+  385                 if (stacked) height += ((interactive ? 21.0 : 13.0) + stacked_extra) * s;
+  386                 if (!row.validation_message.empty()) height += validation_height;
+  387                 state.row_bounds = {0.0, y, width, height};
+
+#80 src/controls/panel/property_list/property_list.cpp:392 loop@370 recompute_geometry | stacked
+  370             for (RowState& state : rows) {
+  371                 if (state.group_index != group_index) continue;
+      ...
+  389                     (row.expandable ? 14.0 * s : 0.0);
+  390                 const double reset_width = row.resettable ? 48.0 * s : 0.0;
+  391                 const double reset_gap = row.resettable ? 5.0 * s : 0.0;
+  392                 if (stacked) {
+  393                     state.name_bounds = {padding + indent, y + 3.0 * s,
+  394                                          std::max(0.0, width - padding * 2.0 -
+
+#81 src/controls/panel/text_box/text_box.cpp:264 loop@262 push_history | !undo_.empty()
+  262     while (undo_.size() + redo_.size() > maximum_history_entries_ ||
+  263            history_bytes_ > maximum_history_bytes_) {
+  264         std::deque<Snapshot>* source = !undo_.empty() ? &undo_ : &redo_;
+  265         history_bytes_ -= (*source).front().text.size();
+  266         (*source).pop_front();
+
+#82 src/controls/panel/text_box/text_box.cpp:775 loop@771 paint_multiline | focused_ && !selection_.empty()
+  771     for (std::size_t i = first; i < last; ++i) {
+  772         const VisualLine& row = visual_lines_[i];
+  773         const double y = 4.0 + static_cast<double>(i) * line_height_ - offset.y;
+  774         const double origin = text_left_ - offset.x;
+  775         const bool selected = focused_ && !selection_.empty() &&
+  776             selection_.start().value() <= row.offsets.back() &&
+  777             selection_.end().value() > row.offsets.front();
+
+#83 src/controls/panel/text_box/text_box.cpp:784 loop@771 paint_multiline | themed
+  771     for (std::size_t i = first; i < last; ++i) {
+  772         const VisualLine& row = visual_lines_[i];
+      ...
+  781             double right = multiline_boundary_x(i, selection_.end());
+  782             if (selection_.end().value() > row.offsets.back()) right += std::max(3.0, font.size * 0.35);
+  783             selection_bounds = {origin + left, y, std::max(0.0, right - left), line_height_};
+  784             if (themed) paint_surface_material(painter, selection_bounds, highlight.material);
+  785             else painter.fill_rect(selection_bounds, style().accent);
+  786         }
+
+#84 src/controls/panel/text_box/text_box.cpp:793 loop@787 paint_multiline | selected
+  787         for (const VisualRun& run : row.runs) {
+  788             const Point baseline{origin + run.x, y + line_ascent_};
+  789             const std::string_view source = text();
+  790             const std::size_t run_bytes = run.end - run.start;
+  791             const std::string_view value = source.substr(run.start, run_bytes);
+  792             painter.draw_text_utf8(baseline, value, font, foreground);
+  793             if (selected) {
+  794                 painter.save();
+  795                 painter.clip_rect(selection_bounds);
+
+#85 src/controls/panel/text_box/text_box.cpp:796 loop@787 paint_multiline | themed
+  787         for (const VisualRun& run : row.runs) {
+  788             const Point baseline{origin + run.x, y + line_ascent_};
+  789             const std::string_view source = text();
+  790             const std::size_t run_bytes = run.end - run.start;
+  791             const std::string_view value = source.substr(run.start, run_bytes);
+  792             painter.draw_text_utf8(baseline, value, font, foreground);
+  793             if (selected) {
+  794                 painter.save();
+  795                 painter.clip_rect(selection_bounds);
+  796                 painter.draw_text_utf8(baseline, value, font, themed ? highlight.text : style().highlight);
+  797                 painter.restore();
+  798             }
+
+#86 src/controls/panel/text_box/text_box.cpp:886 loop@883 on_paint | masked
+  883     for (std::size_t index = 0U; index <= count; ++index) {
+  884         const Utf8Offset offset = store_.utf8_offset(GraphemeIndex(index));
+  885         layout_offsets_.push_back(offset.value());
+  886         const std::size_t presentation_offset = masked
+  887             ? index * mask.size() : offset.value();
+  888         const std::string_view prefix = presentation.substr(0U, presentation_offset);
+
+#87 src/controls/panel/tree_list_view/tree_list_view.cpp:1575 loop@1562 semantic_virtual_children | enabled
+ 1562     for (const std::size_t column : column_order_) {
+ 1563         if (!column_visible(placed, column)) continue;
+      ...
+ 1572         if (sort_column_ == column && sort_order_ == TreeListSortOrder::descending) node.value = "descending";
+ 1573         node.bounds = {absolute.x + bounds.x, absolute.y + bounds.y, bounds.width, bounds.height};
+ 1574         node.states = SemanticState::visible;
+ 1575         if (enabled) node.states |= SemanticState::enabled;
+ 1576         node.actions = {SemanticAction::press};
+ 1577         children.push_back(std::move(node));
+
+#88 src/controls/panel/tree_list_view/tree_list_view.cpp:1633 loop@1618 append_row_cells | enabled
+ 1618     for (const std::size_t column : column_order_) {
+ 1619         const Rect extent = column_cell(placed, column);
+      ...
+ 1630         cell.column_index = column_position_[column] + 1U;
+ 1631         cell.bounds = {absolute.x + bounds.x, absolute.y + bounds.y, bounds.width, bounds.height};
+ 1632         cell.states = SemanticState::visible;
+ 1633         if (enabled) cell.states |= SemanticState::enabled;
+ 1634         row_node.children.push_back(std::move(cell));
+ 1635     }
+
+#89 src/controls/panel/tree_list_view/tree_list_view.cpp:1643 loop@1641 on_semantic_child_action | action != SemanticAction::press
+ 1641     for (std::size_t column = 0; column < columns_.size(); ++column) {
+ 1642         if (id != column_identity(view_id, columns_[column].stable_id)) continue;
+ 1643         if (action != SemanticAction::press) return false;
+ 1644         toggle_sort(column);
+ 1645         return true;
+
+#90 src/controls/panel/tree_view/tree_view.cpp:263 loop@256 on_paint | focused_
+  256     for (std::size_t row = top_row_; row < end; ++row) {
+  257         const TreeViewItem& item = items_[visible_[row]];
+  258         const double y = 2.0 + static_cast<double>(row - top_row_) * row_height;
+  259         const bool selected = item.stable_id == selected_id_;
+  260         const bool active = focused_ && item.stable_id == active_id_;
+  261         if (selected) {
+  262             painter.fill_rect({2.0, y, std::max(0.0, bounds.width - 4.0), row_height},
+  263                               focused_ ? style().accent : style().accent_light);
+  264         } else if (hovered_row_ == row) {
+  265             painter.fill_rect({2.0, y, std::max(0.0, bounds.width - 4.0), row_height},
+
+#91 src/controls/range_control/range_control_rendering.cpp:196 loop@190 paint_progress_laser | orientation == Orientation::horizontal
+  190     for (int index = 0; index < flame_count; ++index) {
+  191         const double lane = (static_cast<double>(index) + 0.5) /
+  192                             static_cast<double>(flame_count);
+  193         const double wave = std::sin(tau * phase * 1.7 +
+  194                                      static_cast<double>(index) * 2.11);
+  195         const double heat = 0.5 + 0.5 * wave;
+  196         if (orientation == Orientation::horizontal) {
+  197             const Point center{fill.x + fill.width + 0.6 + heat * 1.4,
+  198                                fill.y + fill.height * lane + wave * 1.1};
+
+#92 src/controls/range_control/range_control_rendering.cpp:221 loop@216 paint_progress_laser | reduced
+  216     for (int index = 0; index < spark_count; ++index) {
+  217         const double lane = (static_cast<double>(index) + 0.5) /
+  218                             static_cast<double>(spark_count);
+  219         const double wave = std::sin(tau * phase +
+  220                                      static_cast<double>(index) * 1.73);
+  221         const double length = (reduced ? 0.9 : 1.2) +
+  222                               (wave + 1.0) * (reduced ? 0.65 : 1.35);
+  223         const double spark_width = reduced ? 0.75 :
+
+#93 src/controls/range_control/range_control_rendering.cpp:222 loop@216 paint_progress_laser | reduced
+  216     for (int index = 0; index < spark_count; ++index) {
+  217         const double lane = (static_cast<double>(index) + 0.5) /
+  218                             static_cast<double>(spark_count);
+  219         const double wave = std::sin(tau * phase +
+  220                                      static_cast<double>(index) * 1.73);
+  221         const double length = (reduced ? 0.9 : 1.2) +
+  222                               (wave + 1.0) * (reduced ? 0.65 : 1.35);
+  223         const double spark_width = reduced ? 0.75 :
+  224             0.8 + 0.28 * static_cast<double>(index % 3);
+
+#94 src/controls/range_control/range_control_rendering.cpp:223 loop@216 paint_progress_laser | reduced
+  216     for (int index = 0; index < spark_count; ++index) {
+  217         const double lane = (static_cast<double>(index) + 0.5) /
+  218                             static_cast<double>(spark_count);
+  219         const double wave = std::sin(tau * phase +
+  220                                      static_cast<double>(index) * 1.73);
+  221         const double length = (reduced ? 0.9 : 1.2) +
+  222                               (wave + 1.0) * (reduced ? 0.65 : 1.35);
+  223         const double spark_width = reduced ? 0.75 :
+  224             0.8 + 0.28 * static_cast<double>(index % 3);
+  225         if (orientation == Orientation::horizontal) {
+
+#95 src/controls/range_control/range_control_rendering.cpp:225 loop@216 paint_progress_laser | orientation == Orientation::horizontal
+  216     for (int index = 0; index < spark_count; ++index) {
+  217         const double lane = (static_cast<double>(index) + 0.5) /
+  218                             static_cast<double>(spark_count);
+  219         const double wave = std::sin(tau * phase +
+  220                                      static_cast<double>(index) * 1.73);
+  221         const double length = (reduced ? 0.9 : 1.2) +
+  222                               (wave + 1.0) * (reduced ? 0.65 : 1.35);
+  223         const double spark_width = reduced ? 0.75 :
+  224             0.8 + 0.28 * static_cast<double>(index % 3);
+  225         if (orientation == Orientation::horizontal) {
+  226             const double y = fill.y + fill.height * lane;
+  227             const double edge_x = fill.x + fill.width;
+
+#96 src/controls/range_control/track_bar/track_bar.cpp:251 loop@250 on_paint | bounded_count == 0U
+  250         for (std::size_t index = 0; index <= bounded_count; ++index) {
+  251             const double ratio = bounded_count == 0U
+  252                 ? 0.0 : static_cast<double>(index) /
+  253                     static_cast<double>(bounded_count);
+
+#97 src/controls/range_control/track_bar/track_bar.cpp:254 loop@250 on_paint | horizontal
+  250         for (std::size_t index = 0; index <= bounded_count; ++index) {
+  251             const double ratio = bounded_count == 0U
+  252                 ? 0.0 : static_cast<double>(index) /
+  253                     static_cast<double>(bounded_count);
+  254             if (horizontal) {
+  255                 const double x = span.x + ratio * span.width;
+  256                 painter.draw_line({x, span.y + span.height + 2.0},
+
+#98 src/controls/raster_canvas/raster_canvas.cpp:158 loop@143 publish_full_bitmap | snapshot.pixel_format == gui_drawing::PixelFormat::rgba32_premultiplied
+  143             for (std::int32_t x = 0; x < width; x += side) {
+  144                 const gui_drawing::RectI content{x, y, std::min(side, width - x),
+      ...
+  155                 std::span<const std::byte> pixels(snapshot.pixels().data() + offset, bytes);
+  156                 std::vector<std::byte> converted;
+  157                 std::uint64_t stride = snapshot.row_bytes();
+  158                 if (snapshot.pixel_format == gui_drawing::PixelFormat::rgba32_premultiplied) {
+  159                     converted = rgba_to_bgra(pixels, snapshot.row_bytes(),
+  160                         static_cast<std::uint32_t>(storage.width), static_cast<std::uint32_t>(storage.height));
+
+#99 src/controls/raster_canvas/raster_canvas.cpp:234 loop@223 synchronize_bitmap | snapshot.pixel_format == gui_drawing::PixelFormat::rgba32_premultiplied
+  223         for (std::size_t index = 0; index < tiles_.size(); ++index) {
+  224             Tile& tile = tiles_[index];
+  225             const gui_drawing::RectI rect = gui_drawing::RectI::intersection(dirty, tile.storage);
+  226             if (rect.empty()) continue;
+  227             const std::size_t source_offset = static_cast<std::size_t>(rect.y) * snapshot.row_bytes() +
+  228                 static_cast<std::size_t>(rect.x) * 4U;
+  229             const std::size_t required = static_cast<std::size_t>(rect.height - 1) * snapshot.row_bytes() +
+  230                 static_cast<std::size_t>(rect.width) * 4U;
+  231             std::span<const std::byte> patch(snapshot.pixels().data() + source_offset, required);
+  232             std::vector<std::byte> converted;
+  233             std::uint64_t source_row_bytes = snapshot.row_bytes();
+  234             if (snapshot.pixel_format == gui_drawing::PixelFormat::rgba32_premultiplied) {
+  235                 converted = rgba_to_bgra(patch, snapshot.row_bytes(),
+  236                     static_cast<std::uint32_t>(rect.width), static_cast<std::uint32_t>(rect.height));
+
+#100 src/controls/ribbon/ribbon.cpp:723 loop@719 arrange | selected_tab_ == tab
+  719             for (std::size_t command = 0; command < tabs_[tab].groups[group].commands.size(); ++command) {
+  720                 const Control::Ptr& control = records_[tab][group][command].hosted;
+  721                 if (!control || !is_current_layout_child(control)) continue;
+  722                 Rect bounds{};
+  723                 if (selected_tab_ == tab) bounds = Rect::intersection(placed.commands[group][command], placed.groups_area);
+  724                 set_child_layout_collapsed(control, bounds.empty());
+  725                 if (bounds.empty()) continue;
+
+#101 src/controls/ribbon/ribbon.cpp:1754 loop@1751 process_mnemonic_self | minimized_
+ 1751     for (std::size_t tab = 0; tab < tabs_.size(); ++tab) {
+ 1752         if (!shown(tab) || !is_mnemonic(character, tabs_[tab].text)) continue;
+ 1753         select_tab(tab);
+ 1754         if (minimized_) set_minimized(false);
+ 1755         return true;
+ 1756     }
+
+#102 src/controls/ribbon/ribbon.cpp:2086 loop@2061 append_group_node | focused_ && stop_
+ 2061     for (std::size_t command = 0; command < spec.commands.size(); ++command) {
+ 2062         const RibbonCommandSpec& item = spec.commands[command];
+      ...
+ 2083         if (item.kind == RibbonCommandKind::toggle) node.states |= SemanticState::checkable;
+ 2084         if (command_checked(item)) node.states |= SemanticState::checked;
+ 2085         if (open_command_ == address) node.states |= SemanticState::expanded;
+ 2086         const bool own_focus = focused_ && stop_ && *stop_ == stop;
+ 2087         const bool popup_focus = popup_focused_ && popup_stop_ && *popup_stop_ == stop;
+ 2088         if (own_focus || popup_focus) node.states |= SemanticState::focused;
+
+#103 src/controls/ribbon/ribbon.cpp:2087 loop@2061 append_group_node | popup_focused_ && popup_stop_
+ 2061     for (std::size_t command = 0; command < spec.commands.size(); ++command) {
+ 2062         const RibbonCommandSpec& item = spec.commands[command];
+      ...
+ 2084         if (command_checked(item)) node.states |= SemanticState::checked;
+ 2085         if (open_command_ == address) node.states |= SemanticState::expanded;
+ 2086         const bool own_focus = focused_ && stop_ && *stop_ == stop;
+ 2087         const bool popup_focus = popup_focused_ && popup_stop_ && *popup_stop_ == stop;
+ 2088         if (own_focus || popup_focus) node.states |= SemanticState::focused;
+ 2089         node.actions = {SemanticAction::press};
+
+#104 src/controls/ribbon/ribbon.cpp:2249 loop@2246 on_semantic_child_action | action == SemanticAction::press
+ 2246     for (std::size_t tab = 0; tab < tabs_.size() && !tab_id.empty(); ++tab) {
+ 2247         if (tabs_[tab].stable_id != tab_id) continue;
+ 2248         if (!shown(tab)) return false;
+ 2249         if (action == SemanticAction::press) {
+ 2250             click_tab(tab);
+ 2251             return true;
+
+#105 src/controls/ribbon/ribbon.cpp:2253 loop@2246 on_semantic_child_action | action != SemanticAction::select
+ 2246     for (std::size_t tab = 0; tab < tabs_.size() && !tab_id.empty(); ++tab) {
+ 2247         if (tabs_[tab].stable_id != tab_id) continue;
+ 2248         if (!shown(tab)) return false;
+ 2249         if (action == SemanticAction::press) {
+ 2250             click_tab(tab);
+ 2251             return true;
+ 2252         }
+ 2253         if (action != SemanticAction::select) return false;
+ 2254         select_tab(tab);
+ 2255         if (minimized_) set_minimized(false);
+
+#106 src/controls/ribbon/ribbon.cpp:2255 loop@2246 on_semantic_child_action | minimized_
+ 2246     for (std::size_t tab = 0; tab < tabs_.size() && !tab_id.empty(); ++tab) {
+ 2247         if (tabs_[tab].stable_id != tab_id) continue;
+ 2248         if (!shown(tab)) return false;
+ 2249         if (action == SemanticAction::press) {
+ 2250             click_tab(tab);
+ 2251             return true;
+ 2252         }
+ 2253         if (action != SemanticAction::select) return false;
+ 2254         select_tab(tab);
+ 2255         if (minimized_) set_minimized(false);
+ 2256         return true;
+ 2257     }
+
+#107 src/controls/ribbon/ribbon_application_menu.cpp:246 loop@245 move | forward
+  245     for (std::size_t step = 0; step < count; ++step) {
+  246         row = forward ? (row + 1U) % count : (row + count - 1U) % count;
+  247         if (placed.rows[row].recent != recent || !row_enabled(placed.rows[row])) continue;
+  248         focus_row_ = row;
+
+#108 src/controls/ribbon_color_picker/ribbon_color_picker.cpp:569 loop@567 palette_key | key == PhysicalKey::down
+  567         for (std::size_t entry = 0; entry < all.size(); ++entry) {
+  568             const Rect bounds = all[entry].bounds;
+  569             const bool beyond = key == PhysicalKey::down ? bounds.y > from.y + 0.5 : bounds.y < from.y - 0.5;
+  570             if (!beyond) continue;
+  571             const bool nearer_row = key == PhysicalKey::down ? bounds.y < best_row - 0.5 : bounds.y > best_row + 0.5;
+
+#109 src/controls/ribbon_color_picker/ribbon_color_picker.cpp:571 loop@567 palette_key | key == PhysicalKey::down
+  567         for (std::size_t entry = 0; entry < all.size(); ++entry) {
+  568             const Rect bounds = all[entry].bounds;
+  569             const bool beyond = key == PhysicalKey::down ? bounds.y > from.y + 0.5 : bounds.y < from.y - 0.5;
+  570             if (!beyond) continue;
+  571             const bool nearer_row = key == PhysicalKey::down ? bounds.y < best_row - 0.5 : bounds.y > best_row + 0.5;
+  572             const double distance = std::fabs(bounds.x + bounds.width * 0.5 - centre);
+  573             const bool same_row = std::fabs(bounds.y - best_row) <= 0.5;
+
+#110 src/controls/ribbon_gallery/ribbon_gallery.cpp:419 loop@418 navigate | upward
+  418         while (moved < steps) {
+  419             if (upward) {
+  420                 if (candidate == 0U) break;
+  421                 --candidate;
+
+#111 src/controls/ribbon_gallery/ribbon_gallery.cpp:710 loop@702 semantic_virtual_children | in_view
+  702         for (std::size_t offset = 0; offset < entry.count; ++offset) {
+  703             const std::size_t position = entry.first + offset;
+  704             const RibbonGalleryItem& item = items_[order_[position]];
+  705             SemanticNode node{};
+  706             node.stable_id = item.stable_id;
+  707             node.runtime_id = virtual_semantic_runtime_id(node.stable_id);
+  708             node.role = SemanticRole::list_item;
+  709             node.name = item.label.empty() ? item.stable_id : item.label;
+  710             if (in_view) {
+  711                 const Rect cell = Rect::intersection(cell_bounds(position, layout), layout.viewport);
+  712                 node.bounds = {absolute.x + cell.x, absolute.y + cell.y, cell.width, cell.height};
+
+#112 src/controls/ribbon_gallery/ribbon_gallery.cpp:719 loop@702 semantic_virtual_children | grouped && !groups.empty()
+  702         for (std::size_t offset = 0; offset < entry.count; ++offset) {
+  703             const std::size_t position = entry.first + offset;
+      ...
+  716             if (selected && *selected == item.stable_id) node.states |= SemanticState::selected;
+  717             if (has_focus_ && focused_ == position) node.states |= SemanticState::focused;
+  718             node.actions = {SemanticAction::focus, SemanticAction::select, SemanticAction::press};
+  719             if (grouped && !groups.empty()) {
+  720                 SemanticNode& group = groups.back();
+  721                 node.position_in_set = position - group_start + 1U;
+
+#113 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:340 loop@325 resolve_item_inputs | horizontal
+  325     for (std::size_t index = 0U; index < count; ++index) {
+  326         Control& child = *children_[index];
+      ...
+  337         input.margin.bottom = FlexMargin{margin.bottom, layout.auto_margin.bottom};
+  338         input.margin.left = FlexMargin{margin.left, layout.auto_margin.left};
+  339 
+  340         const SizeValue& main_size = horizontal ? layout.width : layout.height;
+  341         const SizeValue& cross_size = horizontal ? layout.height : layout.width;
+  342         const SizeValue& minimum_main = horizontal ? layout.min_width : layout.min_height;
+
+#114 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:341 loop@325 resolve_item_inputs | horizontal
+  325     for (std::size_t index = 0U; index < count; ++index) {
+  326         Control& child = *children_[index];
+      ...
+  338         input.margin.left = FlexMargin{margin.left, layout.auto_margin.left};
+  339 
+  340         const SizeValue& main_size = horizontal ? layout.width : layout.height;
+  341         const SizeValue& cross_size = horizontal ? layout.height : layout.width;
+  342         const SizeValue& minimum_main = horizontal ? layout.min_width : layout.min_height;
+  343         const SizeValue& maximum_main = horizontal ? layout.max_width : layout.max_height;
+
+#115 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:342 loop@325 resolve_item_inputs | horizontal
+  325     for (std::size_t index = 0U; index < count; ++index) {
+  326         Control& child = *children_[index];
+      ...
+  339 
+  340         const SizeValue& main_size = horizontal ? layout.width : layout.height;
+  341         const SizeValue& cross_size = horizontal ? layout.height : layout.width;
+  342         const SizeValue& minimum_main = horizontal ? layout.min_width : layout.min_height;
+  343         const SizeValue& maximum_main = horizontal ? layout.max_width : layout.max_height;
+  344         const SizeValue& minimum_cross = horizontal ? layout.min_height : layout.min_width;
+
+#116 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:343 loop@325 resolve_item_inputs | horizontal
+  325     for (std::size_t index = 0U; index < count; ++index) {
+  326         Control& child = *children_[index];
+      ...
+  340         const SizeValue& main_size = horizontal ? layout.width : layout.height;
+  341         const SizeValue& cross_size = horizontal ? layout.height : layout.width;
+  342         const SizeValue& minimum_main = horizontal ? layout.min_width : layout.min_height;
+  343         const SizeValue& maximum_main = horizontal ? layout.max_width : layout.max_height;
+  344         const SizeValue& minimum_cross = horizontal ? layout.min_height : layout.min_width;
+  345         const SizeValue& maximum_cross = horizontal ? layout.max_height : layout.max_width;
+
+#117 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:344 loop@325 resolve_item_inputs | horizontal
+  325     for (std::size_t index = 0U; index < count; ++index) {
+  326         Control& child = *children_[index];
+      ...
+  341         const SizeValue& cross_size = horizontal ? layout.height : layout.width;
+  342         const SizeValue& minimum_main = horizontal ? layout.min_width : layout.min_height;
+  343         const SizeValue& maximum_main = horizontal ? layout.max_width : layout.max_height;
+  344         const SizeValue& minimum_cross = horizontal ? layout.min_height : layout.min_width;
+  345         const SizeValue& maximum_cross = horizontal ? layout.max_height : layout.max_width;
+  346         const double cross_margins = horizontal ? margin.top + margin.bottom : margin.left + margin.right;
+
+#118 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:345 loop@325 resolve_item_inputs | horizontal
+  325     for (std::size_t index = 0U; index < count; ++index) {
+  326         Control& child = *children_[index];
+      ...
+  342         const SizeValue& minimum_main = horizontal ? layout.min_width : layout.min_height;
+  343         const SizeValue& maximum_main = horizontal ? layout.max_width : layout.max_height;
+  344         const SizeValue& minimum_cross = horizontal ? layout.min_height : layout.min_width;
+  345         const SizeValue& maximum_cross = horizontal ? layout.max_height : layout.max_width;
+  346         const double cross_margins = horizontal ? margin.top + margin.bottom : margin.left + margin.right;
+  347         const Size control_minimum = child.minimum_size();
+
+#119 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:346 loop@325 resolve_item_inputs | horizontal
+  325     for (std::size_t index = 0U; index < count; ++index) {
+  326         Control& child = *children_[index];
+      ...
+  343         const SizeValue& maximum_main = horizontal ? layout.max_width : layout.max_height;
+  344         const SizeValue& minimum_cross = horizontal ? layout.min_height : layout.min_width;
+  345         const SizeValue& maximum_cross = horizontal ? layout.max_height : layout.max_width;
+  346         const double cross_margins = horizontal ? margin.top + margin.bottom : margin.left + margin.right;
+  347         const Size control_minimum = child.minimum_size();
+  348         const Size control_maximum = child.maximum_size();
+
+#120 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:349 loop@325 resolve_item_inputs | horizontal
+  325     for (std::size_t index = 0U; index < count; ++index) {
+  326         Control& child = *children_[index];
+      ...
+  346         const double cross_margins = horizontal ? margin.top + margin.bottom : margin.left + margin.right;
+  347         const Size control_minimum = child.minimum_size();
+  348         const Size control_maximum = child.maximum_size();
+  349         const double control_minimum_main = horizontal ? control_minimum.width : control_minimum.height;
+  350         const double control_minimum_cross = horizontal ? control_minimum.height : control_minimum.width;
+  351         const double control_maximum_main =
+
+#121 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:350 loop@325 resolve_item_inputs | horizontal
+  325     for (std::size_t index = 0U; index < count; ++index) {
+  326         Control& child = *children_[index];
+      ...
+  347         const Size control_minimum = child.minimum_size();
+  348         const Size control_maximum = child.maximum_size();
+  349         const double control_minimum_main = horizontal ? control_minimum.width : control_minimum.height;
+  350         const double control_minimum_cross = horizontal ? control_minimum.height : control_minimum.width;
+  351         const double control_maximum_main =
+  352             maximum_or_unbounded(horizontal ? control_maximum.width : control_maximum.height);
+
+#122 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:352 loop@325 resolve_item_inputs | horizontal
+  325     for (std::size_t index = 0U; index < count; ++index) {
+  326         Control& child = *children_[index];
+      ...
+  349         const double control_minimum_main = horizontal ? control_minimum.width : control_minimum.height;
+  350         const double control_minimum_cross = horizontal ? control_minimum.height : control_minimum.width;
+  351         const double control_maximum_main =
+  352             maximum_or_unbounded(horizontal ? control_maximum.width : control_maximum.height);
+  353         const double control_maximum_cross =
+  354             maximum_or_unbounded(horizontal ? control_maximum.height : control_maximum.width);
+
+#123 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:354 loop@325 resolve_item_inputs | horizontal
+  325     for (std::size_t index = 0U; index < count; ++index) {
+  326         Control& child = *children_[index];
+      ...
+  351         const double control_maximum_main =
+  352             maximum_or_unbounded(horizontal ? control_maximum.width : control_maximum.height);
+  353         const double control_maximum_cross =
+  354             maximum_or_unbounded(horizontal ? control_maximum.height : control_maximum.width);
+  355 
+  356         input.definite_cross = definite_size(cross_size, cross_basis);
+
+#124 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:371 loop@325 resolve_item_inputs | horizontal
+  325     for (std::size_t index = 0U; index < count; ++index) {
+  326         Control& child = *children_[index];
+      ...
+  368         } else if (!horizontal && stretched && cross_basis.definite) {
+  369             cross_query = query_extent(cross_basis.extent - cross_margins);
+  370         }
+  371         const LayoutConstraint content_constraint = horizontal ? LayoutConstraint{max_content_extent(), cross_query}
+  372                                                                : LayoutConstraint{cross_query, max_content_extent()};
+  373         const Size max_content = child.measure_for_layout(content_constraint);
+
+#125 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:376 loop@325 resolve_item_inputs | horizontal
+  325     for (std::size_t index = 0U; index < count; ++index) {
+  326         Control& child = *children_[index];
+      ...
+  373         const Size max_content = child.measure_for_layout(content_constraint);
+  374         if (!is_alive()) return;
+  375         contents_[index].max_content = max_content;
+  376         const double content_main = horizontal ? max_content.width : max_content.height;
+  377 
+  378         // The flex base size (CSS Flexbox 9.2.3).
+
+#126 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:419 loop@325 resolve_item_inputs | horizontal
+  325     for (std::size_t index = 0U; index < count; ++index) {
+  326         Control& child = *children_[index];
+      ...
+  416         }
+  417         input.minimum_main = std::max(minimum, control_minimum_main);
+  418         input.maximum_main = maximum;
+  419         const double cross_content = horizontal ? max_content.height : max_content.width;
+  420         input.minimum_cross =
+  421             std::max(resolve_minimum(minimum_cross, cross_basis, cross_content, cross_content), control_minimum_cross);
+
+#127 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:436 loop@433 measure_item_crosses | horizontal
+  433     for (std::size_t index = 0U; index < count; ++index) {
+  434         Control& child = *children_[index];
+  435         const FlexItemLayout& layout = record_for(child);
+  436         const SizeValue& cross_size = horizontal ? layout.height : layout.width;
+  437         FlexItemCross& cross = crosses_[index];
+  438         cross = FlexItemCross{};
+
+#128 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:439 loop@433 measure_item_crosses | horizontal
+  433     for (std::size_t index = 0U; index < count; ++index) {
+  434         Control& child = *children_[index];
+  435         const FlexItemLayout& layout = record_for(child);
+  436         const SizeValue& cross_size = horizontal ? layout.height : layout.width;
+  437         FlexItemCross& cross = crosses_[index];
+  438         cross = FlexItemCross{};
+  439         if (horizontal) {
+  440             // A row aligns its items by their first baselines at their main
+  441             // sizes (9.4 step 8); a column's baseline alignment falls back
+
+#129 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:453 loop@433 measure_item_crosses | horizontal
+  433     for (std::size_t index = 0U; index < count; ++index) {
+  434         Control& child = *children_[index];
+      ...
+  450         }
+  451         const double main = results[index].main_size;
+  452         const Size content = contents_[index].max_content;
+  453         if (horizontal) {
+  454             // The height at the final width; the max-content answer already
+  455             // is that when the width did not change.
+
+#130 src/controls/scrollable_control/container_control/flex_panel/flex_panel.cpp:542 loop@535 intrinsic_content_width | minimum
+  535     for (const Control::Ptr& retained : children_) {
+  536         Control& child = *retained;
+  537         const FlexItemLayout& layout = record_for(child);
+  538         double width = 0.0;
+  539         if (definite_size(layout.width, indefinite)) {
+  540             width = definite_size_value(layout.width, indefinite);
+  541         } else {
+  542             const AvailableExtent query = minimum ? min_content_extent() : max_content_extent();
+  543             width = child.measure_for_layout(LayoutConstraint{query, max_content_extent()}).width;
+  544             if (!is_alive()) return 0.0;
+
+#131 src/controls/scrollable_control/container_control/flow_layout_panel_compat/flow_layout_panel_compat.cpp:254 loop@248 layout_pass | horizontal
+  248     for (const Control::Ptr& child : workspace.retained) {
+  249         if (!child || !is_current_layout_child(child) || !(*child).visible()) continue;
+  250         const Size desired = preferred_child_size(child, inner);
+  251         if (!is_alive()) return {};
+  252         if (!is_current_layout_child(child) || !(*child).visible()) continue;
+  253         const FlowItem item{child, desired, (*child).margin(), flex_grow(*child), flow_break(*child)};
+  254         const double item_main = horizontal
+  255             ? horizontal_extent(item.margin) + item.desired.width
+  256             : vertical_extent(item.margin) + item.desired.height;
+
+#132 src/controls/scrollable_control/container_control/flow_layout_panel_compat/flow_layout_panel_compat.cpp:257 loop@248 layout_pass | horizontal
+  248     for (const Control::Ptr& child : workspace.retained) {
+  249         if (!child || !is_current_layout_child(child) || !(*child).visible()) continue;
+  250         const Size desired = preferred_child_size(child, inner);
+  251         if (!is_alive()) return {};
+  252         if (!is_current_layout_child(child) || !(*child).visible()) continue;
+  253         const FlowItem item{child, desired, (*child).margin(), flex_grow(*child), flow_break(*child)};
+  254         const double item_main = horizontal
+  255             ? horizontal_extent(item.margin) + item.desired.width
+  256             : vertical_extent(item.margin) + item.desired.height;
+  257         const double item_cross = horizontal
+  258             ? vertical_extent(item.margin) + item.desired.height
+  259             : horizontal_extent(item.margin) + item.desired.width;
+
+#133 src/controls/scrollable_control/container_control/flow_layout_panel_compat/flow_layout_panel_compat.cpp:304 loop@298 layout_pass | horizontal
+  298         for (std::size_t item_index = 0U; item_index < line_items.size();
+  299              ++item_index) {
+  300             const FlowItem& item = line_items[item_index];
+  301             if (item_index != 0U) {
+  302                 main_origin += main_spacing + distributed_spacing;
+  303             }
+  304             const double item_cross = horizontal
+  305                 ? vertical_extent(item.margin) + item.desired.height
+  306                 : horizontal_extent(item.margin) + item.desired.width;
+
+#134 src/controls/scrollable_control/container_control/flow_layout_panel_compat/flow_layout_panel_compat.cpp:307 loop@298 layout_pass | horizontal
+  298         for (std::size_t item_index = 0U; item_index < line_items.size();
+  299              ++item_index) {
+  300             const FlowItem& item = line_items[item_index];
+  301             if (item_index != 0U) {
+  302                 main_origin += main_spacing + distributed_spacing;
+  303             }
+  304             const double item_cross = horizontal
+  305                 ? vertical_extent(item.margin) + item.desired.height
+  306                 : horizontal_extent(item.margin) + item.desired.width;
+  307             const double desired_cross = horizontal
+  308                 ? item.desired.height : item.desired.width;
+  309             const double margin_cross = horizontal
+
+#135 src/controls/scrollable_control/container_control/flow_layout_panel_compat/flow_layout_panel_compat.cpp:309 loop@298 layout_pass | horizontal
+  298         for (std::size_t item_index = 0U; item_index < line_items.size();
+  299              ++item_index) {
+  300             const FlowItem& item = line_items[item_index];
+  301             if (item_index != 0U) {
+  302                 main_origin += main_spacing + distributed_spacing;
+  303             }
+  304             const double item_cross = horizontal
+  305                 ? vertical_extent(item.margin) + item.desired.height
+  306                 : horizontal_extent(item.margin) + item.desired.width;
+  307             const double desired_cross = horizontal
+  308                 ? item.desired.height : item.desired.width;
+  309             const double margin_cross = horizontal
+  310                 ? vertical_extent(item.margin) : horizontal_extent(item.margin);
+  311             const double assigned_main = (horizontal
+
+#136 src/controls/scrollable_control/container_control/flow_layout_panel_compat/flow_layout_panel_compat.cpp:311 loop@298 layout_pass | horizontal
+  298         for (std::size_t item_index = 0U; item_index < line_items.size();
+  299              ++item_index) {
+      ...
+  308                 ? item.desired.height : item.desired.width;
+  309             const double margin_cross = horizontal
+  310                 ? vertical_extent(item.margin) : horizontal_extent(item.margin);
+  311             const double assigned_main = (horizontal
+  312                 ? item.desired.width : item.desired.height) +
+  313                 (assign && total_grow > 0.0
+
+#137 src/controls/scrollable_control/container_control/flow_layout_panel_compat/flow_layout_panel_compat.cpp:313 loop@298 layout_pass | assign && total_grow > 0.0
+  298         for (std::size_t item_index = 0U; item_index < line_items.size();
+  299              ++item_index) {
+      ...
+  310                 ? vertical_extent(item.margin) : horizontal_extent(item.margin);
+  311             const double assigned_main = (horizontal
+  312                 ? item.desired.width : item.desired.height) +
+  313                 (assign && total_grow > 0.0
+  314                     ? available_main * item.grow / total_grow : 0.0);
+  315             const CrossPlacement cross_placement = place_across(
+
+#138 src/controls/scrollable_control/container_control/flow_layout_panel_compat/flow_layout_panel_compat.cpp:320 loop@298 layout_pass | horizontal
+  298         for (std::size_t item_index = 0U; item_index < line_items.size();
+  299              ++item_index) {
+      ...
+  317             const double cross_item_origin = cross_placement.origin;
+  318             const double assigned_cross = cross_placement.extent;
+  319             Rect slot;
+  320             if (horizontal) {
+  321                 slot.width = assigned_main;
+  322                 slot.height = assigned_cross;
+
+#139 src/controls/scrollable_control/container_control/flow_layout_panel_compat/flow_layout_panel_compat.cpp:325 loop@298 layout_pass | flow_direction_ == FlowDirection::left_to_right
+  298         for (std::size_t item_index = 0U; item_index < line_items.size();
+  299              ++item_index) {
+      ...
+  322                 slot.height = assigned_cross;
+  323                 slot.y = inset.top + cross_origin + cross_item_origin +
+  324                          item.margin.top;
+  325                 if (flow_direction_ == FlowDirection::left_to_right) {
+  326                     slot.x = inset.left + main_origin + item.margin.left;
+  327                 } else {
+
+#140 src/controls/scrollable_control/container_control/flow_layout_panel_compat/flow_layout_panel_compat.cpp:337 loop@298 layout_pass | flow_direction_ == FlowDirection::top_down
+  298         for (std::size_t item_index = 0U; item_index < line_items.size();
+  299              ++item_index) {
+      ...
+  334                 slot.height = assigned_main;
+  335                 slot.x = inset.left + cross_origin + cross_item_origin +
+  336                          item.margin.left;
+  337                 if (flow_direction_ == FlowDirection::top_down) {
+  338                     slot.y = inset.top + main_origin + item.margin.top;
+  339                 } else {
+
+#141 src/controls/scrollable_control/container_control/flow_layout_panel_compat/flow_layout_panel_compat.cpp:351 loop@298 layout_pass | right_to_left
+  298         for (std::size_t item_index = 0U; item_index < line_items.size();
+  299              ++item_index) {
+      ...
+  348                 const Point offset = scroll_position();
+  349                 slot.x -= offset.x;
+  350                 slot.y -= offset.y;
+  351                 if (right_to_left) slot.x = available.width - slot.x - slot.width;
+  352                 set_child_layout(item.control, slot);
+  353             }
+
+#142 src/controls/scrollable_control/container_control/responsive_track_panel/responsive_track_panel.cpp:72 loop@70 extent_with_gaps | desired
+   70     for (std::size_t index = 0U; index < tracks.size(); ++index) {
+   71         if (!active[index]) continue;
+   72         extent += desired ? tracks[index].desired : tracks[index].minimum;
+   73         ++count;
+   74     }
+
+#143 src/controls/scrollable_control/container_control/responsive_track_panel/responsive_track_panel.cpp:139 loop@134 shrink_to_available | capacity > 0.0
+  134     for (std::size_t index = 0U; index < tracks.size(); ++index) {
+  135         if (!active[index]) continue;
+  136         const double own_capacity =
+  137             tracks[index].desired - tracks[index].minimum;
+  138         tracks[index].allocated = tracks[index].desired -
+  139             (capacity > 0.0 ? reduction * own_capacity / capacity : 0.0);
+  140     }
+  141 }
+
+#144 src/controls/scrollable_control/container_control/responsive_track_panel/responsive_track_panel.cpp:521 loop@502 layout_children | horizontal
+  502     for (const Control::Ptr& child : retained) {
+  503         if (!is_current_layout_child(child) || !(*child).visible()) continue;
+      ...
+  518         if (!is_alive()) return {};
+  519         if (!is_current_layout_child(child) || !(*child).visible()) continue;
+  520         const Insets margin = (*child).margin();
+  521         const double demand = horizontal
+  522             ? desired.width + horizontal_extent(margin)
+  523             : desired.height + vertical_extent(margin);
+
+#145 src/controls/scrollable_control/container_control/responsive_track_panel/responsive_track_panel.cpp:596 loop@584 layout_children | horizontal
+  584         for (const Item& item : items) {
+  585             const ResponsiveTrackResult& track = resolution.tracks[item.track];
+  586             set_child_layout_collapsed(item.control, track.collapsed());
+  587             if (track.collapsed()) {
+  588                 set_child_layout(item.control,
+  589                     {inset.left, inset.top, 0.0, 0.0});
+  590                 continue;
+  591             }
+  592             const double snapped_start =
+  593                 static_cast<double>(track.device_start) / device_scale;
+  594             const double snapped_end =
+  595                 static_cast<double>(track.device_end) / device_scale;
+  596             Rect cell = horizontal
+  597                 ? Rect{inset.left + snapped_start, inset.top,
+  598                        std::max(0.0, snapped_end - snapped_start), inner.height}
+
+#146 src/controls/scrollable_control/container_control/table_layout_panel_compat/table_layout_panel_compat.cpp:151 loop@149 resolve_tracks | percent_weight > 0.0
+  149     for (std::size_t index = 0U; index < styles.size(); ++index) {
+  150         actual[index] = styles[index].size_mode == TableSizeMode::percent
+  151             ? (percent_weight > 0.0
+  152                    ? remaining * styles[index].size / percent_weight
+  153                    : 0.0)
+
+#147 src/controls/scrollable_control/container_control/table_layout_panel_compat/table_layout_panel_compat.cpp:529 loop@524 layout_pass | !assign
+  524     for (const TableItem& item : workspace.items) {
+  525         if (!item.control || !is_current_layout_child(item.control)) continue;
+  526         ResolvedCell& resolved = resolved_cells_[(*item.control).runtime_id().value];
+  527         resolved.position = item.position;
+  528         resolved.seen_pass = pass;
+  529         if (!assign) continue;
+  530         const std::size_t column_end = item.position.column + item.column_span;
+  531         const std::size_t row_end = item.position.row + item.row_span;
+
+#148 src/controls/scrollable_control/container_control/table_layout_panel_compat/table_layout_panel_compat.cpp:542 loop@524 layout_pass | right_to_left
+  524     for (const TableItem& item : workspace.items) {
+  525         if (!item.control || !is_current_layout_child(item.control)) continue;
+      ...
+  539         const double cell_y = inset.top + row_offsets[item.position.row] + item.margin.top;
+  540         const Rect area{cell_x, cell_y, available_width, available_height};
+  541         Rect placed = place_in_cell((*item.control).dock(), (*item.control).anchor(), area, item.desired);
+  542         if (right_to_left) placed.x = available.width - placed.x - placed.width;
+  543         set_child_layout(item.control, placed);
+  544     }
+
+#149 src/controls/scrollable_control/scrollable_control.cpp:306 loop@300 arrange | mirrored
+  300     for (const Control::Ptr& child : children()) {
+  301         if (!child || !(*child).is_alive() || !(*child).visible() ||
+  302             (*child).dock() != DockStyle::none) continue;
+  303         // The base arrange just assigned the unscrolled slot; offset that, not
+  304         // the committed bounds, which still carry the previous scroll offset.
+  305         Rect bounds = (*child).pending_layout_bounds();
+  306         bounds.x += mirrored ? scroll_position_.x : -scroll_position_.x;
+  307         bounds.y -= scroll_position_.y;
+  308         set_child_layout(child, bounds);
+
+#150 src/controls/splitter/splitter.cpp:79 loop@75 target | edge
+   75     for (const Control::Ptr& sibling : (*owner).children()) {
+   76         if (!sibling || sibling.get() == this || !(*sibling).visible() || (*sibling).dock() != edge) continue;
+   77         const Rect bounds = (*sibling).committed_arranged_bounds();
+   78         bool adjacent = false;
+   79         switch (edge) {
+   80         case DockStyle::left: adjacent = touches(bounds.x + bounds.width, own.x); break;
+   81         case DockStyle::right: adjacent = touches(bounds.x, own.x + own.width); break;
+
+#151 src/controls/tool_strip_panel/tool_strip_panel.cpp:133 loop@125 arrange | along_height
+  125     for (const Control::Ptr& child : retained) {
+  126         if (!is_current_layout_child(child) || !(*child).visible()) continue;
+  127         ToolStrip* const strip = dynamic_cast<ToolStrip*>(child.get());
+  128         if (strip == nullptr) continue;
+  129         const double thickness = strip_thickness(*strip, along_height, offered);
+  130         // Measuring runs the strip's program code, which may take it out of
+  131         // the panel.
+  132         if (!is_current_layout_child(child)) continue;
+  133         const Rect slot = along_height ? Rect{next, 0.0, thickness, final_bounds.height}
+  134                                        : Rect{0.0, next, final_bounds.width, thickness};
+  135         set_child_layout(child, slot);
+

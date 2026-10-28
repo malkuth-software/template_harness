@@ -1,0 +1,62 @@
+-- The C compiler identification is Clang 22.1.8
+-- The CXX compiler identification is Clang 22.1.8
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: D:/a/_temp/msys64/clang64/bin/clang.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: D:/a/_temp/msys64/clang64/bin/clang++.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done (1.8s)
+-- Generating done (0.0s)
+-- Build files have been written to: D:/gui_forms_w3/.build/native-windows-x64/stx-vorbis-plain
+[1/28] Building CXX object CMakeFiles/stx_vorbis.dir/src/types.cpp.obj
+[2/28] Building CXX object CMakeFiles/stx_vorbis.dir/src/packet.cpp.obj
+[3/28] Building CXX object CMakeFiles/stx_vorbis.dir/src/setup.cpp.obj
+[4/28] Building CXX object CMakeFiles/stx_vorbis.dir/src/bit_reader.cpp.obj
+[5/28] Building CXX object CMakeFiles/stx_vorbis.dir/src/synthesis.cpp.obj
+[6/28] Building CXX object CMakeFiles/stx_vorbis.dir/src/ogg.cpp.obj
+[7/28] Building CXX object CMakeFiles/stx_vorbis.dir/src/bfft_backend.cpp.obj
+[8/28] Building CXX object CMakeFiles/stx_vorbis.dir/src/source.cpp.obj
+[9/28] Building CXX object CMakeFiles/stx_vorbis.dir/src/decoder.cpp.obj
+[10/28] Building CXX object CMakeFiles/stx_vorbis_stb.dir/src/c_adapter.cpp.obj
+[11/28] Linking CXX static library libstx_vorbis.a
+[12/28] Linking CXX static library libstx_vorbis_stb.a
+[13/28] Building CXX object CMakeFiles/stx_vorbis_decode.dir/tools/decode.cpp.obj
+[14/28] Building C object CMakeFiles/stx_vorbis_c_test.dir/tests/adapter.c.obj
+[15/28] Building CXX object CMakeFiles/stx_vorbis_tests.dir/tests/core.cpp.obj
+[16/28] Linking CXX executable stx_vorbis_decode.exe
+[17/28] Building CXX object CMakeFiles/stx_vorbis_bodft.dir/tests/bodft.cpp.obj
+[18/28] Linking CXX executable stx_vorbis_tests.exe
+[19/28] Building CXX object CMakeFiles/stx_vorbis_coupling.dir/tests/coupling.cpp.obj
+[20/28] Linking CXX executable stx_vorbis_bodft.exe
+[21/28] Linking CXX executable stx_vorbis_c_test.exe
+[22/28] Linking CXX executable stx_vorbis_coupling.exe
+[23/28] Building CXX object CMakeFiles/stx_vorbis_provisioning.dir/tests/provisioning.cpp.obj
+[24/28] Building CXX object CMakeFiles/stx_vorbis_streaming.dir/tests/streaming.cpp.obj
+[25/28] Linking CXX executable stx_vorbis_provisioning.exe
+[26/28] Linking CXX executable stx_vorbis_streaming.exe
+[27/28] Building CXX object CMakeFiles/stx_vorbis_hostile.dir/tests/hostile.cpp.obj
+[28/28] Linking CXX executable stx_vorbis_hostile.exe
+Test project D:/gui_forms_w3/.build/native-windows-x64/stx-vorbis-plain
+    Start 1: stx_vorbis_bodft
+1/7 Test #1: stx_vorbis_bodft .................   Passed    1.15 sec
+    Start 2: stx_vorbis_provisioning
+2/7 Test #2: stx_vorbis_provisioning ..........   Passed    0.03 sec
+    Start 3: stx_vorbis_core
+3/7 Test #3: stx_vorbis_core ..................   Passed    0.03 sec
+    Start 4: stx_vorbis_coupling
+4/7 Test #4: stx_vorbis_coupling ..............   Passed    0.02 sec
+    Start 5: stx_vorbis_streaming
+5/7 Test #5: stx_vorbis_streaming .............   Passed    0.03 sec
+    Start 6: stx_vorbis_c_adapter
+6/7 Test #6: stx_vorbis_c_adapter .............   Passed    0.02 sec
+    Start 7: stx_vorbis_hostile
+7/7 Test #7: stx_vorbis_hostile ...............   Passed    0.03 sec
+
+100% tests passed out of 7
+
+Total Test time (real) =   1.33 sec

@@ -1,0 +1,128 @@
+#1 src/host/windows/application/windows_host.cpp:1147 loop@1144 stroke_rounded_rect | inner.empty()
+ 1144         const double inner_top = gui_forms::detail::snap_device_edge((y + line) * scale_);
+ 1145         const double inner_bottom = gui_forms::detail::snap_device_edge((y + rect.height - line) * scale_);
+ 1146         const double outer_bottom = gui_forms::detail::snap_device_edge((y + rect.height) * scale_);
+ 1147         if (!(inner_left < inner_right) || !(inner_top < inner_bottom)) {
+ 1148             fill_area(device_area(outer_left, outer_top, outer_right, outer_bottom), color);
+ 1149             return;
+
+#2 src/host/windows/application/windows_host.cpp:1200 loop@1197 fill_linear_gradient_spread | dx == 0.0
+ 1197              spread != GradientSpreadMode::repeat &&
+ 1198              spread != GradientSpreadMode::reflect)) {
+ 1199             return;
+ 1200         }
+ 1201         start.x += state().tx;
+ 1202         start.y += state().ty;
+
+#3 src/host/windows/application/windows_host.cpp:1936 loop@1933 gradient_raster | radial
+ 1933             bool same = true;
+ 1934             for (std::size_t index = 0; index < stops.size(); ++index) {
+ 1935                 if (cached.stops[index].offset != stops[index].offset || cached.stops[index].color != stops[index].color) {
+ 1936                     same = false;
+ 1937                     break;
+ 1938                 }
+
+#4 src/host/windows/application/windows_host.cpp:1962 loop@1956 paint_gradient_raster | raster.opaque
+ 1956         const double squared = dx * dx + dy * dy;
+ 1957         for (int y = area.top; y < area.bottom; ++y) {
+ 1958             for (int x = area.left; x < area.right; ++x) {
+ 1959                 const Point sample{(x + 0.5) / scale_, (y + 0.5) / scale_};
+ 1960                 double amount{};
+ 1961                 if (radial) {
+ 1962                     const double rx = (sample.x - first.x) / second.x;
+ 1963                     const double ry = (sample.y - first.y) / second.y;
+ 1964                     amount = std::sqrt(rx * rx + ry * ry);
+
+#5 src/host/windows/application/windows_host.cpp:2030 loop@2026 draw_group_line | length_squared > 0.0
+ 2026     const State& state() const noexcept { return states_.back(); }
+ 2027     // Row y of the current target: the DIB, or a paint group's rows, whose
+ 2028     // first row is row_origin_. y lies in [row_origin_, row_end_).
+ 2029     [[nodiscard]] std::uint32_t* row_at(int y) const noexcept {
+ 2030         std::uint32_t* const row = pixels_ + static_cast<std::size_t>(y - row_origin_) * static_cast<std::size_t>(width_);
+ 2031         return row;
+ 2032     }
+
+#6 src/host/windows/paint_endpoint/windows_compatibility_paint_endpoint.cpp:91 loop@87 allocate_compatibility_handle | sizeof(std::uintptr_t) >= sizeof(std::uint64_t)
+   87         for (std::size_t attempt = 0; attempt < 1024U; ++attempt) {
+   88             const std::uint64_t sequence =
+   89                 next.fetch_add(1U, std::memory_order_relaxed);
+   90             std::uintptr_t candidate{};
+   91             if constexpr (sizeof(std::uintptr_t) >= sizeof(std::uint64_t)) {
+   92                 candidate = static_cast<std::uintptr_t>(
+   93                     0x47460000e7000000ULL |
+
+#7 src/host/windows/paint_endpoint/windows_compatibility_paint_endpoint.cpp:279 loop@275 publisher_loop | publisher_stop
+  275         for (;;) {
+  276             while (!publisher_stop && !publish_requested) {
+  277                 publish_wake.wait(lock);
+  278             }
+  279             if (publisher_stop) return;
+  280 
+  281             publish_requested = false;
+
+#8 src/host/windows/win32_compat_shim.cpp:335 loop@334 try_dib32_srccopy | reverse
+  334     for (int index = 0; index < copy_height; ++index) {
+  335         const int row = reverse ? copy_height - 1 - index : index;
+  336         std::byte* destination_row =
+  337             logical_dib_row(destination_section, destination_y + row) +
+
+#1 src/host/linux/settings/xsettings_parse.cpp:55 loop@54 read_card32 | cursor.most_significant
+   54   for (std::size_t index = 0U; index < 4U; ++index) {
+   55     const std::size_t lane = cursor.most_significant ? index : 3U - index;
+   56     assembled = (assembled << 8U) | cursor.bytes[cursor.offset + lane];
+   57   }
+
+#1 src/render/text/glyph_run/glyph_run_raster.cpp:163 loop@152 run | placement.matrix.has_value()
+  152             for (const ShapedGlyph& glyph : run.glyphs) {
+  153                 const double x = static_cast<double>(glyph.x);
+  154                 const double y = static_cast<double>(glyph.y);
+  155                 const double mapped_x = placement.linear.xx * x + placement.linear.xy * y;
+  156                 const double mapped_y = placement.linear.yx * x + placement.linear.yy * y;
+  157                 // Integer 26.6 placement relative to the origin pixel.
+  158                 const std::int64_t device_x = placement.offset_x + std::llround(mapped_x * 64.0);
+  159                 const std::int64_t device_y = placement.offset_y + std::llround(mapped_y * 64.0);
+  160                 const std::int64_t pixel_x = floor_div_64(device_x);
+  161                 const std::int64_t pixel_y = floor_div_64(device_y);
+  162                 FT_Vector delta{static_cast<FT_Pos>(device_x - pixel_x * 64), -static_cast<FT_Pos>(device_y - pixel_y * 64)};
+  163                 if (placement.matrix.has_value()) {
+  164                     FT_Matrix matrix = *placement.matrix;
+  165                     FT_Set_Transform(face, &matrix, &delta);
+
+#2 src/render/text/harfbuzz/harfbuzz_font_engine.cpp:522 loop@505 append_run | Bounded
+  505         for (unsigned index = 0U; index < count; ++index) {
+  506             const float offset_x = static_cast<float>(positions[index].x_offset) / 64.0F;
+      ...
+  519                                   static_cast<float>(pen_x) + offset_x,
+  520                                   static_cast<float>(pen_y) + offset_y,
+  521                                   advance_x, advance_y};
+  522             if constexpr (Bounded) {
+  523                 (*bounded).glyphs[(*bounded).glyph_count + index] = glyph;
+  524             } else {
+
+#1 src/audio/loop_transport/scheduler.cpp:107 loop@103 finish | phase == RequestPhase::rejected
+  103     for (Receipt& receipt : receipts_) {
+  104         if (receipt.id == id) {
+  105             receipt.phase = phase;
+  106             receipt.application_frame = frame_;
+  107             if (phase == RequestPhase::rejected) { receipt.reason = ScheduleStatus::overflow; }
+  108             return;
+  109         }
+
+#1 demo/correspondence/correspondence_controls.cpp:421 loop@403 project_messages | !search.empty()
+  403     for (const std::uint32_t id : model_.visible_messages()) {
+  404         const Message* message = model_.find(id);
+      ...
+  418         if ((*message).flagged) item.information_tags.push_back("Flagged");
+  419         if ((*message).folder == Folder::drafts) item.information_tags.push_back("Draft");
+  420         item.information_detail = (*message).address;
+  421         if (!search.empty()) item.emphasis_terms.push_back(search);
+  422         items.push_back(std::move(item));
+  423     }
+
+#2 demo/responsive_tracks_lab.cpp:65 loop@63 arrange | seam_at_right_
+   63         for (const Control::Ptr& child : retained) {
+   64             if (!child || !(*child).visible()) continue;
+   65             set_child_layout(child, seam_at_right_
+   66                 ? Rect{0.0, 0.0, std::max(0.0, final_bounds.width - 3.0),
+   67                        final_bounds.height}
+
