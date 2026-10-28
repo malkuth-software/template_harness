@@ -88,6 +88,9 @@ and new form. Provisional rows there may change without an entry.
   in its `harness.lock` (`[harness] repository, commit`).
 
 ### Changed
+- `projects/gui_forms.toml` names GUI.Forms' loop-branch decisions
+  (`[loop_branches] decisions = "tools/loop_branch_decisions.json"`), so
+  `check_loop_branches.py` reads them without `--decisions`.
 - The bootstrap checks the product's submodules out at the commits it
   records (`git submodule update --init --recursive`), so File Manager's
   `gui_forms/` and `backend/` are there for its smoke build. It does this
