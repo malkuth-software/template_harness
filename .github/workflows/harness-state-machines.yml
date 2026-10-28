@@ -129,14 +129,73 @@ jobs:
           fi
           echo "scope=$scope" >> "$GITHUB_OUTPUT"
           echo "State-machine gate scope: $scope"
+      # The toolkit's own run also tests the AST reader, whatever the C++
+      # scope: on a schedule or dispatch, and when the reader, its tests or
+      # this workflow changed. A product's run never does.
+      - name: Find whether the AST reader changed
+        id: reader
+        if: inputs.harness_path == inputs.product_path
+        env:
+          PRODUCT_PATH: ${{ inputs.product_path }}
+        run: |
+          changed=true
+          if [ "$GITHUB_EVENT_NAME" != schedule ] && [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] \
+              && [ -n "$BASE" ] && git -C "$PRODUCT_PATH" cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            listed=$(git -C "$PRODUCT_PATH" diff --name-only "$BASE" HEAD -- \
+              harness/clang_ast.py harness/clang_ast_json.py harness/clang_ast_libclang.py \
+              harness/test_clang_ast.py .github/workflows/harness-state-machines.yml)
+            [ -n "$listed" ] || changed=false
+            printf '%s\n' "$listed"
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "AST reader test: $changed"
       - name: Nothing to check
         if: steps.scope.outputs.scope == 'none'
         run: echo "No C or C++ file changed; the gate passes without a tree."
+      # The downloaded packages are kept as in harness-native.yml: restored
+      # before the installs, saved on a push when the key missed.
+      - name: Name the Linux package cache
+        id: linux-image
+        if: (steps.scope.outputs.scope != 'none' || steps.reader.outputs.changed == 'true')
+        run: echo "image=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: linux-packages
+        if: (steps.scope.outputs.scope != 'none' || steps.reader.outputs.changed == 'true')
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: state-machines-debs-v1-${{ inputs.linux_profile }}-${{ runner.arch }}-${{ hashFiles(format('{0}/harness/install_linux_ci_packages.sh', inputs.harness_path), format('{0}/.github/workflows/harness-state-machines.yml', inputs.harness_path), inputs.project) }}-${{ steps.linux-image.outputs.image }}
+          restore-keys: state-machines-debs-v1-${{ inputs.linux_profile }}-${{ runner.arch }}-
       - name: Install the configure step's packages
-        if: steps.scope.outputs.scope != 'none'
+        if: (steps.scope.outputs.scope != 'none' || steps.reader.outputs.changed == 'true')
         env:
           PROFILE: ${{ inputs.linux_profile }}
         run: sh "$HARNESS_ROOT/harness/install_linux_ci_packages.sh" "$PROFILE" "$RUNNER_TEMP/apt-archives"
+      # The shared AST reader (harness/clang_ast.py) reads through the pinned
+      # LLVM's libclang: python3-clang-22, with its libclang-22-dev, from the
+      # apt.llvm.org source the step above added. This is the one job that
+      # installs it (owner, 2026-10-27). It goes through the same archive
+      # directory, and like every apt.llvm.org package ("~++" versions) it is
+      # downloaded each run rather than kept.
+      - name: Install the AST reader's libclang bindings
+        if: (steps.scope.outputs.scope != 'none' || steps.reader.outputs.changed == 'true')
+        run: |
+          archives="$RUNNER_TEMP/apt-archives"
+          sudo apt-get install -y -o Dir::Cache::Archives="$archives" python3-clang-22
+          sudo find "$archives" -maxdepth 1 -name '*~++*.deb' -delete
+          sudo rm -f "$archives/lock"
+          sudo chown -R "$(id -u):$(id -g)" "$archives"
+      # Both backends; HARNESS_AST_READER=libclang makes a missing libclang a
+      # failure, not a skip.
+      - name: Test the AST reader
+        if: steps.reader.outputs.changed == 'true'
+        env:
+          HARNESS_AST_READER: libclang
+        run: python3 -B -m unittest discover -s "$HARNESS_ROOT/harness" -p test_clang_ast.py -v
+      - uses: actions/cache/save@v4
+        if: (steps.scope.outputs.scope != 'none' || steps.reader.outputs.changed == 'true') && github.event_name == 'push' && steps.linux-packages.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: ${{ steps.linux-packages.outputs.cache-primary-key }}
       # As in harness-native.yml: an install the configure command builds
       # from source is reused while its inputs and the compiler match.
       - name: Identify the compiler

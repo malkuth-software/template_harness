@@ -35,6 +35,15 @@ The harness provides:
   `sanitizer_options`), `change_selection.py` and `native_tests.py`.
 - **Checkers:** `check_house_style.py`, `check_lifetime_rules.py` and
   `check_state_machines.py`.
+- **The AST reader:** `clang_ast.py` reads a translation unit from its
+  compile command into one tree model, for the checkers and codemods that
+  need more than tokens. It reads through the pinned LLVM's libclang
+  (`clang_ast_libclang.py`: CLANG64's bindings on Windows, Homebrew
+  `llvm@22`'s on macOS, apt.llvm.org's `python3-clang-22` on Linux) and falls
+  back to `clang++ -Xclang -ast-dump=json` (`clang_ast_json.py`) when the
+  bindings are missing. `HARNESS_AST_READER=libclang` or `json` chooses one;
+  `test_clang_ast.py` checks that both give the same model and lists what
+  only libclang knows.
 - **The pin:** `lock.py` and `.github/actions/harness-checkout`.
 - **Local work:** `bootstrap.sh`/`bootstrap.ps1` and `restore_local.py`,
   and `checkpoint/checkpoint.py`.
@@ -262,7 +271,8 @@ There are two ways to run the harness in CI.
 - `harness-state-machines.yml`: inputs `product_path`, `project`,
   `configure_command` (a Ninja tree with compile commands) and
   `build_dir`. It checks what a change can affect, and the whole tree on a
-  full-tree trigger.
+  full-tree trigger. It is the one job that installs `python3-clang-22`
+  (with `libclang-22-dev`), for the AST reader.
 
 Call each one as
 `uses: malkuth-software/template_harness/.github/workflows/<file>@<commit>`,
