@@ -746,6 +746,9 @@ class Converter:
                     "CXX_METHOD", "CONVERSION_FUNCTION"):
                 node.constant = bool(referenced.is_const_method())
             writes = self.parameter_writes(node, referenced, arguments, writes)
+            node.parameters = self.argument_parameters(node, referenced, arguments)
+        else:
+            node.parameters = [""] * len(arguments)
         node.writes = writes
         assign_call_parts(node, callee, arguments)
 
@@ -783,6 +786,24 @@ class Converter:
             parameter_type: Any = parameters[position].type
             writes.append(parameter_type.kind == reference and not parameter_type.get_pointee().is_const_qualified())
         return writes
+
+    def argument_parameters(self, node: Node, referenced: Any, arguments: list[Node]) -> list[str]:
+        """Per argument: its parameter's type as spelled, or "" for a member operator's object, past the
+        declared parameters, and for a callee whose parameters are unknown."""
+        parameters: list[Any] = [parameter for parameter in referenced.get_arguments() if parameter is not None]
+        types: list[str] = []
+        offset: int = 0
+        if node.kind == "CXXOperatorCallExpr" and referenced.kind.name == "CXX_METHOD" and arguments:
+            types.append("")
+            offset = 1
+        index: int
+        for index in range(offset, len(arguments)):
+            position: int = index - offset
+            if position >= len(parameters):
+                types.append("")
+                continue
+            types.append(written_type(parameters[position].type.spelling))
+        return types
 
     def constructor(self, node: Node, cursor: Any) -> None:
         """A constructor: parameters, member and base initializers (each with its expression), body."""

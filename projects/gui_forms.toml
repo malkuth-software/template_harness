@@ -163,3 +163,8 @@ notes_repository = "malkuth-software/notes"
 notes_branch = "gui_forms"
 projects_repository = "malkuth-software/projects"
 smoke = ["{python}", "gui_forms/tools/ci_build.py", "--tests", "^gui_forms_core_tests$"]
+
+[const_restrict]
+# harness/check_const_restrict.py (E3): the recorded restrict decisions,
+# maintained with the restrict changes in the GUI.Forms checkout.
+decisions = "tools/const_restrict_decisions.json"

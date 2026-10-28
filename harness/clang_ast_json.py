@@ -163,6 +163,7 @@ class Converter:
         self.declared: dict[str, str] = {}          # identity -> qualified name
         self.declared_kinds: dict[str, str] = {}    # identity -> kind
         self.declared_access: dict[str, str] = {}   # identity -> a member's access
+        self.declared_types: dict[str, str] = {}    # identity -> a function's type, for member calls' parameters
         self.references: list[Node] = []            # nodes whose target is described at the end
         self.calls: list[Node] = []                 # calls that take their target from the callee at the end
         self.template_begin: int = -1               # the template header's offset, for its pattern
@@ -377,6 +378,8 @@ class Converter:
             result.type = written_type(node["type"].get("qualType", ""))
         if kind in FUNCTIONS:
             result.constant = CONST_FUNCTION_TYPE.search(result.type) is not None
+            if result.identity:
+                self.declared_types[result.identity] = result.type
             result.definition = any(child.get("kind") == "CompoundStmt" for child in node.get("inner", []))
         if kind == "CXXRecordDecl":
             result.tag = node.get("tagUsed", "")
@@ -539,8 +542,10 @@ class Converter:
                 raw.get("kind") in REFERENCE_EXPRESSIONS
                 or (raw.get("kind") == "UnaryOperator" and raw.get("opcode") == "*")))
         parameters: list[str] | None = parameter_types(function_type)
+        result.parameters = [""] * len(arguments)
         if parameters is not None:
             result.writes = parameter_writes(kind, function_type, parameters, len(arguments))
+            result.parameters = argument_parameters(kind, parameters, len(arguments))
             if kind == "CXXOperatorCallExpr" and len(arguments) == len(parameters) + 1:
                 result.constant = CONST_FUNCTION_TYPE.search(function_type) is not None
         assign_call_parts(result, callee, arguments)
@@ -574,6 +579,13 @@ class Converter:
             node.target = node.target or callee.target
             node.target_kind = node.target_kind or callee.target_kind
             node.qualified = node.qualified or callee.qualified
+            if node.kind == "CXXMemberCallExpr" and node.target in self.declared_types and not any(node.parameters):
+                # A member call's callee carries no function type; the method's declaration, when read, does.
+                parameters: list[str] | None = parameter_types(self.declared_types[node.target])
+                if parameters is not None:
+                    node.parameters = argument_parameters(node.kind, parameters, len(node.arguments))
+                    node.writes = parameter_writes(node.kind, self.declared_types[node.target], parameters,
+                                                   len(node.arguments))
 
 
 def scope_of(node: Node) -> Scope:
@@ -664,6 +676,21 @@ def parameter_writes(kind: str, function_type: str, parameters: list[str], count
         parameter: str = parameters[position]
         writes.append(parameter.endswith("&") and not parameter.endswith("&&") and not parameter.startswith("const "))
     return writes
+
+
+def argument_parameters(kind: str, parameters: list[str], count: int) -> list[str]:
+    """Per argument: its parameter's type, or "" for a member operator's object and past the declared
+    parameters (a variadic call's extra arguments)."""
+    types: list[str] = []
+    if kind == "CXXOperatorCallExpr" and count == len(parameters) + 1:
+        types.append("")
+    position: int
+    for position in range(count - len(types)):
+        if position >= len(parameters) or parameters[position] == "...":
+            types.append("")
+            continue
+        types.append(written_type(parameters[position]))
+    return types
 
 
 def const_object(raw_callee: dict) -> bool:

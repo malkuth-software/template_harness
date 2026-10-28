@@ -374,6 +374,7 @@ class ModelChecks:
     def test_calls(self) -> None:
         bump: clang_ast.Node = self.named("CallExpr", "bump")
         self.assertEqual(bump.writes, [True, False, False])
+        self.assertEqual(bump.parameters, ["int &", "const int &", "int *"])
         self.assertEqual(bump.roles["callee"].kind, "DeclRefExpr")
         self.assertEqual(len(bump.arguments), 3)
         add: clang_ast.Node = self.named("CXXMemberCallExpr", "add")
@@ -384,9 +385,11 @@ class ModelChecks:
         compound: clang_ast.Node = self.named("CXXOperatorCallExpr", "operator+=")
         self.assertEqual(compound.opcode, "+=")
         self.assertEqual(compound.writes, [True, False])
+        self.assertEqual(compound.parameters, ["", "int"])
         self.assertEqual(compound.arguments[0].name, "counter")
         equal: clang_ast.Node = self.named("CXXOperatorCallExpr", "operator==")
         self.assertEqual(equal.writes, [False, False])
+        self.assertEqual(equal.parameters, ["const Counter &", "const Counter &"])
         self.assertEqual(equal.qualified, "demo::operator==")
 
     def test_members_and_declarations(self) -> None:
@@ -515,7 +518,9 @@ def described(node: clang_ast.Node, depth: int, role: str, lines: list[str]) -> 
     if not node.in_macro and node.kind != "CXXCtorInitializer":
         located += "," + str(node.end)
     writes: str = "".join("w" if write else "-" for write in node.writes)
-    lines.append("  " * depth + role + " " + "|".join(fields) + " " + ",".join(flags) + " " + writes + " " + located)
+    parameters: str = ";".join(node.parameters)
+    lines.append("  " * depth + role + " " + "|".join(fields) + " " + ",".join(flags) + " " + writes + " " + parameters
+                 + " " + located)
     roles: dict[int, str] = {id(child): key for key, child in node.roles.items()}
     child: clang_ast.Node
     for child in node.children:

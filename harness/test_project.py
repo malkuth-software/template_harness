@@ -139,7 +139,9 @@ class ProjectFileTests(unittest.TestCase):
             environment: dict[str, str] = {'HARNESS_WORKSPACE': str(root)}
             with mock.patch.dict(os.environ, environment):
                 os.environ.pop('HARNESS_PROJECT', None)
-                self.assertEqual(project.project_path(), root / 'harness.toml')
+                # Resolved on both sides: a temporary directory can sit behind a symbolic
+                # link (macOS's /var is /private/var).
+                self.assertEqual(project.project_path().resolve(), (root / 'harness.toml').resolve())
                 self.assertEqual(parsed(MINIMAL).source_root(), root.resolve() / 'example')
             with mock.patch.dict(os.environ, {'HARNESS_WORKSPACE': str(root / 'empty')}):
                 os.environ.pop('HARNESS_PROJECT', None)
@@ -200,6 +202,20 @@ class ProjectFileTests(unittest.TestCase):
         self.assertEqual(loaded.loop_branch_decisions, 'tools/loop_branches.json')
         with self.assertRaisesRegex(ValueError, 'loop_branches.decisions'):
             parsed(MINIMAL + '[loop_branches]\ndecisions = "../outside.json"\n')
+
+    def test_the_const_restrict_decisions_path(self) -> None:
+        self.assertEqual(parsed(MINIMAL).const_restrict_decisions, '')
+        loaded: project.Project = parsed(MINIMAL + '[const_restrict]\ndecisions = "tools/const_restrict.json"\n')
+        self.assertEqual(loaded.const_restrict_decisions, 'tools/const_restrict.json')
+        with self.assertRaisesRegex(ValueError, 'const_restrict.decisions'):
+            parsed(MINIMAL + '[const_restrict]\ndecisions = "/absolute.json"\n')
+
+    def test_the_copies_decisions_path(self) -> None:
+        self.assertEqual(parsed(MINIMAL).copies_decisions, '')
+        loaded: project.Project = parsed(MINIMAL + '[copies]\ndecisions = "tools/copies.json"\n')
+        self.assertEqual(loaded.copies_decisions, 'tools/copies.json')
+        with self.assertRaisesRegex(ValueError, 'copies.decisions'):
+            parsed(MINIMAL + '[copies]\ndecisions = "a/../../b.json"\n')
 
     def test_the_native_job_as_a_prefix_or_a_template(self) -> None:
         prefix: project.Project = parsed(MINIMAL)
