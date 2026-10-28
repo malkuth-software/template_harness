@@ -444,7 +444,10 @@ installed. Its build driver was changed to accept that command; check
 that yours accepts the command you name.
 
 **The checkpoint tool** folds workers' local branches into one verified PR.
-It is provisional. Set it up once, in a dedicated workspace:
+It is the default way work reaches GitHub: workers never push, and the
+coordinator pushes one checkpoint after a full local pass. `docs/workflow.md`
+describes the whole workflow, what `verify` must run, and the build-host and
+agent setup it needs. Set the tool up once, in a dedicated workspace:
 
 ```sh
 export HARNESS_WORKSPACE=<integration workspace> HARNESS_PROJECT=<harness>/projects/<name>.toml
@@ -463,10 +466,15 @@ In `[checkpoint]`:
   overwritten, it stops and removes the `.git` it made. An existing clone
   at the root is adopted as usual;
 - `verify` is your whole local verification, run from the workspace root
-  with `HARNESS_CHECKPOINT_TREE` set. GUI.Forms uses `["sh", "build.sh",
-  "all"]`, a script in its integration workspace that builds the tree and
-  runs the whole ctest suite;
-- `push` refuses unless `verify` passed on exactly the current tree.
+  with `HARNESS_CHECKPOINT_TREE` set. It must run everything CI would
+  reject: the static gates first, then the whole suite plain, the
+  state-machine gate over the change, and the whole suite under the
+  sanitizers (`docs/workflow.md` §4). GUI.Forms uses `["sh", "build.sh",
+  "all"]`, a script in its integration workspace that does exactly that on
+  its build host;
+- `push` refuses unless `verify` passed on exactly the current tree, then
+  opens one PR with auto-merge on (which needs branch protection; without
+  it, the coordinator merges on green).
 
 ### Local lockstep builds
 

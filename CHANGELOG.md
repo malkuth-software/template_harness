@@ -7,6 +7,17 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Added
+- `docs/workflow.md`: the default workflow for every harness product (owner,
+  2026-10-28). Workers commit locally and never push; the coordinator folds
+  their branches with the checkpoint tool, runs a `verify` that covers
+  everything CI would reject (static gates, the suite plain, the
+  state-machine gate over the change, the suite sanitized), and pushes one
+  checkpoint. It records the fold rules (a stack folds as its top branch;
+  branches appending to one file are joined first), failed-checkpoint
+  handling, the remote-build-host wrapper (content sync, one lock, idle wait
+  for GUI tests, per-workspace harness variables, compiler launchers and a
+  shared cache), the agent setup, and pitfalls met in practice.
+  `docs/adopting.md` §6 now presents the checkpoint tool as the default.
 - `harness/clang_ast.py`: the shared AST reader. One tree model (clang AST
   kinds, named roles, unit-local identities, semantic qualified names,
   written arguments) read through the pinned LLVM's libclang, with the

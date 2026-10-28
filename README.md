@@ -13,6 +13,7 @@ outsider) clones this repository first.
 | `harness/project.py` | Reads the project file; every product-specific name comes from it. | here |
 | `projects/` | Project files. `projects/gui_forms.toml` reproduces GUI.Forms' names exactly, so its cache and reuse history stays valid. | here |
 | `docs/contract.md` | What consumers run or import, and how it may change. | here |
+| `docs/workflow.md` | The default workflow: workers commit locally and never push; the coordinator folds their branches, verifies everything CI would reject, and pushes one checkpoint. Also the build-host wrapper and agent setup it needs, and the pitfalls met in practice. | here |
 | `docs/adopting.md` | How a product becomes a harness instance: its project file, `harness.lock`, CI, local work, the gate and a checklist, with GUI.Forms as the worked example. | here |
 | `CHANGELOG.md` | The release notes; contract changes are recorded under "Breaking changes". | here |
 | `bootstrap.(sh\|ps1)` | Clone or update the product and its notes (and, `--in-house`, the projects repository), restore the toolchain and caches (`harness/restore_local.py`), run the smoke build: `sh bootstrap.sh --workspace DIR --project NAME [--dry-run]` (`harness/bootstrap.py` has the options). Settings: `[bootstrap]`. | here |
