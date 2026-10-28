@@ -139,11 +139,13 @@ jobs:
           PRODUCT_PATH: ${{ inputs.product_path }}
         run: |
           changed=true
-          if [ "$GITHUB_EVENT_NAME" != schedule ] && [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]               && [ -n "$BASE" ] && git -C "$PRODUCT_PATH" cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            listed=$(git -C "$PRODUCT_PATH" diff --name-only "$BASE" HEAD --               harness/clang_ast.py harness/clang_ast_json.py harness/clang_ast_libclang.py               harness/test_clang_ast.py .github/workflows/harness-state-machines.yml)
+          if [ "$GITHUB_EVENT_NAME" != schedule ] && [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] \
+              && [ -n "$BASE" ] && git -C "$PRODUCT_PATH" cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            listed=$(git -C "$PRODUCT_PATH" diff --name-only "$BASE" HEAD -- \
+              harness/clang_ast.py harness/clang_ast_json.py harness/clang_ast_libclang.py \
+              harness/test_clang_ast.py .github/workflows/harness-state-machines.yml)
             [ -n "$listed" ] || changed=false
-            printf '%s
-' "$listed"
+            printf '%s\n' "$listed"
           fi
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
           echo "AST reader test: $changed"
