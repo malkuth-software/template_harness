@@ -143,7 +143,8 @@ jobs:
               && [ -n "$BASE" ] && git -C "$PRODUCT_PATH" cat-file -e "$BASE^{commit}" 2>/dev/null; then
             listed=$(git -C "$PRODUCT_PATH" diff --name-only "$BASE" HEAD -- \
               harness/clang_ast.py harness/clang_ast_json.py harness/clang_ast_libclang.py \
-              harness/test_clang_ast.py .github/workflows/harness-state-machines.yml)
+              harness/test_clang_ast.py harness/codemod_records.py harness/test_codemod_records.py \
+              .github/workflows/harness-state-machines.yml)
             [ -n "$listed" ] || changed=false
             printf '%s\n' "$listed"
           fi
@@ -190,7 +191,9 @@ jobs:
         if: steps.reader.outputs.changed == 'true'
         env:
           HARNESS_AST_READER: libclang
-        run: python3 -B -m unittest discover -s "$HARNESS_ROOT/harness" -p test_clang_ast.py -v
+        run: |
+          python3 -B -m unittest discover -s "$HARNESS_ROOT/harness" -p test_clang_ast.py -v
+          python3 -B -m unittest discover -s "$HARNESS_ROOT/harness" -p test_codemod_records.py -v
       - uses: actions/cache/save@v4
         if: (steps.scope.outputs.scope != 'none' || steps.reader.outputs.changed == 'true') && github.event_name == 'push' && steps.linux-packages.outputs.cache-hit != 'true'
         with:
