@@ -20,10 +20,11 @@ on Windows and ~/malkuth elsewhere). Under the root:
     cache/lockstep/.lockstep.lock                 held by build and advance
 
 The workspace is laid out as CI's (gui_forms/ beside .build/native-<target>/
-gui-forms), on Windows the clone checks text out with CRLF and the build
-runs with LANG=en_US.UTF-8, as CI's Windows jobs do: ccache keys objects by
-the bytes and paths they read and by the locale, so the shared cache can
-also take GUI.Forms' published per-commit caches.
+gui-forms), and on Windows the build runs with LANG=en_US.UTF-8, as CI's
+Windows jobs do. GUI.Forms' .gitattributes checks text out with LF on every
+host, so the clone has CI's bytes whatever the user's git says. ccache keys
+objects by the bytes and paths they read and by the locale, so the shared
+cache can also take GUI.Forms' published per-commit caches.
 
 init      clones the repository (--repository, default
           malkuth-software/gui_forms on GitHub) at its default branch,
@@ -334,9 +335,6 @@ def init_command(layout: Layout, repository: str, reference: Path | None, seeds:
             raise LockstepError(layout.source.as_posix() + ' exists and is not a lockstep clone; remove it first')
         layout.workspace.mkdir(parents=True, exist_ok=True)
         command: list[str] = ['git', 'clone', '--quiet']
-        if host_platform.system() == 'Windows':
-            # CI's Windows checkout writes text with CRLF whatever this user's git says.
-            command += ['--config', 'core.autocrlf=true']
         if reference is not None:
             command += ['--reference-if-able', str(reference), '--dissociate']
         command += [repository, str(layout.source)]
