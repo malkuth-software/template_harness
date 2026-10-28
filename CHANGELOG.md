@@ -7,6 +7,14 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Added
+- `harness/clang_ast.py`: the shared AST reader. One tree model (clang AST
+  kinds, named roles, unit-local identities, semantic qualified names,
+  written arguments) read through the pinned LLVM's libclang, with the
+  `-ast-dump=json` reader as the fallback behind the same interface
+  (`HARNESS_AST_READER`). On two GUI.Forms units libclang read in a quarter
+  of the time (3.4 s against 14.6 s, 4.3 s against 16.9 s). The
+  state-machine gate's job installs `python3-clang-22` from apt.llvm.org for
+  it, and the toolkit's own run of that job tests both backends.
 - `.github/workflows/bootstrap.yml`: the bootstrap proof. On Windows, macOS and
   Linux it bootstraps GUI.Forms from an empty directory through the entry a
   person uses, runs the administrator step the bootstrap prints, passes the

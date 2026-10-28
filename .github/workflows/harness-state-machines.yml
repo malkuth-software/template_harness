@@ -132,11 +132,50 @@ jobs:
       - name: Nothing to check
         if: steps.scope.outputs.scope == 'none'
         run: echo "No C or C++ file changed; the gate passes without a tree."
+      # The downloaded packages are kept as in harness-native.yml: restored
+      # before the installs, saved on a push when the key missed.
+      - name: Name the Linux package cache
+        id: linux-image
+        if: steps.scope.outputs.scope != 'none'
+        run: echo "image=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: linux-packages
+        if: steps.scope.outputs.scope != 'none'
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: state-machines-debs-v1-${{ inputs.linux_profile }}-${{ runner.arch }}-${{ hashFiles(format('{0}/harness/install_linux_ci_packages.sh', inputs.harness_path), format('{0}/.github/workflows/harness-state-machines.yml', inputs.harness_path), inputs.project) }}-${{ steps.linux-image.outputs.image }}
+          restore-keys: state-machines-debs-v1-${{ inputs.linux_profile }}-${{ runner.arch }}-
       - name: Install the configure step's packages
         if: steps.scope.outputs.scope != 'none'
         env:
           PROFILE: ${{ inputs.linux_profile }}
         run: sh "$HARNESS_ROOT/harness/install_linux_ci_packages.sh" "$PROFILE" "$RUNNER_TEMP/apt-archives"
+      # The shared AST reader (harness/clang_ast.py) reads through the pinned
+      # LLVM's libclang: python3-clang-22, with its libclang-22-dev, from the
+      # apt.llvm.org source the step above added. This is the one job that
+      # installs it (owner, 2026-10-27). It goes through the same archive
+      # directory, and like every apt.llvm.org package ("~++" versions) it is
+      # downloaded each run rather than kept.
+      - name: Install the AST reader's libclang bindings
+        if: steps.scope.outputs.scope != 'none'
+        run: |
+          archives="$RUNNER_TEMP/apt-archives"
+          sudo apt-get install -y -o Dir::Cache::Archives="$archives" python3-clang-22
+          sudo find "$archives" -maxdepth 1 -name '*~++*.deb' -delete
+          sudo rm -f "$archives/lock"
+          sudo chown -R "$(id -u):$(id -g)" "$archives"
+      # In the toolkit's own CI the reader's tests run against both backends;
+      # HARNESS_AST_READER=libclang makes a missing libclang a failure, not a skip.
+      - name: Test the AST reader
+        if: steps.scope.outputs.scope != 'none' && inputs.harness_path == inputs.product_path
+        env:
+          HARNESS_AST_READER: libclang
+        run: python3 -B -m unittest discover -s "$HARNESS_ROOT/harness" -p test_clang_ast.py -v
+      - uses: actions/cache/save@v4
+        if: steps.scope.outputs.scope != 'none' && github.event_name == 'push' && steps.linux-packages.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: ${{ steps.linux-packages.outputs.cache-primary-key }}
       # As in harness-native.yml: an install the configure command builds
       # from source is reused while its inputs and the compiler match.
       - name: Identify the compiler

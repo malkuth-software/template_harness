@@ -53,7 +53,15 @@ areas = [
     ["src/", "example_app"],
     ["tests/", "tests"],
 ]
-full_tree_triggers = []
+# The shared AST reader and the gate's workflow: a change runs the gate (and
+# its libclang self-test) on the example's whole tree.
+full_tree_triggers = [
+    "harness/clang_ast.py",
+    "harness/clang_ast_json.py",
+    "harness/clang_ast_libclang.py",
+    "harness/test_clang_ast.py",
+    ".github/workflows/harness-state-machines.yml",
+]
 
 [build]
 configure_variables = []
