@@ -197,6 +197,24 @@ class SpecTests(unittest.TestCase):
 
 
 class TextTests(unittest.TestCase):
+    def test_only_source_units_are_read(self) -> None:
+        # A full `ninja -t compdb` lists custom commands whose "file" is an asset under the
+        # checkout; their command is a shell, and running it as a compiler made directories.
+        entries: list[dict] = [
+            {"directory": "/r/build", "file": "/r/src/a.cpp", "command": "clang++ -c /r/src/a.cpp"},
+            {"directory": "/r/build", "file": "/r/assets/fonts/table.json",
+             "command": "cmd.exe /C \"cmake -E copy /r/assets/fonts/table.json out\""},
+            {"directory": "/r/build", "file": "CMakeFiles/a.dir/src/a.cpp.obj", "command": "cmd.exe /C \"ld\""},
+            {"directory": "/r/build", "file": "/r/src/b.mm", "command": "clang++ -c /r/src/b.mm"},
+            {"directory": "/r/build", "file": "/r/src/a.cpp", "command": "clang++ -c /r/src/a.cpp"},
+        ]
+        units: list[dict] = codemod.first_party_units(entries, "/r")
+        files: list[str] = []
+        unit: dict
+        for unit in units:
+            files.append(unit["file"])
+        self.assertEqual(files, ["/r/src/a.cpp", "/r/src/b.mm"])
+
     def test_enumerator_spellings(self) -> None:
         self.assertTrue(codemod.same_enumerator("Status::success", "demo::Status::success"))
         self.assertTrue(codemod.same_enumerator("demo::Status::success", "Status::success"))

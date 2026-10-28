@@ -99,6 +99,10 @@ INTEGER_TYPE: re.Pattern[str] = re.compile(
     r"^(?:std::)?(?:u?int(?:8|16|32|64)_t|size_t|ptrdiff_t)$|^(?:unsigned |signed )?(?:char|short|int|long|long long)$"
     r"|^unsigned$")
 SOURCE_SUFFIXES: tuple[str, ...] = (".cpp", ".cc", ".hpp", ".h", ".mm", ".m", ".inl", ".ipp")
+# Translation units the run reads. A full `ninja -t compdb` also lists link and
+# custom-command steps (a shell running cmake over an asset); their "file" is
+# no source, and their command must never be run as a compiler.
+UNIT_SUFFIXES: tuple[str, ...] = (".cpp", ".cc", ".cxx", ".c", ".mm", ".m")
 EXCLUDED_PARTS: tuple[str, ...] = ("/third_party/", "/_deps/", "/.build/", "/build/")
 LINE_LIMIT: int = 110
 
@@ -1361,7 +1365,7 @@ def first_party_units(entries: list[dict], root: str) -> list[dict]:
     entry: dict
     for entry in entries:
         file: str = clang_ast.absolute(entry["directory"], entry["file"])
-        if not keep(file) or file.lower() in seen:
+        if not file.lower().endswith(UNIT_SUFFIXES) or not keep(file) or file.lower() in seen:
             continue
         seen.add(file.lower())
         result.append(entry)
