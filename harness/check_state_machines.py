@@ -34,8 +34,18 @@ in check_house_style.py). They are heuristics and never fail a run:
                               with two or more enumerators and no final else.
   C3 contradictory-shape      a record holding a flag beside the value it
                               qualifies (`has_x` with `x`, including a mirrored
-                              std::optional), or antonym or lifecycle flags
-                              that one enumeration would express.
+                              std::optional), antonym or lifecycle flags that
+                              one enumeration would express, or a status beside
+                              a std::optional payload in a plain data struct:
+                              a status, error, result or outcome member of an
+                              enumeration or *Status/*Error type (in a *Result,
+                              *Outcome or *Resolution record, its first such
+                              member) that says which optional members are
+                              present. The house form holds the states in one
+                              std::variant, built by named factories and read
+                              by named queries. A record listed in the
+                              project's state_machines.reviewed_shapes, with
+                              its reason, is not raised.
 
 A comment on a candidate's line or the line above clears C1 to C3; F2's
 reason is a comment on the default label, the line above or in its body, or a
@@ -86,6 +96,9 @@ VOCABULARY_HEADERS: tuple[str, ...] = project.current().vocabulary_headers
 AREAS: tuple[tuple[str, str], ...] = tuple((entry.prefix, entry.area)
                                            for entry in project.current().state_machine_areas)
 CHECKER_FILES: tuple[str, ...] = project.current().full_tree_triggers
+# (path, record) -> the reason a person reviewed that record's C3 status shape and kept it.
+REVIEWED_SHAPES: dict[tuple[str, str], str] = {(shape.path, shape.record): shape.reason
+                                               for shape in project.current().reviewed_shapes}
 GATE_RULES: tuple[str, ...] = ("F1", "F2")
 HEADER_SUFFIXES: tuple[str, ...] = (".hpp", ".hh", ".h", ".inc")
 INCLUDE: re.Pattern[str] = re.compile(r'#\s*include\s*[<"]([^>"]+)[>"]')
@@ -588,7 +601,82 @@ def shape_candidates(members: list[Member]) -> list[tuple[int, str]]:
     return results
 
 
-def find_shapes(text: str) -> list[tuple[int, str]]:
+# C3's narrow form (owner, 2026-10-27): in a plain data record (a struct with
+# no private or protected section), a status beside a std::optional payload
+# lets a failure carry a value and a success lack one. A status has a status
+# type: an enumeration declared in the product, or a record named *Status or
+# *Error. So a C struct's int error code (stb_vorbis in stx_vorbis's C
+# adapter) is not one, nor is a nested *Result record. Among status-typed
+# members, the one named status, error, result or outcome governs; in a
+# record named for a result, the first one does (DockDragOutcome's `end`,
+# not its DockTransactionResult payload `result`).
+DECLARED_ENUM: re.Pattern[str] = re.compile(r"\benum\s+(?:class\s+|struct\s+)?(\w+)\s*(?::[^;{]*)?\{")
+STATUS_NAME: re.Pattern[str] = re.compile(r"(?:\w+_)?(?:status|error|result|outcome)")
+STATUS_RECORD: re.Pattern[str] = re.compile(r"\w*(?:Status|Error)")
+HIDDEN_SECTION: re.Pattern[str] = re.compile(r"\b(?:private|protected)\s*:")
+RESULT_RECORD: re.Pattern[str] = re.compile(r"\w*(?:Result|Outcome|Resolution)")
+OPTIONAL_TYPE: re.Pattern[str] = re.compile(r"\boptional\s*<")
+
+
+def enum_names(text: str) -> set[str]:
+    """The enumerations a source declares, by name."""
+    names: set[str] = set(DECLARED_ENUM.findall(text))
+    return names
+
+
+def product_enums(root: Path, files: list[str]) -> set[str]:
+    """The enumerations every first-party source declares: a changed record may use one declared elsewhere."""
+    names: set[str] = set()
+    path: str
+    for path in files:
+        names |= enum_names(masked((root / path).read_text(encoding="utf-8", errors="replace")))
+    return names
+
+
+def status_typed(member: Member, enums: set[str]) -> bool:
+    """Whether a member holds a status by value: a known enumeration, or a *Status or *Error record."""
+    if re.search(r"[<*&\[]", member.type_text):
+        return False
+    words: list[str] = re.findall(r"\w+", member.type_text)
+    if not words:
+        return False
+    return words[-1] in enums or STATUS_RECORD.fullmatch(words[-1]) is not None
+
+
+def status_member(record: str, members: list[Member], enums: set[str]) -> Member | None:
+    """The member whose value says which state a record holds, or None."""
+    typed: list[Member] = []
+    member: Member
+    for member in members:
+        if status_typed(member, enums):
+            typed.append(member)
+    for member in typed:
+        if STATUS_NAME.fullmatch(member.name.rstrip("_")) is not None:
+            return member
+    if typed and RESULT_RECORD.fullmatch(record) is not None:
+        return typed[0]
+    return None
+
+
+def status_candidates(record: str, members: list[Member], enums: set[str]) -> list[tuple[int, str]]:
+    """C3: a status beside std::optional payloads that only some of its states carry."""
+    results: list[tuple[int, str]] = []
+    status: Member | None = status_member(record, members, enums)
+    if status is None:
+        return results
+    payloads: list[str] = []
+    member: Member
+    for member in members:
+        if OPTIONAL_TYPE.search(member.type_text) is not None:
+            payloads.append(member.name)
+    if payloads:
+        results.append((status.line, "status " + status.name + " beside std::optional " + ", ".join(payloads)
+                        + "; one std::variant of the states, built by named factories and read by named "
+                        "queries, cannot disagree"))
+    return results
+
+
+def find_shapes(text: str, enums: set[str], path: str = "") -> list[tuple[int, str]]:
     results: list[tuple[int, str]] = []
     match: re.Match[str]
     for match in RECORD.finditer(text):
@@ -597,8 +685,14 @@ def find_shapes(text: str) -> list[tuple[int, str]]:
         end: int = matching(text, match.end() - 1)
         if end < 0:
             continue
+        members: list[Member] = record_members(text, match.end(), end)
+        candidates: list[tuple[int, str]] = shape_candidates(members)
+        plain: bool = text.startswith("struct", match.start()) and HIDDEN_SECTION.search(text, match.end(), end) is None
+        reviewed: bool = (path, match.group(1)) in REVIEWED_SHAPES
+        if plain and not reviewed:
+            candidates.extend(status_candidates(match.group(1), members, enums))
         candidate: tuple[int, str]
-        for candidate in shape_candidates(record_members(text, match.end(), end)):
+        for candidate in candidates:
             results.append((candidate[0], match.group(1) + ": " + candidate[1]))
     return results
 
@@ -1069,8 +1163,10 @@ def compiler_findings(diagnostics: list[Diagnostic], root: Path, vocabulary: set
     return findings
 
 
-def source_candidates(path: str, source: str) -> list[Finding]:
+def source_candidates(path: str, source: str, enums: set[str] | None = None) -> list[Finding]:
+    """C1 to C3 over one source; `enums` adds the product's enumerations to the ones it declares itself."""
     text: str = masked(source)
+    known: set[str] = enum_names(text) | (enums if enums is not None else set())
     comments: set[int] = comment_lines(source)
     candidates: list[Finding] = []
     switch: Switch
@@ -1080,7 +1176,7 @@ def source_candidates(path: str, source: str) -> list[Finding]:
             candidates.append(Finding(path, item[0], "C1", area_of(path), item[1]))
     for item in find_chains(text, comments):
         candidates.append(Finding(path, item[0], "C2", area_of(path), item[1]))
-    for item in find_shapes(text):
+    for item in find_shapes(text, known, path):
         if item[0] in comments or item[0] - 1 in comments:
             continue
         candidates.append(Finding(path, item[0], "C3", area_of(path), item[1]))
@@ -1213,10 +1309,12 @@ def main() -> int:
             if uncovered:
                 print(f"{len(uncovered)} changed sources are not compiled in this tree, so only C1 to C3 "
                       "read them: " + ", ".join(uncovered))
-    files: list[str] = source_files(root) if changed is None else changed
+    every: list[str] = source_files(root)
+    files: list[str] = every if changed is None else changed
+    enums: set[str] = product_enums(root, every)
     path: str
     for path in files:
-        findings.extend(source_candidates(path, (root / path).read_text(encoding="utf-8", errors="replace")))
+        findings.extend(source_candidates(path, (root / path).read_text(encoding="utf-8", errors="replace"), enums))
     sys.stdout.write(render(findings, units, len(files)))
     if args.json_path:
         records: list[dict[str, object]] = []
