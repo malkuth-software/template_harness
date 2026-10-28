@@ -32,7 +32,11 @@ and new form. Provisional rows there may change without an entry.
   listed apart (`restrict_span`). Virtual functions, overrides, functions
   whose address is taken and `main` are listed as `signature_bound`.
   Decisions are recorded in `[const_restrict] decisions` (optional) by path,
-  function, variable and kind. It never fails a run.
+  function, variable and kind. It never fails a run. Its help gives the
+  working form for span kernels (a checked wrapper over an internal helper
+  with restricted pointer parameters) and bfft's spelling of the qualifier
+  (`__restrict__` on GCC and Clang, which survives macOS's <sys/cdefs.h>;
+  `__restrict` on MSVC proper).
 - `harness/check_copies.py` (Phase E, E5, the static half): copies and
   allocations of owning types (standard strings and containers,
   std::function, and first-party records holding one, found from the

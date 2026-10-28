@@ -11,10 +11,19 @@ restrict  A function with a loop that writes through one pointer parameter
           (an output) beside other pointer parameters it reads (inputs), with
           no write or escape that would let the output reach the inputs.
           `restrict` is a promise the compiler cannot check, so a candidate
-          is only a place to review: the owner's rule is private kernels
-          first, each with a written overlap rule and a debug overlap
-          assertion. Span kernels (an output std::span beside input spans)
-          are listed apart: restrict would need a local pointer there.
+          is only a place to review: the owner's rule applies it wherever
+          the promise can be shown, each use with a written overlap rule and
+          an overlap assertion active in debug and sanitizer builds; public
+          signatures wait for review. Span kernels (an output std::span
+          beside input spans) are listed apart. The form that works for
+          them is a wrapper that keeps the span signature, asserts the
+          overlap rule and calls an internal-linkage helper whose pointer
+          parameters are restricted: compilers act on restrict parameters,
+          and a restricted local pointer is not relied on. Spell the
+          qualifier as bfft's macro does: `__restrict` for MSVC proper
+          (_MSC_VER without __clang__), `__restrict__` for GCC and Clang,
+          clang-cl included; macOS's <sys/cdefs.h> defines `__restrict` as
+          nothing in C++.
 
 How a use is read, from the shared AST (clang_ast.py). A use of a pointer
 follows its value up the expression: `*p`, `p[i]` and `p->m` reach the
