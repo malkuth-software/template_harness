@@ -1247,6 +1247,15 @@ def wrapped(prefix: str, items: list[str], suffix: str, indent: str) -> list[str
     return lines
 
 
+def factory_local(fields: dict[str, FieldInfo]) -> str:
+    """The name of the value a factory builds and returns: the first of a fixed list that names no field."""
+    candidate: str
+    for candidate in ("result", "built", "made"):
+        if candidate not in fields:
+            return candidate
+    raise SpecError("every name for a factory's local is a field's name")
+
+
 def generated_record(spec: RecordSpec, record: RecordInfo) -> str:
     """The record as a class: factories, queries, a private constructor and private fields."""
     name: str = record_name(spec)
@@ -1258,6 +1267,8 @@ def generated_record(spec: RecordSpec, record: RecordInfo) -> str:
     selector_field: FieldInfo = fields[spec.selector[0]]
     dotted: bool = len(spec.selector) == 2
     lines: list[str] = [f"class {name} final {{", "public:"]
+    # The factories' local: a field's name is a parameter's name too (DockDragOutcome has `result`).
+    local: str = factory_local(fields)
     factory: Factory
     for factory in spec.factories:
         if factory.comment:
@@ -1274,8 +1285,8 @@ def generated_record(spec: RecordSpec, record: RecordInfo) -> str:
         arguments: list[str] = []
         for info in record.fields:
             arguments.append(constructor_argument(spec, factory, info, dotted))
-        lines.extend(wrapped(f"{indent * 2}{name} result{{", arguments, "};", indent * 3))
-        lines.append(f"{indent * 2}return result;")
+        lines.extend(wrapped(f"{indent * 2}{name} {local}{{", arguments, "};", indent * 3))
+        lines.append(f"{indent * 2}return {local};")
         lines.append(f"{indent}}}")
     lines.append("")
     for info in record.fields:

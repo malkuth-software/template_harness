@@ -200,6 +200,14 @@ class SpecTests(unittest.TestCase):
 
 
 class TextTests(unittest.TestCase):
+    def test_a_factory_local_never_takes_a_field_name(self) -> None:
+        def field(name: str) -> codemod.FieldInfo:
+            return codemod.FieldInfo(name, "int", 0, 0, "", "", [])
+        plain: dict[str, codemod.FieldInfo] = {"status": field("status")}
+        self.assertEqual(codemod.factory_local(plain), "result")
+        named: dict[str, codemod.FieldInfo] = {"end": field("end"), "result": field("result")}
+        self.assertEqual(codemod.factory_local(named), "built")
+
     def test_only_source_units_are_read(self) -> None:
         # A full `ninja -t compdb` lists custom commands whose "file" is an asset under the
         # checkout; their command is a shell, and running it as a compiler made directories.
