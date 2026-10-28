@@ -454,8 +454,17 @@ class UnitAnalysis:
         if node.kind in ("DeclRefExpr", "MemberExpr"):
             declaration: Node | None = self.declarations.get(node.target)
             return declaration.type if declaration is not None else ""
-        if node.kind == "CXXFunctionalCastExpr" and node.children:
-            return self.source.text(node.file, node.begin, node.children[0].begin).strip()
+        if node.kind == "CXXFunctionalCastExpr":
+            # `T(x)` or `T{x}`. With a constructor the cast's child is the construction, which
+            # starts where the cast does, so the type is read up to the opening bracket.
+            written: str = self.source.node_text(node)
+            cut: int = len(written)
+            bracket: str
+            for bracket in ("(", "{"):
+                found: int = written.find(bracket)
+                if 0 <= found < cut:
+                    cut = found
+            return written[:cut].strip()
         if node.kind == "CXXConstructExpr":
             return node.name
         if node.kind in ("CallExpr", "CXXMemberCallExpr"):

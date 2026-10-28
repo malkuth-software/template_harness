@@ -31,7 +31,10 @@ HEADER: str = textwrap.dedent("""\
     namespace demo {
     enum class Status : unsigned char { success, failed, unavailable };
     enum class Error : unsigned char { none, invalid, too_large };
-    struct Payload final { int value{}; };
+    struct Payload final {
+        explicit constexpr Payload(int given) noexcept : value(given) {}
+        int value{};
+    };
     struct Service final {
         Error error{Error::none};
         bool accepted() const noexcept { return error == Error::none; }
@@ -68,7 +71,7 @@ USE: str = textwrap.dedent("""\
             return result;
         }
         result.status = Status::success;
-        result.payload = Payload{x};
+        result.payload = Payload(x);
         return result;
     }
     Result direct() { return {Status::failed, std::nullopt, 0}; }
@@ -317,7 +320,7 @@ class WholeRun:
         self.assertEqual(self.program_output(), before)
         use: str = (self.root / "use.cpp").read_text(encoding="utf-8")
         self.assertIn("if (x == 0) { return Result::refused(Status::unavailable); }", use)
-        self.assertIn("return Result::succeeded(Payload{x}, 0);", use)
+        self.assertIn("return Result::succeeded(Payload(x), 0);", use)
         self.assertIn("if (size > 10) { return Read::failed(Error::too_large); }", use)
         self.assertIn("return Read::image_read(std::move(image), 0);", use)
         self.assertIn("Result direct() { return Result::refused(Status::failed); }", use)
