@@ -139,7 +139,9 @@ class ProjectFileTests(unittest.TestCase):
             environment: dict[str, str] = {'HARNESS_WORKSPACE': str(root)}
             with mock.patch.dict(os.environ, environment):
                 os.environ.pop('HARNESS_PROJECT', None)
-                self.assertEqual(project.project_path(), root / 'harness.toml')
+                # Resolved on both sides: a temporary directory can sit behind a symbolic
+                # link (macOS's /var is /private/var).
+                self.assertEqual(project.project_path().resolve(), (root / 'harness.toml').resolve())
                 self.assertEqual(parsed(MINIMAL).source_root(), root.resolve() / 'example')
             with mock.patch.dict(os.environ, {'HARNESS_WORKSPACE': str(root / 'empty')}):
                 os.environ.pop('HARNESS_PROJECT', None)
