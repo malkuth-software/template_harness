@@ -34,6 +34,7 @@ int sum(Buffer& buffer, bool scaled, int limit) {
     for (int index = 0; index < buffer.size(); ++index) {
         if (scaled) total += 2;
         if (index == 0) continue;
+        if (index % 2 == 1) total += 1;
         if (buffer.values[index] > limit) return -1;
         if (buffer.values[index] == 7) break;
         total += buffer.values[index] > 3 ? 1 : 0;
@@ -59,6 +60,7 @@ int sum(Buffer& buffer, bool scaled, int limit) {
 EXPECTED: dict[str, str] = {
     "scaled": "invariant",
     "index == 0": "edge",
+    "index % 2 == 1": "edge",
     "buffer.values[index] > limit": "validation",
     "buffer.values[index] == 7": "control",
     "buffer.values[index] > 3": "data",
@@ -87,12 +89,16 @@ class ClassChecks:
             branches.DONE.clear()
             records: list[dict] = branches.analyse_unit(job)
         found: dict[str, str] = {}
+        reasons: dict[str, str] = {}
         record: dict
         for record in records:
             found[record["condition"]] = record["cls"]
+            reasons[record["condition"]] = record["reason"]
             self.assertEqual(record["path"], "src/sample.cpp")
             self.assertEqual(record["function"], "sum")
         self.assertEqual(found, EXPECTED)
+        self.assertIn("stride", reasons["index % 2 == 1"])
+        self.assertIn("fixed bounds", reasons["index == 0"])
 
 
 @unittest.skipIf(CLANG is None, "needs clang++ on PATH")

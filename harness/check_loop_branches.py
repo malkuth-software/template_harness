@@ -10,7 +10,10 @@ Repeated kernels):
                implementation before the loop.
   edge         reads only the loop's index, compared with fixed bounds
                (index == 0, index + 1 == count): handle the edges apart from
-               the interior.
+               the interior. A parity or stride test of the index
+               (index % 2 == 0) is edge too, but its repair is to unroll or
+               split the loop by the stride, not to peel; the reason says
+               which.
   validation   reads each element and leaves with a failure (throw, or a
                return of false, null, a negative number or a name of
                failure): validate the whole buffer up front.
@@ -284,6 +287,17 @@ def index_comparison(condition: Node, loop: Loop) -> bool:
     return not changes_seen(other, loop)
 
 
+def strided(node: Node) -> bool:
+    """Whether a condition takes a remainder or a low-bit mask (index % 2, index & 1)."""
+    if node.kind == "BinaryOperator" and node.opcode in ("%", "&"):
+        return True
+    child: Node
+    for child in node.children:
+        if strided(child):
+            return True
+    return False
+
+
 def changes_seen(reads: Reads, loop: Loop) -> bool:
     return bool(reads.variables & loop.changed or reads.fields & loop.changed_fields or reads.calls)
 
@@ -339,6 +353,8 @@ def classify(condition: Node, loop: Loop, branch: Node | None) -> tuple[str, str
         read: list[str] = sorted(set(reads.names.values()) | reads.fields)
         return "invariant", "reads " + (", ".join(read) if read else "constants") + ", unchanged in the loop"
     if index_comparison(condition, loop):
+        if strided(condition):
+            return "edge", "tests the loop index's stride: unroll or split by the stride"
         return "edge", "compares the loop index with fixed bounds"
     why: str = describe(reads, changed_variables, changed_fields)
     if branch is not None:
