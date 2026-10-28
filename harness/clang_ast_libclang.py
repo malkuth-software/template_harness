@@ -119,22 +119,25 @@ class Library:
         self.file_name: Any = handle.clang_getFileName
         self.file_name.argtypes = [ctypes.c_void_p]
         self.file_name.restype = cindex._CXString
-        self.names: dict[int, str] = {}
 
-    def name_of(self, file: int) -> str:
-        if file not in self.names:
-            self.names[file] = self.cindex._CXString.from_result(self.file_name(file)) if file else ""
-        return self.names[file]
+    def point(self, location: Any, spelling: bool, names: dict[int, str]) -> tuple[str, int]:
+        """A location's file name and byte offset: its expansion's, or with `spelling` its spelling's.
 
-    def point(self, location: Any, spelling: bool) -> tuple[str, int]:
-        """A location's file name and byte offset: its expansion's, or with `spelling` its spelling's."""
+        `names` caches file names by CXFile handle for ONE translation unit:
+        a handle is the unit's own pointer, and once the unit is freed the
+        next unit's files may reuse its address, so a cache shared across
+        units can name a file after another unit's file.
+        """
         file: ctypes.c_void_p = ctypes.c_void_p()
         line: ctypes.c_uint = ctypes.c_uint()
         column: ctypes.c_uint = ctypes.c_uint()
         offset: ctypes.c_uint = ctypes.c_uint()
         reader: Any = self.spelling if spelling else self.expansion
         reader(location, ctypes.byref(file), ctypes.byref(line), ctypes.byref(column), ctypes.byref(offset))
-        result: tuple[str, int] = (self.name_of(file.value or 0), int(offset.value) if file.value else -1)
+        handle: int = file.value or 0
+        if handle not in names:
+            names[handle] = self.cindex._CXString.from_result(self.file_name(handle)) if handle else ""
+        result: tuple[str, int] = (names[handle], int(offset.value) if handle else -1)
         return result
 
 
@@ -346,11 +349,23 @@ class Converter:
         self.cindex: Any = library.cindex
         self.directory: str = unit.directory
         self.source: SourceText = source
-        self.spelled: dict[int, Spelled] = {}       # id(node) -> where its text is
+        # id(node) -> (node, where its text is). The node is held so that its id
+        # cannot pass to a later node while this converter lives.
+        self.spelled: dict[int, tuple[Node, Spelled]] = {}
         self.qualified_names: dict[str, str] = {}   # identity -> qualified name
+        self.file_names: dict[int, str] = {}        # CXFile handle -> name, for this unit only (Library.point)
 
     # --- locations ---------------------------------------------------------------------
 
+
+
+    def spelled_of(self, node: Node) -> Spelled | None:
+        entry: tuple[Node, Spelled] | None = self.spelled.get(id(node))
+        result: Spelled | None = entry[1] if entry is not None and entry[0] is node else None
+        return result
+    def point(self, location: Any, spelling: bool) -> tuple[str, int]:
+        result: tuple[str, int] = self.library.point(location, spelling, self.file_names)
+        return result
     def file(self, name: str) -> str:
         return absolute(self.directory, name) if name else ""
 
@@ -362,28 +377,28 @@ class Converter:
         begin: int
         end_file: str
         end: int
-        begin_file, begin = self.library.point(start, False)
-        end_file, end = self.library.point(stop, False)
+        begin_file, begin = self.point(start, False)
+        end_file, end = self.point(stop, False)
         spelling_file: str
         spelling_begin: int
         spelling_end_file: str
         spelling_end: int
-        spelling_file, spelling_begin = self.library.point(start, True)
-        spelling_end_file, spelling_end = self.library.point(stop, True)
+        spelling_file, spelling_begin = self.point(start, True)
+        spelling_end_file, spelling_end = self.point(stop, True)
         in_macro: bool = (spelling_file, spelling_begin) != (begin_file, begin) or (
             (spelling_end_file, spelling_end) != (end_file, end))
         node: Node = Node(kind, self.file(begin_file), begin, end, in_macro)
         if spelling_begin >= 0:
             # A macro's tokens end where the expansion says, not where their spelling does: no end then.
             stop: int = spelling_end if not in_macro and spelling_file == spelling_end_file else -1
-            self.spelled[id(node)] = Spelled(self.file(spelling_file), spelling_begin, stop)
+            self.spelled[id(node)] = (node, Spelled(self.file(spelling_file), spelling_begin, stop))
         return node
 
     def identity(self, cursor: Any) -> str:
         """A declaration's unit-local key: its kind and the expansion location of its name."""
         file: str
         offset: int
-        file, offset = self.library.point(self.library.cursor_location(cursor), False)
+        file, offset = self.point(self.library.cursor_location(cursor), False)
         result: str = cursor.kind.name + "@" + file + ":" + str(offset)
         return result
 
@@ -403,7 +418,7 @@ class Converter:
         return result
 
     def text(self, node: Node) -> str:
-        spelled: Spelled | None = self.spelled.get(id(node))
+        spelled: Spelled | None = self.spelled_of(node)
         if spelled is None:
             return ""
         result: str = self.source.text(spelled.file, spelled.begin, spelled.end)
@@ -456,12 +471,12 @@ class Converter:
             return
         file: str
         offset: int
-        file, offset = self.library.point(self.library.cursor_location(cursor), True)
+        file, offset = self.point(self.library.cursor_location(cursor), True)
         name_end: int = offset + len(cursor.spelling.encode("utf-8"))
         kept: list[Node] = []
         child: Node
         for child in node.children:
-            spelled: Spelled | None = self.spelled.get(id(child))
+            spelled: Spelled | None = self.spelled_of(child)
             if spelled is None or spelled.file != self.file(file):
                 kept.append(child)
                 continue
@@ -550,7 +565,7 @@ class Converter:
     def assign_roles(self, node: Node) -> None:
         kind: str = node.kind
         if kind in LITERALS:
-            spelled: Spelled | None = self.spelled.get(id(node))
+            spelled: Spelled | None = self.spelled_of(node)
             if spelled is not None:
                 data: bytes = self.source.bytes_of(spelled.file)
                 node.value = data[spelled.begin:token_end(data, spelled.begin)].decode("utf-8", "replace")
@@ -576,8 +591,8 @@ class Converter:
 
     def unary(self, node: Node) -> None:
         operand: Node = node.children[0]
-        mine: Spelled | None = self.spelled.get(id(node))
-        theirs: Spelled | None = self.spelled.get(id(operand))
+        mine: Spelled | None = self.spelled_of(node)
+        theirs: Spelled | None = self.spelled_of(operand)
         if mine is not None and theirs is not None and mine.file == theirs.file:
             before: str = self.source.text(mine.file, mine.begin, theirs.begin).strip()
             after: str = ""
@@ -590,7 +605,7 @@ class Converter:
     def header_roles(self, node: Node) -> None:
         """The parts of an if, switch or for by where each child starts against the header's ; and )."""
         kind: str = node.kind
-        spelled: Spelled | None = self.spelled.get(id(node))
+        spelled: Spelled | None = self.spelled_of(node)
         header: Header = Header((), -1)
         if not node.in_macro and spelled is not None:
             header = statement_header(self.source.bytes_of(spelled.file), spelled.begin)
@@ -656,7 +671,7 @@ class Converter:
             # A dependent member libclang does not name: the identifier at its location.
             file: str
             offset: int
-            file, offset = self.library.point(self.library.cursor_location(cursor), True)
+            file, offset = self.point(self.library.cursor_location(cursor), True)
             if file and offset >= 0:
                 data: bytes = self.source.bytes_of(self.file(file))
                 node.name = data[offset:token_end(data, offset)].decode("utf-8", "replace")
@@ -676,12 +691,12 @@ class Converter:
         node.roles["object"] = node.children[0]
 
     def reached_with_arrow(self, node: Node, cursor: Any) -> bool:
-        object_spelled: Spelled | None = self.spelled.get(id(node.children[0]))
+        object_spelled: Spelled | None = self.spelled_of(node.children[0])
         if object_spelled is None:
             return False
         file: str
         offset: int
-        file, offset = self.library.point(self.library.cursor_location(cursor), True)
+        file, offset = self.point(self.library.cursor_location(cursor), True)
         if self.file(file) != object_spelled.file or offset < object_spelled.end:
             return False
         result: bool = "->" in self.source.text(object_spelled.file, object_spelled.end, offset)
@@ -774,12 +789,12 @@ class Converter:
         pending: Node | None = None
         name_file: str
         name_offset: int
-        name_file, name_offset = self.library.point(self.library.cursor_location(cursor), False)
+        name_file, name_offset = self.point(self.library.cursor_location(cursor), False)
         child: Any
         for child in cursor.get_children():
             name: str = child.kind.name
             # An initializer's member or base comes after the constructor's name (a qualifier, Type::, before it).
-            after_name: bool = self.library.point(self.library.cursor_location(child), False)[1] > name_offset
+            after_name: bool = self.point(self.library.cursor_location(child), False)[1] > name_offset
             if (name in ("MEMBER_REF", "TYPE_REF") and pending is None and after_name
                     and not self.body_seen(node)):
                 pending = self.located("CXXCtorInitializer", child)
@@ -846,7 +861,7 @@ def read_unit(unit: UnitCommand, keep: Callable[[str], bool]) -> Iterator[Node]:
     for top in translation_unit.cursor.get_children():
         file: str
         offset: int
-        file, offset = library.point(library.cursor_location(top), False)
+        file, offset = converter.point(library.cursor_location(top), False)
         if not file or not keep(absolute(unit.directory, file)):
             continue
         converted: Node | None = converter.convert(top)

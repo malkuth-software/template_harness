@@ -449,6 +449,40 @@ class LibclangModelTests(ModelChecks, unittest.TestCase):
     reader = "libclang"
 
 
+class UnderDirectory:
+    def __init__(self, path: str) -> None:
+        self.path: str = path.lower().rstrip("/") + "/"
+
+    def keep(self, file: str) -> bool:
+        return file.lower().startswith(self.path)
+
+
+@unittest.skipIf(bool(LIBCLANG_PROBLEM) and not LIBCLANG_REQUIRED, "libclang: " + LIBCLANG_PROBLEM)
+class LibclangUnitsTests(unittest.TestCase):
+    def test_each_unit_names_its_own_files(self) -> None:
+        # A CXFile handle belongs to its translation unit, and a freed unit's addresses are reused by the next
+        # one: file names cached across units once named one unit's nodes after another unit's file. Reading
+        # two units in turn, many times, catches such a cache.
+        with tempfile.TemporaryDirectory() as directory:
+            root: Path = Path(directory).resolve()
+            names: list[str] = ["first.cpp", "second.cpp"]
+            name: str
+            for name in names:
+                (root / name).write_text(f"int {name[:-4]}_value(int x) {{ return x + 1; }}\n", encoding="utf-8")
+            keeper: UnderDirectory = UnderDirectory(root.as_posix())
+            round_number: int
+            for round_number in range(8):
+                name = names[round_number % 2]
+                unit: clang_ast.UnitCommand = clang_ast.UnitCommand(str(root), (CLANG or "clang++", "-std=c++20",
+                                                                                "-c", name), name)
+                collector: Collector = Collector()
+                top: clang_ast.Node
+                for top in clang_ast.read_unit(unit, keeper.keep, "libclang"):
+                    clang_ast.walk(top, collector.visit)
+                files: set[str] = {Path(node.file).name for node in collector.nodes if node.file}
+                self.assertEqual(files, {name}, f"round {round_number}")
+
+
 def described(node: clang_ast.Node, depth: int, role: str, lines: list[str]) -> None:
     """One line per node with every field both backends must agree on."""
     # A reference's qualified target is compared only for declarations: the json backend knows a target's
