@@ -184,6 +184,21 @@ class CommandTests(unittest.TestCase):
             {"directory": "/b", "command": "clang++ -DX=1 -c a.cpp", "file": "a.cpp"})
         self.assertEqual(written.command, ("clang++", "-DX=1", "a.cpp"))
 
+    def test_windows_command_lines_split_as_the_c_runtime_splits_them(self) -> None:
+        # Ninja on Windows writes a string define as -DNAME=\\"text\\" (gui_forms' version string).
+        command: str = 'C:\\llvm\\bin\\clang++.exe -DVERSION=\\"0.2.0\\" "-IC:/a b/include" -c C:\\src\\a.cpp'
+        self.assertEqual(clang_ast.split_command(command, True),
+                         ["C:\\llvm\\bin\\clang++.exe", '-DVERSION="0.2.0"', "-IC:/a b/include", "-c",
+                          "C:\\src\\a.cpp"])
+        self.assertEqual(clang_ast.split_command('a "" b\\\\"c d" "e""f"', True), ["a", "", 'b\\c d', 'e"f'])
+        self.assertEqual(clang_ast.split_command("clang++ -DVERSION=\\\"0.2.0\\\" -c a.cpp", False),
+                         ["clang++", '-DVERSION="0.2.0"', "-c", "a.cpp"])
+
+    def test_listed_arguments_keep_their_quotes(self) -> None:
+        listed: clang_ast.UnitCommand = clang_ast.unit_command(
+            {"directory": "/b", "arguments": ["clang++", '-DVERSION="0.2.0"', "-c", "a.cpp"], "file": "a.cpp"})
+        self.assertEqual(listed.command, ("clang++", '-DVERSION="0.2.0"', "a.cpp"))
+
     def test_an_unknown_reader_is_refused(self) -> None:
         previous: str | None = os.environ.get("HARNESS_AST_READER")
         os.environ["HARNESS_AST_READER"] = "regex"

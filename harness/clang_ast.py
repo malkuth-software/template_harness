@@ -151,14 +151,82 @@ def written_type(text: str) -> str:
     return result
 
 
+def split_windows_command(command: str) -> list[str]:
+    """A command line split as the Windows C runtime splits one (CommandLineToArgvW's rules).
+
+    Words end at unquoted spaces or tabs; a double quote toggles quoting and is
+    dropped; inside quotes, two double quotes are one literal quote. Before a
+    double quote, 2n backslashes are n backslashes (the quote still toggles)
+    and 2n+1 are n backslashes and a literal quote; elsewhere a backslash is
+    itself, so `C:\\dir\\a.cpp` keeps its separators. Ninja on Windows writes
+    `-DNAME=\\"text\\"` for a string define, which is the word `-DNAME="text"`.
+    """
+    words: list[str] = []
+    word: list[str] = []
+    started: bool = False       # a word is open (an empty quoted word "" still counts)
+    quoted: bool = False
+    index: int = 0
+    count: int = len(command)
+    while index < count:
+        character: str = command[index]
+        if character == "\\":
+            run: int = 0
+            while index < count and command[index] == "\\":
+                run += 1
+                index += 1
+            if index < count and command[index] == '"':
+                word.append("\\" * (run // 2))
+                if run % 2 == 1:
+                    word.append('"')
+                    index += 1
+            else:
+                word.append("\\" * run)
+            started = True
+            continue
+        if character == '"':
+            if quoted and index + 1 < count and command[index + 1] == '"':
+                word.append('"')
+                index += 2
+            else:
+                quoted = not quoted
+                index += 1
+            started = True
+            continue
+        if character in " \t" and not quoted:
+            if started:
+                words.append("".join(word))
+                word = []
+                started = False
+            index += 1
+            continue
+        word.append(character)
+        started = True
+        index += 1
+    if started:
+        words.append("".join(word))
+    return words
+
+
+def split_command(command: str, windows: bool) -> list[str]:
+    """A compile database's command string as words, by the rules of the host that wrote it."""
+    if windows:
+        return split_windows_command(command)
+    result: list[str] = shlex.split(command, posix=True)
+    return result
+
+
 def compile_arguments(command: str) -> list[str]:
     """A compile command split into words, without its launcher, its outputs and its dependency files."""
-    arguments: list[str] = shlex.split(command, posix=(os.name != "nt"))
+    result: list[str] = front_end_words(split_command(command, os.name == "nt"))
+    return result
+
+
+def front_end_words(arguments: list[str]) -> list[str]:
+    """Compile words without the launcher, the outputs and the dependency files."""
     result: list[str] = []
     skip: bool = False
     argument: str
     for argument in arguments:
-        argument = argument.strip('"')
         if skip:
             skip = False
             continue
@@ -175,7 +243,8 @@ def unit_command(entry: dict) -> UnitCommand:
     """A compile-database entry (directory, command or arguments, file) as a UnitCommand."""
     words: list[str]
     if "arguments" in entry:
-        words = compile_arguments(shlex.join(entry["arguments"]))
+        # Already words: no quoting to undo.
+        words = front_end_words(list(entry["arguments"]))
     else:
         words = compile_arguments(entry["command"])
     result: UnitCommand = UnitCommand(entry["directory"], tuple(words), entry["file"])
