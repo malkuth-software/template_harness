@@ -145,6 +145,15 @@ and new form. Provisional rows there may change without an entry.
   tree. The `[bootstrap]` smoke command is unchanged; GUI.Forms' `ci_build.py`
   now accepts `--tests` without `--sanitize` (a plain build of what the
   matching tests read, and those tests).
+- `harness/lockstep.py` no longer clones with `core.autocrlf=true` on
+  Windows. GUI.Forms' `.gitattributes` (`* text=auto eol=lf`) checks every
+  text file out with LF on every host, so the clone has CI's bytes without it;
+  an existing clone's setting is overridden by the attribute and is harmless.
+  `docs/adopting.md` follows.
+- The prebuilt Windows Skia archive is gone from GUI.Forms (Skia is built
+  from source on every host): `docs/adopting.md` and `harness/ci_build_steps.py`
+  stop citing it, and `projects/gui_forms.toml` drops its Windows `skia = false`
+  cache-manifest override.
 
 ### Breaking changes
 - None.

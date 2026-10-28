@@ -490,10 +490,12 @@ else `D:/malkuth` on Windows and `~/malkuth` elsewhere.
 
 The workspace is laid out like CI's, with `gui_forms/` beside
 `.build/native-<target>/gui-forms` and `CCACHE_BASEDIR` at the workspace. On
-Windows, the clone checks out text with CRLF and the build runs with
-`LANG=en_US.UTF-8`, as CI's Windows jobs do. ccache keys every object on the
-bytes and paths it reads and on the locale, so these settings let the local
-cache match the per-commit caches that GUI.Forms publishes.
+Windows the build runs with `LANG=en_US.UTF-8`, as CI's Windows jobs do.
+GUI.Forms' `.gitattributes` checks every text file out with LF on every host,
+so the clone has CI's bytes whatever the local git configuration says. ccache
+keys every object on the bytes and paths it reads and on the locale, so these
+settings let the local cache match the per-commit caches that GUI.Forms
+publishes.
 
 The coordinator's commands:
 
@@ -619,28 +621,25 @@ A product has adopted the harness when all three of these hold:
   machine's git configuration (`core.autocrlf`). A hash over file bytes
   can then differ between hosts, and between a product copy and the
   harness's copy of the same file. Set your own `.gitattributes`, as the
-  harness does; don't rely on the runner's git config. GUI.Forms has
-  none yet, and computes its Skia archive identity on a Linux runner.
+  harness does; don't rely on the runner's git config. GUI.Forms
+  sets `* text=auto eol=lf`, so its checkouts are byte-identical on
+  every host.
 - **Compiler-cache keys on Windows: line endings and locale.** ccache
   keys every object on the exact bytes of every file the compile reads,
-  and on the locale. GUI.Forms' Windows CI checks its sources out with
-  CRLF (the runner's git has `core.autocrlf=true`) and runs under MSYS2
-  with `LANG=en_US.UTF-8`. A local build from LF sources with no `LANG`
-  produces byte-identical objects under different keys: it hit 3 of 526
-  compilations against CI's published cache. Matching both (CRLF sources
-  following git's rule and the tree's `.gitattributes`, plus
-  `LANG=en_US.UTF-8`) hit 525 of 526 (2026-10-27). So a local harness
-  that wants CI's caches checks out and builds exactly as CI does. The
-  lockstep clone does (`core.autocrlf=true`, the record's `lang`), and
-  `example_app/fetch_sdk.py` rewrites an unpacked source SDK to CRLF on
-  windows-x64. If a product's checkouts ever become LF everywhere, every
-  Windows cache restarts once.
-- **The Skia identity.** GUI.Forms' Windows Skia archive identity hashed
-  `tools/windows_toolchain*.json`. These now come from the harness
-  (`skia_archive.MOVED_INPUTS`) under their old names, so the identity
-  did not change. A harness bump that changes those files now changes the
-  identity and rebuilds the archive. Any identity you compute from moved
-  files works the same way.
+  and on the locale. Before its `.gitattributes`, GUI.Forms' Windows CI
+  checked its sources out with CRLF (the runner's git has
+  `core.autocrlf=true`) and ran under MSYS2 with `LANG=en_US.UTF-8`. A
+  local build from LF sources with no `LANG` produced byte-identical
+  objects under different keys: it hit 3 of 526 compilations against
+  CI's published cache. Matching both hit 525 of 526 (2026-10-27). With
+  LF checkouts everywhere only the locale is left to match, and the
+  lockstep build sets the record's `lang`. When a product's checkouts
+  become LF everywhere, as GUI.Forms' did, every Windows cache restarts
+  once.
+- **Identities over moved files.** An identity you compute by hashing
+  files that later move into the harness keeps its value only while the
+  harness copies are byte-identical under their old names. A harness bump
+  that changes those files then changes the identity.
 - **`hashFiles` on shims.** A key over a shim's path hashes the shim.
   It changes once, then never follows the real tool again. Point keys at
   `template_harness/…` (section 4).
