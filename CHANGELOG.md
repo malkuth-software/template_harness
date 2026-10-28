@@ -7,6 +7,17 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Added
+- `harness/check_loop_branches.py` (Phase E, E2): every conditional inside a
+  loop body (`if`, `switch`, `?:`, a standalone `&&` or `||`), classed by
+  what its condition reads against the innermost loop: invariant, edge,
+  validation, control or data, each with the house style's repair. It reads
+  the pinned clang's JSON AST over a ninja tree's compile database, writes a
+  JSON review queue (`--json`) and a short report (`--report`), and matches
+  decisions recorded in `[loop_branches] decisions` (optional) by path,
+  function and condition text. It never fails a run.
+- `harness/clang_ast.py`: the shared AST reader. It streams one unit's
+  `-ast-dump=json` and parses only the top-level declarations in kept files,
+  tracking the file clang writes only on change.
 - `.github/workflows/bootstrap.yml`: the bootstrap proof. On Windows, macOS and
   Linux it bootstraps GUI.Forms from an empty directory through the entry a
   person uses, runs the administrator step the bootstrap prints, passes the

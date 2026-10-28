@@ -33,8 +33,9 @@ The harness provides:
   `prune_cache_releases.py` and `cache_manifest.py`.
 - **Build helpers:** `ci_build_steps.py` (`configure_tree`,
   `sanitizer_options`), `change_selection.py` and `native_tests.py`.
-- **Checkers:** `check_house_style.py`, `check_lifetime_rules.py` and
-  `check_state_machines.py`.
+- **Checkers:** `check_house_style.py`, `check_lifetime_rules.py`,
+  `check_state_machines.py` and `check_loop_branches.py`, which reads the
+  clang AST through `clang_ast.py`.
 - **The pin:** `lock.py` and `.github/actions/harness-checkout`.
 - **Local work:** `bootstrap.sh`/`bootstrap.ps1` and `restore_local.py`,
   and `checkpoint/checkpoint.py`.
@@ -98,6 +99,7 @@ new history of caches and receipts, so choose the names once.
 | `[tests] name_prefixes` | `tests/X.cpp` names the tests `X` and `<prefix>X` | yes, may be `[]` |
 | `[linux_packages.<profile>] packages`, `extends` | The package sets `install_linux_ci_packages.sh <profile>` installs; `extends` names one other profile, one level deep | the table is required; define the profiles your jobs use |
 | `[state_machines] first_party_dirs`, `vocabulary_headers`, `areas`, `full_tree_triggers` | The state-machine checker's scope, its atom vocabulary, `[prefix, area]` ownership pairs (most specific first), and the paths whose change widens a changed-code run to the full tree | no: without the table, `check_state_machines.py` refuses to run; with it, all four are required and the lists may be empty |
+| `[loop_branches] decisions` | The loop-branch review's recorded decisions, a path in the product checkout | no; without it, every branch in a loop is listed as open |
 | `[build] configure_variables` | Your own variables, without the prefix, that change what a configure records | yes, may be `[]` |
 | `[cache_manifest] profile`, `native_options` | What `cache-manifest.json` records beside each cache | yes |
 | `[cache_manifest.platform_options.<platform>]` | Per-platform overrides; each key must already be in `native_options` | no |
