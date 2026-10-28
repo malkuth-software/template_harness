@@ -62,6 +62,8 @@ full_tree_triggers = [
     "harness/test_clang_ast.py",
     "harness/check_loop_branches.py",
     "harness/test_loop_branches.py",
+    "harness/codemod_records.py",
+    "harness/test_codemod_records.py",
     ".github/workflows/harness-state-machines.yml",
 ]
 
