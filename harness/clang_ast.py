@@ -54,6 +54,11 @@ Where the two backends can differ, and why:
   non-const lvalue reference); the json backend reads an argument passed as
   an lvalue with no conversion, which is how clang spells a non-const
   reference binding.
+- `parameters` on call arguments: libclang spells each parameter's type;
+  the json backend splits the callee's function type, and for a member call
+  (whose callee has no function type) the method's type, which it knows
+  only when the unit read the method's declaration. Both leave "" where the
+  callee's parameters are unknown (dependent calls in templates).
 - Dependent code in templates (unresolved calls and members) is described
   less precisely by libclang; findings there are approximate in both.
 """
@@ -127,6 +132,9 @@ class Node:
     roles: dict[str, Node] = field(default_factory=dict)
     arguments: list[Node] = field(default_factory=list)     # a call's arguments, in order
     writes: list[bool] = field(default_factory=list)        # per argument: it may be written through a reference
+    # Per argument: its parameter's type as written ("int *", "const Buffer &"), or "" where unknown: past
+    # the declared parameters (a variadic call), a member operator's object, or a callee the reader cannot see.
+    parameters: list[str] = field(default_factory=list)
 
 
 class ReadError(RuntimeError):

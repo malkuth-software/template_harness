@@ -23,6 +23,18 @@ and new form. Provisional rows there may change without an entry.
   JSON review queue (`--json`) and a short report (`--report`), and matches
   decisions recorded in `[loop_branches] decisions` (optional) by path,
   function and condition text. It never fails a run.
+- `harness/check_const_restrict.py` (Phase E, E3): two review queues from the
+  same AST. `const`: a pointer or lvalue reference to a non-const object (a
+  parameter, local or range-for variable) through which the function only
+  reads. `restrict`: a function with a loop that writes through a pointer
+  parameter beside other pointer parameters it only reads, none of them
+  escaping, ranked by whether the element types may alias; span kernels are
+  listed apart (`restrict_span`). Virtual functions, overrides, functions
+  whose address is taken and `main` are listed as `signature_bound`.
+  Decisions are recorded in `[const_restrict] decisions` (optional) by path,
+  function, variable and kind. It never fails a run.
+- `clang_ast.Node.parameters`: per call argument, its parameter's type as
+  written ("" where unknown), from both readers.
 - `.github/workflows/bootstrap.yml`: the bootstrap proof. On Windows, macOS and
   Linux it bootstraps GUI.Forms from an empty directory through the entry a
   person uses, runs the administrator step the bootstrap prints, passes the

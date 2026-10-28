@@ -201,6 +201,13 @@ class ProjectFileTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'loop_branches.decisions'):
             parsed(MINIMAL + '[loop_branches]\ndecisions = "../outside.json"\n')
 
+    def test_the_const_restrict_decisions_path(self) -> None:
+        self.assertEqual(parsed(MINIMAL).const_restrict_decisions, '')
+        loaded: project.Project = parsed(MINIMAL + '[const_restrict]\ndecisions = "tools/const_restrict.json"\n')
+        self.assertEqual(loaded.const_restrict_decisions, 'tools/const_restrict.json')
+        with self.assertRaisesRegex(ValueError, 'const_restrict.decisions'):
+            parsed(MINIMAL + '[const_restrict]\ndecisions = "/absolute.json"\n')
+
     def test_the_native_job_as_a_prefix_or_a_template(self) -> None:
         prefix: project.Project = parsed(MINIMAL)
         self.assertTrue(prefix.native_job_matches('native (ubuntu-24.04, linux-x64, bash) / build', 'linux-x64'))

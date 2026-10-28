@@ -34,7 +34,7 @@ The harness provides:
 - **Build helpers:** `ci_build_steps.py` (`configure_tree`,
   `sanitizer_options`), `change_selection.py` and `native_tests.py`.
 - **Checkers:** `check_house_style.py`, `check_lifetime_rules.py`,
-  `check_state_machines.py` and `check_loop_branches.py`.
+  `check_state_machines.py`, `check_loop_branches.py` and `check_const_restrict.py`.
 - **The AST reader:** `clang_ast.py` reads a translation unit from its
   compile command into one tree model, for the checkers and codemods that
   need more than tokens. It reads through the pinned LLVM's libclang
@@ -108,6 +108,7 @@ new history of caches and receipts, so choose the names once.
 | `[linux_packages.<profile>] packages`, `extends` | The package sets `install_linux_ci_packages.sh <profile>` installs; `extends` names one other profile, one level deep | the table is required; define the profiles your jobs use |
 | `[state_machines] first_party_dirs`, `vocabulary_headers`, `areas`, `full_tree_triggers` | The state-machine checker's scope, its atom vocabulary, `[prefix, area]` ownership pairs (most specific first), and the paths whose change widens a changed-code run to the full tree | no: without the table, `check_state_machines.py` refuses to run; with it, all four are required and the lists may be empty |
 | `[loop_branches] decisions` | The loop-branch review's recorded decisions, a path in the product checkout | no; without it, every branch in a loop is listed as open |
+| `[const_restrict] decisions` | The const and restrict review's recorded decisions, a path in the product checkout | no; without it, every candidate is listed as open or signature-bound |
 | `[build] configure_variables` | Your own variables, without the prefix, that change what a configure records | yes, may be `[]` |
 | `[cache_manifest] profile`, `native_options` | What `cache-manifest.json` records beside each cache | yes |
 | `[cache_manifest.platform_options.<platform>]` | Per-platform overrides; each key must already be in `native_options` | no |

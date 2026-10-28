@@ -145,6 +145,7 @@ jobs:
               harness/clang_ast.py harness/clang_ast_json.py harness/clang_ast_libclang.py \
               harness/test_clang_ast.py harness/check_loop_branches.py harness/test_loop_branches.py \
               harness/codemod_records.py harness/test_codemod_records.py \
+              harness/check_const_restrict.py harness/test_const_restrict.py \
               .github/workflows/harness-state-machines.yml)
             [ -n "$listed" ] || changed=false
             printf '%s\n' "$listed"
@@ -196,6 +197,7 @@ jobs:
           python3 -B -m unittest discover -s "$HARNESS_ROOT/harness" -p test_clang_ast.py -v
           python3 -B -m unittest discover -s "$HARNESS_ROOT/harness" -p test_loop_branches.py -v
           python3 -B -m unittest discover -s "$HARNESS_ROOT/harness" -p test_codemod_records.py -v
+          python3 -B -m unittest discover -s "$HARNESS_ROOT/harness" -p test_const_restrict.py -v
       - uses: actions/cache/save@v4
         if: (steps.scope.outputs.scope != 'none' || steps.reader.outputs.changed == 'true') && github.event_name == 'push' && steps.linux-packages.outputs.cache-hit != 'true'
         with:
