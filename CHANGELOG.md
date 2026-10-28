@@ -15,6 +15,14 @@ and new form. Provisional rows there may change without an entry.
   of the time (3.4 s against 14.6 s, 4.3 s against 16.9 s). The
   state-machine gate's job installs `python3-clang-22` from apt.llvm.org for
   it, and the toolkit's own run of that job tests both backends.
+- `harness/check_loop_branches.py` (Phase E, E2): every conditional inside a
+  loop body (`if`, `switch`, `?:`, a standalone `&&` or `||`), classed by
+  what its condition reads against the innermost loop: invariant, edge,
+  validation, control or data, each with the house style's repair. It reads
+  the AST through `clang_ast.py` over a ninja tree's compile database, writes a
+  JSON review queue (`--json`) and a short report (`--report`), and matches
+  decisions recorded in `[loop_branches] decisions` (optional) by path,
+  function and condition text. It never fails a run.
 - `.github/workflows/bootstrap.yml`: the bootstrap proof. On Windows, macOS and
   Linux it bootstraps GUI.Forms from an empty directory through the entry a
   person uses, runs the administrator step the bootstrap prints, passes the

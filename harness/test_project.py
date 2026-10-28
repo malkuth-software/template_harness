@@ -179,6 +179,7 @@ class ProjectFileTests(unittest.TestCase):
         self.assertFalse(bare.has_state_machines)
         self.assertEqual((bare.first_party_dirs, bare.vocabulary_headers, bare.state_machine_areas,
                           bare.full_tree_triggers), ((), (), (), ()))
+        self.assertEqual(bare.loop_branch_decisions, '')
         with self.assertRaisesRegex(project.MissingField, '^project example has no ci.cache_asset_prefix '):
             bare.cache_asset('linux-x64')
         with self.assertRaisesRegex(project.MissingField, '^project example has no ci.pinned_cache_revisions '):
@@ -193,6 +194,12 @@ class ProjectFileTests(unittest.TestCase):
         self.assertEqual(full.require_test_areas_file(), 'tools/test_areas.json')
         with self.assertRaisesRegex(ValueError, 'ci.cache_asset_prefix'):
             parsed(MINIMAL.replace('cache_asset_prefix = "example-cache-"', 'cache_asset_prefix = ""'))
+
+    def test_the_loop_branch_decisions_path(self) -> None:
+        loaded: project.Project = parsed(MINIMAL + '[loop_branches]\ndecisions = "tools/loop_branches.json"\n')
+        self.assertEqual(loaded.loop_branch_decisions, 'tools/loop_branches.json')
+        with self.assertRaisesRegex(ValueError, 'loop_branches.decisions'):
+            parsed(MINIMAL + '[loop_branches]\ndecisions = "../outside.json"\n')
 
     def test_the_native_job_as_a_prefix_or_a_template(self) -> None:
         prefix: project.Project = parsed(MINIMAL)

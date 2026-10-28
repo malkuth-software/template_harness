@@ -147,6 +147,9 @@ class Project:
     # C3 records reviewed and kept as they are (state_machines.reviewed_shapes,
     # optional): the candidate is listed with its reason instead of raised.
     reviewed_shapes: tuple[ReviewedShape, ...]
+    # check_loop_branches.py: the decisions file, a path in the product
+    # checkout ([loop_branches] decisions, optional; "" when none).
+    loop_branch_decisions: str
     # ci_build_steps.py: the product's own environment variables, without the
     # prefix, that change what a configure records (SYSTEM_BUILD_TOOLS).
     configure_variable_names: tuple[str, ...]
@@ -356,6 +359,16 @@ def reviewed_shapes(value: Any) -> tuple[ReviewedShape, ...]:
         shapes.append(ReviewedShape(triple[0], triple[1], triple[2]))
     result: tuple[ReviewedShape, ...] = tuple(shapes)
     return result
+def loop_branch_decisions(value: Any) -> str:
+    """[loop_branches] decisions: a relative path in the product checkout, or "" without the table."""
+    if value is None:
+        return ''
+    if type(value) is not dict:
+        raise ValueError('[loop_branches] must be a table')
+    path: Any = value.get('decisions', '')
+    if type(path) is not str or path.startswith('/') or '\\' in path or '..' in path.split('/'):
+        raise ValueError('loop_branches.decisions must be a relative path in the product checkout')
+    return path
 
 
 def option_table(value: Any, where: str) -> dict[str, str | int | bool]:
@@ -483,6 +496,7 @@ def parse(document: dict[str, Any], path: Path) -> Project:
         state_machine_areas=state_machine_areas(machines.get('areas')),
         full_tree_triggers=text_list(machines, 'full_tree_triggers', 'state_machines'),
         reviewed_shapes=reviewed_shapes(machines.get('reviewed_shapes', [])),
+        loop_branch_decisions=loop_branch_decisions(document.get('loop_branches')),
         configure_variable_names=text_list(build, 'configure_variables', 'build'),
         cache_profile=text_field(cache, 'profile', 'cache_manifest'),
         native_options=native_options,
