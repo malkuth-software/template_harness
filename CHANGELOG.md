@@ -33,6 +33,13 @@ and new form. Provisional rows there may change without an entry.
   whose address is taken and `main` are listed as `signature_bound`.
   Decisions are recorded in `[const_restrict] decisions` (optional) by path,
   function, variable and kind. It never fails a run.
+- `harness/check_copies.py` (Phase E, E5, the static half): copies and
+  allocations of owning types (standard strings and containers,
+  std::function, and first-party records holding one, found from the
+  records' fields) on repeating paths: `copy_in_loop`, `copy_then_read`,
+  `by_value_read`, `allocation_in_loop`, `growth_without_reserve` and
+  `returned_into_existing`. Decisions are recorded in `[copies] decisions`
+  (optional) by path, function, kind and subject. It never fails a run.
 - `clang_ast.Node.parameters`: per call argument, its parameter's type as
   written ("" where unknown), from both readers.
 - `.github/workflows/bootstrap.yml`: the bootstrap proof. On Windows, macOS and

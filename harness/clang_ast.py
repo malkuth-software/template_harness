@@ -57,7 +57,8 @@ Where the two backends can differ, and why:
 - `parameters` on call arguments: libclang spells each parameter's type;
   the json backend splits the callee's function type, and for a member call
   (whose callee has no function type) the method's type, which it knows
-  only when the unit read the method's declaration. Both leave "" where the
+  only when the unit read the method's declaration; `writes` then follows
+  those parameters too. Both leave "" where the
   callee's parameters are unknown (dependent calls in templates).
 - Dependent code in templates (unresolved calls and members) is described
   less precisely by libclang; findings there are approximate in both.

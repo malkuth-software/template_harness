@@ -584,6 +584,8 @@ class Converter:
                 parameters: list[str] | None = parameter_types(self.declared_types[node.target])
                 if parameters is not None:
                     node.parameters = argument_parameters(node.kind, parameters, len(node.arguments))
+                    node.writes = parameter_writes(node.kind, self.declared_types[node.target], parameters,
+                                                   len(node.arguments))
 
 
 def scope_of(node: Node) -> Scope:

@@ -153,6 +153,9 @@ class Project:
     # check_const_restrict.py: the decisions file, a path in the product
     # checkout ([const_restrict] decisions, optional; "" when none).
     const_restrict_decisions: str
+    # check_copies.py: the decisions file, a path in the product checkout
+    # ([copies] decisions, optional; "" when none).
+    copies_decisions: str
     # ci_build_steps.py: the product's own environment variables, without the
     # prefix, that change what a configure records (SYSTEM_BUILD_TOOLS).
     configure_variable_names: tuple[str, ...]
@@ -507,6 +510,7 @@ def parse(document: dict[str, Any], path: Path) -> Project:
         reviewed_shapes=reviewed_shapes(machines.get('reviewed_shapes', [])),
         loop_branch_decisions=loop_branch_decisions(document.get('loop_branches')),
         const_restrict_decisions=decisions_path(document.get('const_restrict'), 'const_restrict'),
+        copies_decisions=decisions_path(document.get('copies'), 'copies'),
         configure_variable_names=text_list(build, 'configure_variables', 'build'),
         cache_profile=text_field(cache, 'profile', 'cache_manifest'),
         native_options=native_options,
