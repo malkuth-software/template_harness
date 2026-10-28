@@ -200,6 +200,11 @@ class SpecTests(unittest.TestCase):
 
 
 class TextTests(unittest.TestCase):
+    def test_edits_keep_a_files_line_ends(self) -> None:
+        edit: codemod.Edit = codemod.Edit("a.cpp", 5, 8, "x\ny")
+        self.assertEqual(codemod.applied(b"one\r\ntwo\r\n", [edit]), b"one\r\nx\r\ny\r\n")
+        self.assertEqual(codemod.applied(b"one\ntwo\n", [codemod.Edit("a.cpp", 4, 7, "x\ny")]), b"one\nx\ny\n")
+
     def test_a_factory_local_never_takes_a_field_name(self) -> None:
         def field(name: str) -> codemod.FieldInfo:
             return codemod.FieldInfo(name, "int", 0, 0, "", "", [])

@@ -346,11 +346,19 @@ def edit_order(edit: Edit) -> tuple[int, int]:
 
 
 def applied(data: bytes, edits: list[Edit]) -> bytes:
-    """`data` with non-overlapping edits applied, from the last offset back."""
+    """`data` with non-overlapping edits applied, from the last offset back.
+
+    Edits are written with LF line ends; in a file whose lines end in CRLF
+    they are written with CRLF, so a file never mixes the two.
+    """
+    crlf: bool = b"\r\n" in data
     result: bytes = data
     edit: Edit
     for edit in sorted(edits, key=edit_order, reverse=True):
-        result = result[:edit.begin] + edit.text.encode("utf-8") + result[edit.end:]
+        replacement: str = edit.text.replace("\r\n", "\n")
+        if crlf:
+            replacement = replacement.replace("\n", "\r\n")
+        result = result[:edit.begin] + replacement.encode("utf-8") + result[edit.end:]
     return result
 
 
