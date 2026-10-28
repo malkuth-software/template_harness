@@ -218,8 +218,7 @@ def sanitizer_options(host: str, lsan_suppressions: Path,
     sanitizer where it runs inside AddressSanitizer: Linux and macOS (the
     MinGW runtime on Windows has none). Every report stops its test, so any
     finding fails the run. Third-party sources built by CMake are
-    instrumented too (GUI.Forms: HarfBuzz and FreeType, but not its prebuilt
-    Skia archive).
+    instrumented too (GUI.Forms: HarfBuzz and FreeType).
 
     On macOS harness/cmake/llvm22.cmake puts the pinned libc++ headers and runtime
     link flags in CMAKE_<LANG>_FLAGS_INIT, which a -DCMAKE_<LANG>_FLAGS on

@@ -99,12 +99,10 @@ class ReferenceProjectTests(unittest.TestCase):
         shared: list[tuple[str, str | int | bool]] = [
             ('build_type', 'Release'), ('cxx_standard', 20), ('pic', True), ('audio', True), ('tests', True),
             ('gallery', False), ('skia', True), ('harfbuzz', True)]
+        # Every platform builds Skia from source (gui_forms #427), so none overrides the shared options.
         platform: str
         for platform in PLATFORMS:
-            expected: list[tuple[str, str | int | bool]] = list(shared)
-            if platform == 'windows-x64':
-                expected[6] = ('skia', False)
-            self.assertEqual(list(self.reference.native_options_for(platform).items()), expected, platform)
+            self.assertEqual(list(self.reference.native_options_for(platform).items()), shared, platform)
         self.assertEqual(self.reference.cache_profile,
                          'native Release plus separately tested development text/host profiles')
 

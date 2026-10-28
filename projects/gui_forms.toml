@@ -140,10 +140,6 @@ gallery = false
 skia = true
 harfbuzz = true
 
-# The Windows build has no Skia.
-[cache_manifest.platform_options."windows-x64"]
-skia = false
-
 # checkpoint/checkpoint.py: the coordinator's integration workspace (run with
 # HARNESS_WORKSPACE set to it, D:/gui_forms_int today) holds the integration
 # tree, a dedicated clone marked by `checkpoint init`, and build.sh, which
