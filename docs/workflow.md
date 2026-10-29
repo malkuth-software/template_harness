@@ -60,6 +60,12 @@ python3 template_harness/checkpoint/checkpoint.py after-merge     # once the PR 
 - **Two branches that append to the same file conflict** (two reports adding
   sections to one README did). Join them first, in a spare clone, keeping
   both, and fold the joined branch.
+- **Check generated files on the fold.** A generated page can draw on
+  several topics (GUI.Forms' API reference page for `Control` did), and a
+  branch that skipped its own regeneration shows up only here. `verify`
+  refuses a tree that moved after the fold, so the fix belongs in a topic:
+  add the regeneration to the topic that changed the input (in a spare
+  clone if its worker is busy) and fold again.
 - **`push` opens one PR and turns on auto-merge**, which needs branch
   protection with required checks. A repository without protection (the
   harness itself) cannot auto-merge; the coordinator merges it once green.
