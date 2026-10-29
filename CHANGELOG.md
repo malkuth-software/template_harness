@@ -7,6 +7,17 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Added
+- `docs/workflow.md`: the default workflow for every harness product (owner,
+  2026-10-28). Workers commit locally and never push; the coordinator folds
+  their branches with the checkpoint tool, runs a `verify` that covers
+  everything CI would reject (static gates, the suite plain, the
+  state-machine gate over the change, the suite sanitized), and pushes one
+  checkpoint. It records the fold rules (a stack folds as its top branch;
+  branches appending to one file are joined first), failed-checkpoint
+  handling, the remote-build-host wrapper (content sync, one lock, idle wait
+  for GUI tests, per-workspace harness variables, compiler launchers and a
+  shared cache), the agent setup, and pitfalls met in practice.
+  `docs/adopting.md` §6 now presents the checkpoint tool as the default.
 - `harness/clang_ast.py`: the shared AST reader. One tree model (clang AST
   kinds, named roles, unit-local identities, semantic qualified names,
   written arguments) read through the pinned LLVM's libclang, with the
@@ -32,7 +43,11 @@ and new form. Provisional rows there may change without an entry.
   listed apart (`restrict_span`). Virtual functions, overrides, functions
   whose address is taken and `main` are listed as `signature_bound`.
   Decisions are recorded in `[const_restrict] decisions` (optional) by path,
-  function, variable and kind. It never fails a run.
+  function, variable and kind. It never fails a run. Its help gives the
+  working form for span kernels (a checked wrapper over an internal helper
+  with restricted pointer parameters) and bfft's spelling of the qualifier
+  (`__restrict__` on GCC and Clang, which survives macOS's <sys/cdefs.h>;
+  `__restrict` on MSVC proper).
 - `harness/check_copies.py` (Phase E, E5, the static half): copies and
   allocations of owning types (standard strings and containers,
   std::function, and first-party records holding one, found from the
