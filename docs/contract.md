@@ -19,7 +19,7 @@ product.
 | `harness/install_linux_ci_packages.sh` | `<profile> <archive directory>`: installs one of the project file's Ubuntu package profiles. |
 | `harness/macos_runtime_manifest.py` | Run with a runtime prefix; imported: `verify(prefix)`. |
 | `harness/build_macos_runtimes.py` | Run as a script: builds the minimum-compatible macOS runtimes. |
-| `harness/audit_macos_minimum.py` | Run with directories to audit. |
+| `harness/audit_macos_minimum.py` | Run with directories to audit. `--compiler-plugin NAME` (repeatable) names a compiler plugin, whose C++ runtime must equal the loading `--compiler`'s instead of being bundled; a named plugin may be absent. Imported: `audit(path, compiler_runtime=None)`. |
 | `harness/ci_cache.py` | `evict` (drop the compiler-cache entries a job did not use) and `prune` (delete superseded cache generations). |
 | `harness/check_house_style.py` | Run with the directories to check. |
 | `harness/check_lifetime_rules.py` | Run with the directories to check. |

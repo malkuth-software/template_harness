@@ -7,6 +7,13 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Added
+- `harness/audit_macos_minimum.py --compiler-plugin NAME --compiler PATH`: a
+  compiler plugin is audited as one. The compiler loads it into its own
+  process, so its C++ runtime (libc++, libunwind) must be exactly the
+  loading compiler's, never a bundled copy; programs and libraries keep the
+  @rpath rule, and a plugin keeps the arm64 and macOS 14.0 checks. Found when
+  GUI.Forms installed its localizable-literal Clang plugin, which links the
+  system libc++ that Homebrew's clang uses, into its SDK.
 - `docs/workflow.md`: the default workflow for every harness product (owner,
   2026-10-28). Workers commit locally and never push; the coordinator folds
   their branches with the checkpoint tool, runs a `verify` that covers
