@@ -286,8 +286,11 @@ jobs:
           fi
           ccache --show-stats
       # Only a push saves objects: a pull request's cache reaches no other ref.
+      # Only after the build and its tests passed (success(), which also
+      # covers the compiler step): a failed or partial build's cache would
+      # become the newest entry the restore-keys above pick.
       - uses: actions/cache/save@v4
-        if: ${{ !cancelled() && steps.compiler.outcome == 'success' && github.event_name == 'push' }}
+        if: ${{ success() && github.event_name == 'push' }}
         with:
           path: .ccache
           key: ${{ steps.project.outputs.name }}-objects-v1-${{ inputs.platform }}-${{ steps.compiler.outputs.identity }}-${{ github.sha }}
