@@ -7,6 +7,13 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Added
+- `checkpoint/checkpoint.py regenerate <clone>:<branch>`: records one branch
+  of regenerated files built on the folded head. The tree moves to it, the
+  fold record's head and tree follow, and the fold log (the PR body) names
+  it and its commits, so `verify` and `push` run on exactly fold plus
+  regeneration. A second one replaces the first; `after-merge` reports it
+  like a topic. Before, a regeneration commit on the fold made `verify`
+  refuse the tree ("The tree moved since the fold").
 - `harness/audit_macos_minimum.py --compiler-plugin NAME --compiler PATH`: a
   compiler plugin is audited as one. The compiler loads it into its own
   process, so its C++ runtime (libc++, libunwind) must be exactly the

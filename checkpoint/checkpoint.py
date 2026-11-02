@@ -7,6 +7,7 @@ folds their branches, verifies the result once, and pushes it as one PR:
 
     python3 checkpoint/checkpoint.py init [--from URL]
     python3 checkpoint/checkpoint.py fold <clone>:<branch> [<clone>:<branch> ...] [--title [N=]TEXT ...]
+    python3 checkpoint/checkpoint.py regenerate <clone>:<branch>
     python3 checkpoint/checkpoint.py verify
     python3 checkpoint/checkpoint.py push [--dry-run]
     python3 checkpoint/checkpoint.py after-merge
@@ -26,6 +27,17 @@ fold      fetches <remote>/<base> and resets the tree to it, then for each
           the tree is reset to <remote>/<base>, never left half-folded. A
           topic with nothing left to add is skipped and logged. The fold
           log (a markdown list per topic) goes to <git dir>/checkpoint/.
+regenerate
+          records one regeneration branch on top of the fold: commits that
+          rewrite generated files (schemas, digests, inventories) for the
+          folded tree, which cannot be folded as a topic because they
+          conflict with the topics' own edits of those files. The branch
+          must be built on the folded head, with no merges; the tree is
+          fast-forwarded to it (replacing an earlier regeneration), the
+          fold record's head and tree become its head and tree, the fold
+          log (the PR body) names it and its commits, and any verification
+          is dropped. verify and push then run on exactly fold plus
+          regeneration.
 verify    runs the project's [checkpoint] verify command from the workspace
           root, with HARNESS_CHECKPOINT_TREE naming the tree, and records
           pass or fail with the folded tree's hash.
@@ -35,9 +47,10 @@ push      refuses unless the last verify passed on exactly the current tree
           turns on auto-merge with the project's merge method. --dry-run
           prints the commands instead.
 after-merge
-          reports, for each folded topic, whether its branch head is now
-          contained in <remote>/<base> by tree content (merging it into
-          <base> would change nothing), and prints the `git branch -D`
+          reports, for each folded topic and the regeneration branch,
+          whether its branch head is now contained in <remote>/<base> by
+          tree content (merging it into <base> would change nothing), and
+          prints the `git branch -D`
           commands for the contained ones. It never deletes anything.
 
 The [checkpoint] table, read by harness/project.py (projects/gui_forms.toml has
@@ -53,7 +66,8 @@ GUI.Forms' values):
     merge_method  merge, squash or rebase, for gh pr merge --auto
 
 State lives in the tree's git directory under checkpoint/: fold.json and
-fold-log.md (written by a successful fold, removed when a fold starts),
+fold-log.md (written by a successful fold, rewritten by regenerate, removed
+when a fold starts),
 verification.json (written by verify, removed by fold) and push.json.
 """
 from __future__ import annotations
@@ -77,6 +91,7 @@ import project  # noqa: E402
 TREE_MARK: str = 'harness.checkpoint-tree'
 TREE_VARIABLE: str = 'HARNESS_CHECKPOINT_TREE'
 FOLD_BRANCH: str = 'checkpoint-fold'
+REGENERATION_REF: str = 'refs/checkpoint/regeneration'
 TOPIC_REF_PREFIX: str = 'refs/checkpoint/topics/'
 STATE_DIRECTORY: str = 'checkpoint'
 FOLD_RECORD: str = 'fold.json'
@@ -353,6 +368,13 @@ def fold_log(record: dict[str, Any]) -> str:
         commit: list[str]
         for commit in entry['commits']:
             lines.append('  - `' + commit[0][:SHORT_SHA] + '` ' + commit[1])
+    regeneration: dict[str, Any] | None = record.get('regeneration')
+    if regeneration is not None:
+        lines.append('- **Regeneration** (`' + regeneration['branch'] + '` from `' + regeneration['clone']
+                     + '`, head `' + regeneration['head'][:SHORT_SHA] + '`), on the folded head `'
+                     + record['fold_head'][:SHORT_SHA] + '`')
+        for commit in regeneration['commits']:
+            lines.append('  - `' + commit[0][:SHORT_SHA] + '` ' + commit[1])
     text: str = '\n'.join(lines) + '\n'
     return text
 
@@ -434,6 +456,56 @@ def fold_topic(tree: Path, base_commit: str, index: int, topic: Topic, title: st
     return entry
 
 
+def regenerate(settings: Settings, topic_text: str) -> dict[str, Any]:
+    """Records a regeneration branch on top of the fold and moves the tree to it; returns the fold record.
+
+    Refuses, leaving the tree as it was, a tree moved or changed since the
+    fold, a branch not built on the folded head, and one with merges or no
+    commits. A second regeneration replaces the first.
+    """
+    tree: Path = require_tree(settings)
+    record: dict[str, Any] = require_fold(tree)
+    topic: Topic = parse_topic(topic_text)
+    if topic.clone == tree:
+        raise CheckpointError('The integration tree cannot regenerate from its own branch: ' + topic_text)
+    if tracked_changes(tree):
+        raise CheckpointError('The integration tree has uncommitted changes; commit the regeneration on a branch '
+                              'in a worker clone instead')
+    current: str = head_commit(tree)
+    if current != record['head']:
+        raise CheckpointError('The tree moved since the fold (recorded ' + record['head'][:SHORT_SHA] + ', now '
+                              + current[:SHORT_SHA] + '); fold again')
+    fold_head: str = record.get('fold_head', record['head'])
+    git(tree, 'fetch', '--quiet', '--no-tags', str(topic.clone),
+        '+refs/heads/' + topic.branch + ':' + REGENERATION_REF)
+    head: str = git_text(tree, 'rev-parse', REGENERATION_REF)
+    built_on_fold: subprocess.CompletedProcess[str] = git(tree, 'merge-base', '--is-ancestor', fold_head, head,
+                                                          check=False)
+    if built_on_fold.returncode != 0:
+        raise CheckpointError('Regeneration ' + topic.branch + ' from ' + str(topic.clone) + ' is not built on the '
+                              'folded head ' + fold_head[:SHORT_SHA] + '; rebuild it there')
+    merges: str = git_text(tree, 'rev-list', '--merges', fold_head + '..' + head)
+    if merges:
+        raise CheckpointError('Regeneration ' + topic.branch + ' contains merges; it must be plain commits on the '
+                              'folded head')
+    commits: list[tuple[str, str]] = topic_commits(tree, fold_head, head)
+    if not commits:
+        raise CheckpointError('Regeneration ' + topic.branch + ' has no commits beyond the folded head')
+    git(tree, 'reset', '--quiet', '--hard', fold_head)
+    git(tree, 'merge', '--quiet', '--ff-only', head)
+    state: Path = state_directory(tree)
+    (state / VERIFICATION_RECORD).unlink(missing_ok=True)
+    record['fold_head'] = fold_head
+    record['regeneration'] = {'clone': str(topic.clone), 'branch': topic.branch, 'head': head, 'commits': commits}
+    record['head'] = head_commit(tree)
+    record['tree'] = tree_hash(tree)
+    write_record(tree, FOLD_RECORD, record)
+    (state / FOLD_LOG).write_text(fold_log(record), encoding='utf-8')
+    print('Recorded regeneration ' + topic.branch + ' (' + str(len(commits)) + ' commit(s)) on the folded head '
+          + fold_head[:SHORT_SHA] + '; head now ' + record['head'][:SHORT_SHA], flush=True)
+    return record
+
+
 def require_fold(tree: Path) -> dict[str, Any]:
     record: dict[str, Any] | None = read_record(tree, FOLD_RECORD)
     if record is None:
@@ -448,7 +520,8 @@ def verify(settings: Settings, workspace: Path) -> bool:
     head: str = head_commit(tree)
     if head != record['head']:
         raise CheckpointError('The tree moved since the fold (folded ' + record['head'][:SHORT_SHA] + ', now '
-                              + head[:SHORT_SHA] + '); fold again')
+                              + head[:SHORT_SHA] + '); fold again, or record a regeneration branch with '
+                              '`checkpoint regenerate`')
     before: str = tree_hash(tree)
     environment: dict[str, str] = dict(os.environ)
     environment[TREE_VARIABLE] = str(tree)
@@ -556,9 +629,13 @@ def after_merge(settings: Settings) -> list[str]:
     git(tree, 'fetch', '--quiet', '--no-tags', settings.remote, '+refs/heads/' + settings.base + ':' + remote_ref)
     main: str = git_text(tree, 'rev-parse', remote_ref)
     suggestions: list[str] = []
+    # The regeneration branch is reported like a topic.
+    entries: list[dict[str, Any]] = list(record['topics'])
+    if record.get('regeneration') is not None:
+        entries.append(record['regeneration'])
     index: int
-    for index in range(len(record['topics'])):
-        entry: dict[str, Any] = record['topics'][index]
+    for index in range(len(entries)):
+        entry: dict[str, Any] = entries[index]
         clone: Path = Path(entry['clone'])
         label: str = entry['branch'] + ' in ' + str(clone)
         listed: subprocess.CompletedProcess[str] = git(tree, 'ls-remote', '--heads', str(clone),
@@ -596,6 +673,9 @@ def main(argv: list[str] | None = None) -> int:
     fold_parser.add_argument('topics', nargs='+', metavar='<clone>:<branch>')
     fold_parser.add_argument('--title', action='append', default=[], metavar='[N=]TEXT',
                              help='the commit subject for topic N (a bare TEXT when there is one topic)')
+    regenerate_parser: argparse.ArgumentParser = commands.add_parser(
+        'regenerate', help='record a regeneration branch built on the folded head')
+    regenerate_parser.add_argument('topic', metavar='<clone>:<branch>')
     commands.add_parser('verify', help='run the verification command and record the result')
     push_parser: argparse.ArgumentParser = commands.add_parser('push', help='push the verified fold and open its PR')
     push_parser.add_argument('--dry-run', action='store_true', help='print the commands instead of running them')
@@ -608,6 +688,8 @@ def main(argv: list[str] | None = None) -> int:
             init_tree(settings, source)
         elif args.command == 'fold':
             fold(settings, args.topics, args.title)
+        elif args.command == 'regenerate':
+            regenerate(settings, args.topic)
         elif args.command == 'verify':
             if not verify(settings, project.current().workspace_root()):
                 return 1
