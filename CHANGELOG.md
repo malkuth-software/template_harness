@@ -129,6 +129,10 @@ and new form. Provisional rows there may change without an entry.
   in its `harness.lock` (`[harness] repository, commit`).
 
 ### Changed
+- `.github/workflows/harness-native.yml` saves the object cache only after
+  the build and its tests passed (`success()`), no longer after any
+  uncancelled run whose compiler step passed: a failed build's cache
+  became the newest entry its restore-keys picked (owner, 2026-11-01).
 - `projects/gui_forms.toml` names GUI.Forms' loop-branch decisions
   (`[loop_branches] decisions = "tools/loop_branch_decisions.json"`), so
   `check_loop_branches.py` reads them without `--decisions`.
