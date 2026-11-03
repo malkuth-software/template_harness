@@ -46,6 +46,7 @@ GUI.Forms is the worked example throughout. It adopted this workflow on
 ```sh
 export HARNESS_WORKSPACE=<integration workspace> HARNESS_PROJECT=<harness>/projects/<name>.toml
 python3 template_harness/checkpoint/checkpoint.py fold <clone>:<branch> ... --title N=<subject> ...
+python3 template_harness/checkpoint/checkpoint.py regenerate <clone>:<branch>   # only when generated files need it
 python3 template_harness/checkpoint/checkpoint.py verify
 python3 template_harness/checkpoint/checkpoint.py push
 python3 template_harness/checkpoint/checkpoint.py after-merge     # once the PR has merged
@@ -60,6 +61,13 @@ python3 template_harness/checkpoint/checkpoint.py after-merge     # once the PR 
 - **Two branches that append to the same file conflict** (two reports adding
   sections to one README did). Join them first, in a spare clone, keeping
   both, and fold the joined branch.
+- **Generated files go in one regeneration branch.** Schemas, digests and
+  inventories that several topics each regenerated on main differ again once
+  they are folded together, and a commit regenerating them cannot fold as a
+  topic: it conflicts with the topics' own edits of those files. Build the
+  folded tree, regenerate in a worker clone on a branch made at the folded
+  head, and record it with `regenerate`; verify and push then cover exactly
+  fold plus regeneration, and the fold log (the PR body) names it.
 - **`push` opens one PR and turns on auto-merge**, which needs branch
   protection with required checks. A repository without protection (the
   harness itself) cannot auto-merge; the coordinator merges it once green.

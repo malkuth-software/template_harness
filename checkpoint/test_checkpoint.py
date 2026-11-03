@@ -265,6 +265,62 @@ class CheckpointTests(unittest.TestCase):
         self.assertNotEqual(git(self.first, 'branch', '--list', 'topic/first'), '')
         self.assertNotEqual(git(self.second, 'branch', '--list', 'topic/second'), '')
 
+    def regeneration_branch(self, start: str, name: str) -> str:
+        """A regeneration branch in the second clone at start (a commit of the tree) plus one commit."""
+        git(self.second, 'fetch', '-q', str(self.tree), start)
+        git(self.second, 'switch', '-q', '--force-create', name, 'FETCH_HEAD')
+        head: str = commit_file(self.second, 'generated.txt', name + '\n', 'Regenerate the generated files')
+        return head
+
+    def test_a_regeneration_on_the_folded_head_is_verified_and_pushed_with_the_fold(self) -> None:
+        folded: dict = self.fold_two()
+        regenerated: str = self.regeneration_branch(folded['head'], 'topic/regen')
+        record: dict = self.quietly(checkpoint.regenerate, self.settings, str(self.second) + ':topic/regen')
+        self.assertEqual(git(self.tree, 'rev-parse', 'HEAD'), regenerated)
+        self.assertEqual(record['head'], regenerated)
+        self.assertEqual(record['fold_head'], folded['head'])
+        stored: dict = json.loads((self.tree / '.git' / 'checkpoint' / 'fold.json').read_text(encoding='utf-8'))
+        self.assertEqual(stored['regeneration']['branch'], 'topic/regen')
+        log: str = (self.tree / '.git' / 'checkpoint' / 'fold-log.md').read_text(encoding='utf-8')
+        self.assertIn('**Regeneration** (`topic/regen`', log)
+        self.assertIn('Regenerate the generated files', log)
+        self.assertTrue(self.quietly(checkpoint.verify, self.settings, self.root))
+        commands: list[list[str]] = self.quietly(checkpoint.push, self.settings, True, TODAY)
+        self.assertEqual(commands[0][-1], 'HEAD:refs/heads/checkpoint/' + TODAY + '-1')
+        printed: io.StringIO = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            checkpoint.after_merge(self.settings)
+        self.assertIn('topic/regen in ' + str(self.second) + ': not yet in origin/main', printed.getvalue())
+
+    def test_a_second_regeneration_replaces_the_first_and_drops_the_verification(self) -> None:
+        folded: dict = self.fold_two()
+        self.regeneration_branch(folded['head'], 'topic/regen')
+        self.quietly(checkpoint.regenerate, self.settings, str(self.second) + ':topic/regen')
+        self.quietly(checkpoint.verify, self.settings, self.root)
+        replacement: str = self.regeneration_branch(folded['head'], 'topic/regen-two')
+        record: dict = self.quietly(checkpoint.regenerate, self.settings, str(self.second) + ':topic/regen-two')
+        self.assertEqual(git(self.tree, 'rev-parse', 'HEAD'), replacement)
+        self.assertEqual(record['fold_head'], folded['head'])
+        self.assertEqual(git(self.tree, 'rev-list', '--count', folded['head'] + '..HEAD'), '1')
+        with self.assertRaises(checkpoint.CheckpointError):
+            checkpoint.push(self.settings, True, TODAY)
+
+    def test_a_regeneration_not_built_on_the_fold_is_refused_and_the_tree_kept(self) -> None:
+        folded: dict = self.fold_two()
+        with self.assertRaises(checkpoint.CheckpointError):
+            checkpoint.regenerate(self.settings, str(self.third) + ':topic/third')
+        self.assertEqual(git(self.tree, 'rev-parse', 'HEAD'), folded['head'])
+        stored: dict = json.loads((self.tree / '.git' / 'checkpoint' / 'fold.json').read_text(encoding='utf-8'))
+        self.assertNotIn('regeneration', stored)
+
+    def test_a_commit_made_in_the_tree_after_the_fold_is_still_refused(self) -> None:
+        self.fold_two()
+        commit_file(self.tree, 'stray.txt', 'stray\n', 'A commit made in the tree')
+        with self.assertRaises(checkpoint.CheckpointError):
+            checkpoint.verify(self.settings, self.root)
+        with self.assertRaises(checkpoint.CheckpointError):
+            checkpoint.regenerate(self.settings, str(self.second) + ':topic/second')
+
     def test_after_merge_names_a_branch_not_yet_on_main(self) -> None:
         self.fold_two()
         printed: io.StringIO = io.StringIO()
