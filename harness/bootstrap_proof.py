@@ -2,6 +2,8 @@
 """Plan and check the bootstrap proof (.github/workflows/bootstrap.yml).
 
     python -B harness/bootstrap_proof.py matrix --projects DIR --output FILE --summary FILE [--only NAME ...]
+        [--changed-from BASE] [--skip-passed --repo OWNER/NAME --run-id ID]
+    python -B harness/bootstrap_proof.py receipt --project NAME --platform P --source DIR --out DIR --run-id ID
     python -B harness/bootstrap_proof.py snapshot --workspace DIR --checkout NAME --out FILE
     python -B harness/bootstrap_proof.py {first|again} --log FILE --workspace DIR
         --checkout NAME --notes-branch BRANCH --platform P [--before FILE]
@@ -16,7 +18,25 @@ exists and the script its smoke command runs is on the product's default
 branch (smoke_paths); until then it is skipped, and the reason is written to
 the summary and printed as a GitHub notice. It reads GitHub through gh, so
 GH_TOKEN must be set. FILE receives "matrix=<JSON>" and "count=<jobs>" lines
-(GITHUB_OUTPUT); the summary is Markdown (GITHUB_STEP_SUMMARY).
+(GITHUB_OUTPUT); the summary is Markdown (GITHUB_STEP_SUMMARY). Each entry
+says whether the job keeps a warm compiler cache (warm_cache): only for a
+project that publishes no compiler cache of its own, whose smoke build would
+otherwise compile its toolkit from nothing on every run.
+
+The proof is not repeated (owner, 2026-11-03):
+- --changed-from BASE: when no path changed from BASE to HEAD is a bootstrap
+  input (BOOTSTRAP_INPUTS), there are no jobs, and the summary says so. A
+  BASE git cannot compare (empty, all zeros, not fetched) runs every job.
+- --skip-passed (the push to main): a job whose project and platform already
+  passed on this checkout's tree in an older trusted bootstrap.yml run (the
+  pull request's) is left out, with a line naming that run. The receipts are
+  the artifacts bootstrap-receipt-<project>-<platform>-<tree> that `receipt`
+  writes at the end of a passing job, checked as ci_tree_receipt.lookup
+  checks GUI.Forms' (the producer run, its job's success, the digest, and
+  that the run checked this tree out). A failed lookup runs the job.
+
+receipt: writes DIR/receipt.json for a passing job (the tree and commit of
+the harness checkout at --source) and its artifact name to GITHUB_OUTPUT.
 
 snapshot: records, before a repeated run, the commits of the product and of
 DIR/template_harness and the tag of the restored compiler cache
@@ -59,6 +79,7 @@ import subprocess
 import sys
 import urllib.parse
 
+import ci_tree_receipt
 import lock
 import project
 
@@ -101,6 +122,23 @@ class Host:
 # pinned before it prints the "toolkit" profile for every project.
 PROFILE_CHOICE_COMMIT: str = '7de97ea035383cfe704b70a420ddcefbc6ca700a'
 HARNESS_REPOSITORY: str = 'malkuth-software/template_harness'
+
+# The paths, relative to this repository, whose change can change a bootstrap's outcome: the entry
+# scripts; the bootstrap, pin and restore code with the harness modules they import; the toolchain
+# and runtime definitions; the Ubuntu package script; the products' project files; this tool; the
+# workflow and its scripts. A product's own repository is not here: its own CI proves its changes.
+BOOTSTRAP_INPUTS: tuple[str, ...] = (
+    'bootstrap.sh', 'bootstrap.ps1',
+    'harness/bootstrap.py', 'harness/bootstrap_proof.py', 'harness/lock.py', 'harness/project.py',
+    'harness/restore_local.py', 'harness/windows_toolchain.py', 'harness/windows_toolchain.json',
+    'harness/windows_toolchain_release.json', 'harness/ci_reuse.py', 'harness/ci_tree_receipt.py',
+    'harness/install_linux_ci_packages.sh', 'harness/build_macos_runtimes.py',
+    'harness/macos_runtime_manifest.py',
+    'projects/*.toml',
+    '.github/workflows/bootstrap.yml', '.github/scripts/*')
+BOOTSTRAP_WORKFLOW: str = '.github/workflows/bootstrap.yml'
+RECEIPT_PREFIX: str = 'bootstrap-receipt-'
+EMPTY_COMMIT: str = '0' * 40
 
 # The hosts every ready project is bootstrapped on.
 HOSTS: tuple[Host, ...] = (Host('windows-2022', 'windows-x64'), Host('macos-15', 'macos-arm64'),
@@ -283,9 +321,72 @@ def matrix_entries(projects: list[project.Project], github: GitHub) -> tuple[lis
             if host_reason is not None:
                 skipped.append(product.name + ' on ' + host.runner + ': skipped, because ' + host_reason)
                 continue
+            warm: str = 'true' if product.cache_asset_prefix is None else 'false'
             entries.append({'project': product.name, 'runner': host.runner, 'platform': host.platform,
-                            'checkout': product.source_dir, 'notes_branch': product.bootstrap.notes_branch})
+                            'checkout': product.source_dir, 'notes_branch': product.bootstrap.notes_branch,
+                            'warm_cache': warm})
     return entries, skipped
+
+
+def bootstrap_input(path: str) -> bool:
+    """Whether a changed path (relative, with forward slashes) is a bootstrap input."""
+    pattern: str
+    for pattern in BOOTSTRAP_INPUTS:
+        # PurePosixPath.match anchors a relative pattern at the right; equal depth anchors it at the left.
+        if PurePosixPath(path).match(pattern) and path.count('/') == pattern.count('/'):
+            return True
+    return False
+
+
+def changed_paths(base: str, source: Path) -> list[str] | None:
+    """The paths changed from base to HEAD in source, or None when git cannot compare them."""
+    if not base or base == EMPTY_COMMIT:
+        return None
+    completed: subprocess.CompletedProcess[str] = subprocess.run(
+        ['git', '-C', str(source), 'diff', '--name-only', base, 'HEAD'], capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        return None
+    paths: list[str] = completed.stdout.split()
+    return paths
+
+
+def job_name(entry: dict[str, str]) -> str:
+    """The bootstrap job's name as the run lists it (bootstrap.yml's jobs.bootstrap.name)."""
+    name: str = 'bootstrap (' + entry['project'] + ', ' + entry['runner'] + ')'
+    return name
+
+
+def receipt_kind(project_name: str, platform: str) -> str:
+    kind: str = 'bootstrap-' + project_name + '-' + platform
+    return kind
+
+
+def receipt_artifact(project_name: str, platform: str, tree: str) -> str:
+    name: str = RECEIPT_PREFIX + project_name + '-' + platform + '-' + tree
+    return name
+
+
+def passed_entries(entries: list[dict[str, str]], github: ci_tree_receipt.GitHub, tree: str,
+                   current_run: int) -> tuple[list[dict[str, str]], list[str]]:
+    """The entries still to run, and one line per entry an older run already passed on this tree."""
+    remaining: list[dict[str, str]] = []
+    passed: list[str] = []
+    entry: dict[str, str]
+    for entry in entries:
+        found: dict[str, object] | None = None
+        try:
+            found = ci_tree_receipt.lookup(
+                github, receipt_kind(entry['project'], entry['platform']), job_name(entry), tree, current_run,
+                workflow=BOOTSTRAP_WORKFLOW, name=receipt_artifact(entry['project'], entry['platform'], tree))
+        except (subprocess.CalledProcessError, KeyError, ValueError, TypeError) as error:
+            print('Receipt lookup failed for ' + job_name(entry) + ' (' + str(error) + '); running it', flush=True)
+            found = None
+        if found is None:
+            remaining.append(entry)
+            continue
+        passed.append(entry['project'] + ' on ' + entry['runner'] + ': not repeated, because run '
+                      + str(found['run_id']) + ' passed it on tree ' + tree)
+    return remaining, passed
 
 
 def plan(args: argparse.Namespace, github: GitHub) -> int:
@@ -300,9 +401,27 @@ def plan(args: argparse.Namespace, github: GitHub) -> int:
     except (OSError, ValueError) as error:
         print('bootstrap_proof: ' + str(error), file=sys.stderr)
         return 2
-    entries: list[dict[str, str]]
-    skipped: list[str]
-    entries, skipped = matrix_entries(projects, github)
+    entries: list[dict[str, str]] = []
+    skipped: list[str] = []
+    source: Path = Path.cwd()
+    changed: list[str] | None = None
+    if args.changed_from:
+        changed = changed_paths(args.changed_from, source)
+    inputs: list[str] = []
+    path_text: str
+    for path_text in changed or []:
+        if bootstrap_input(path_text):
+            inputs.append(path_text)
+    if changed is not None and not inputs:
+        skipped.append('every project: not run, because no bootstrap input changed since '
+                       + args.changed_from[:12])
+    else:
+        entries, skipped = matrix_entries(projects, github)
+    if entries and args.skip_passed:
+        tree: str = ci_tree_receipt.git_field('%T', source)
+        passed: list[str]
+        entries, passed = passed_entries(entries, ci_tree_receipt.GitHub(args.repo), tree, args.run_id)
+        skipped.extend(passed)
     # Each ready project's runners, in matrix order.
     runners: dict[str, list[str]] = {}
     entry: dict[str, str]
@@ -519,6 +638,20 @@ def record(args: argparse.Namespace) -> int:
     return 0
 
 
+def write_receipt(args: argparse.Namespace) -> int:
+    """Writes a passing job's receipt; the exit status."""
+    tree: str = ci_tree_receipt.git_field('%T', args.source)
+    revision: str = ci_tree_receipt.git_field('%H', args.source)
+    kind: str = receipt_kind(args.project, args.platform)
+    receipt: dict[str, object] = ci_tree_receipt.receipt_for(kind, tree, revision, args.run_id, 'everything')
+    args.out.mkdir(parents=True, exist_ok=True)
+    (args.out / ci_tree_receipt.RECEIPT_NAME).write_text(json.dumps(receipt, indent=1) + '\n', encoding='utf-8')
+    name: str = receipt_artifact(args.project, args.platform, tree)
+    ci_tree_receipt.write_output('artifact', name)
+    print('Receipt ' + name + ' for run ' + args.run_id, flush=True)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -528,6 +661,17 @@ def main(argv: list[str] | None = None) -> int:
     planning.add_argument('--output', required=True, type=Path)
     planning.add_argument('--summary', required=True, type=Path)
     planning.add_argument('--only', nargs='*', default=[])
+    planning.add_argument('--changed-from', default='', help='run only when a bootstrap input changed since BASE')
+    planning.add_argument('--skip-passed', action='store_true',
+                          help='leave out the jobs an older run passed on this tree')
+    planning.add_argument('--repo', default='', help='with --skip-passed: the repository whose runs are read')
+    planning.add_argument('--run-id', type=int, default=0, help="with --skip-passed: this run's id")
+    receipting: argparse.ArgumentParser = commands.add_parser('receipt')
+    receipting.add_argument('--project', required=True)
+    receipting.add_argument('--platform', required=True, choices=PLATFORMS)
+    receipting.add_argument('--source', required=True, type=Path, help='the harness checkout the job ran')
+    receipting.add_argument('--out', required=True, type=Path)
+    receipting.add_argument('--run-id', required=True)
     recording: argparse.ArgumentParser = commands.add_parser('snapshot')
     recording.add_argument('--workspace', required=True, type=Path)
     recording.add_argument('--checkout', required=True)
@@ -547,6 +691,8 @@ def main(argv: list[str] | None = None) -> int:
         status = plan(args, GitHub())
     elif args.command == 'snapshot':
         status = record(args)
+    elif args.command == 'receipt':
+        status = write_receipt(args)
     else:
         status = check(args.command, args)
     return status

@@ -136,6 +136,21 @@ and new form. Provisional rows there may change without an entry.
   in its `harness.lock` (`[harness] repository, commit`).
 
 ### Changed
+- `.github/workflows/bootstrap.yml` no longer repeats the proof (owner,
+  2026-11-03: a cold toolkit build takes about 40 minutes a job). A pull
+  request or push runs it only when a bootstrap input changed
+  (`bootstrap_proof.py` BOOTSTRAP_INPUTS); the push to main leaves out each
+  project and platform that already passed on the same tree, from the
+  receipt artifact `bootstrap-receipt-<project>-<platform>-<tree>` a passing
+  job uploads (checked as `ci_tree_receipt.lookup` checks GUI.Forms'); a
+  project that publishes no compiler cache (file_manager) keeps a warm one
+  in an Actions cache keyed by its submodule commits, the compiler and the
+  OS, saved only after a passing job (dispatch `cold_build` skips it).
+  `ci_tree_receipt` now reads its project only when used, and `lookup`
+  takes the producer workflow and artifact name.
+- `harness/check_state_machines.py`: a failed generated-header build prints
+  the ninja command and ninja's stdout and stderr before it stops the gate;
+  before, the output was captured and the reason hidden.
 - `.github/workflows/harness-native.yml` saves the object cache only after
   the build and its tests passed (`success()`), no longer after any
   uncancelled run whose compiler step passed: a failed build's cache
