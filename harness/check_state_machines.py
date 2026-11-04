@@ -1039,8 +1039,18 @@ def generate_headers(build_dir: Path) -> None:
         if len(parts) == 2 and parts[1].strip() == "CUSTOM_COMMAND" and Path(parts[0]).suffix in HEADER_SUFFIXES:
             if not Path(parts[0]).is_absolute():
                 outputs.append(parts[0])
-    if outputs:
-        subprocess.run(["ninja", "-C", str(build_dir), *outputs], check=True, capture_output=True)
+    if not outputs:
+        return
+    # ninja reports a failed edge on stdout, so a failure prints both streams
+    # before it stops the gate; a passing build stays quiet.
+    built: subprocess.CompletedProcess[str] = subprocess.run(
+        ["ninja", "-C", str(build_dir), *outputs], capture_output=True, text=True, encoding="utf-8",
+        errors="replace")
+    if built.returncode != 0:
+        sys.stderr.write(f"generated headers: ninja exited {built.returncode} building {' '.join(outputs)}\n")
+        sys.stderr.write(built.stdout)
+        sys.stderr.write(built.stderr)
+        raise subprocess.CalledProcessError(built.returncode, built.args, built.stdout, built.stderr)
 
 
 def compile_database(build_dir: Path) -> list[dict]:
