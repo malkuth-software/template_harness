@@ -203,6 +203,15 @@ class FakeGitHub(bootstrap_proof.GitHub):
         return found
 
 
+def plan_arguments(projects: Path, output: Path, summary: Path, only: list[str], changed_from: str = '',
+                   skip_passed: bool = False) -> argparse.Namespace:
+    """matrix's arguments as main parses them."""
+    arguments: argparse.Namespace = argparse.Namespace(projects=projects, output=output, summary=summary, only=only,
+                                                       changed_from=changed_from, skip_passed=skip_passed,
+                                                       repo='owner/template_harness', run_id=20)
+    return arguments
+
+
 class MatrixTests(unittest.TestCase):
     def test_the_smoke_paths_follow_the_command_form(self) -> None:
         self.assertEqual(bootstrap_proof.smoke_paths(('{python}', 'scripts/smoke-build.py')),
@@ -297,7 +306,8 @@ class MatrixTests(unittest.TestCase):
         entries, skipped = bootstrap_proof.matrix_entries([reference, waiting, unbooted], github)
         self.assertEqual(len(entries), len(bootstrap_proof.HOSTS))
         self.assertEqual(entries[0], {'project': 'gui_forms', 'runner': 'windows-2022', 'platform': 'windows-x64',
-                                      'checkout': 'gui_forms', 'notes_branch': 'gui_forms'})
+                                      'checkout': 'gui_forms', 'notes_branch': 'gui_forms',
+                                      'warm_cache': 'false'})
         self.assertEqual(skipped, ['waiting: skipped, because its smoke script tools/ci_build.py is not on '
                                    'owner/waiting main yet'])
 
@@ -309,8 +319,7 @@ class MatrixTests(unittest.TestCase):
         projects: Path = harness_testing.REPOSITORY / 'projects'
         github: FakeGitHub = FakeGitHub({'malkuth-software/gui_forms:main:tools/ci_build.py'},
                                         {'malkuth-software/notes:gui_forms'})
-        arguments: argparse.Namespace = argparse.Namespace(projects=projects, output=output, summary=summary,
-                                                           only=['gui_forms', 'plan-paint'])
+        arguments: argparse.Namespace = plan_arguments(projects, output, summary, ['gui_forms', 'plan-paint'])
         printed: io.StringIO = io.StringIO()
         with contextlib.redirect_stdout(printed):
             status: int = bootstrap_proof.plan(arguments, github)
@@ -400,3 +409,144 @@ class WorkspaceTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ReceiptLookup:
+    """Stands in for ci_tree_receipt.lookup: one passing run (11) for gui_forms on Windows."""
+
+    def __init__(self, test: unittest.TestCase) -> None:
+        self.test: unittest.TestCase = test
+        self.looked_up: list[tuple[str, str, str | None]] = []
+
+    def lookup(self, github: object, kind: str, job: str, tree: str, current_run: int, workflow: str | None = None,
+               name: str | None = None) -> dict[str, object] | None:
+        self.looked_up.append((kind, job, workflow))
+        self.test.assertEqual((tree, current_run), ('t' * 40, 20))
+        self.test.assertEqual(name, 'bootstrap-receipt-' + kind[len('bootstrap-'):] + '-' + tree)
+        if kind == 'bootstrap-gui_forms-windows-x64':
+            return {'run_id': '11'}
+        return None
+
+
+class RepetitionTests(unittest.TestCase):
+    """The proof runs only for changed bootstrap inputs, and once per tree."""
+
+    def plan_files(self) -> tuple[Path, Path]:
+        directory: tempfile.TemporaryDirectory[str] = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        return Path(directory.name) / 'output', Path(directory.name) / 'summary'
+
+    def ready(self) -> FakeGitHub:
+        github: FakeGitHub = FakeGitHub({'malkuth-software/gui_forms:main:tools/ci_build.py'},
+                                        {'malkuth-software/notes:gui_forms'})
+        return github
+
+    def test_the_bootstrap_inputs_are_the_bootstrap_paths(self) -> None:
+        inputs: list[str] = ['bootstrap.sh', 'bootstrap.ps1', 'harness/bootstrap.py', 'harness/restore_local.py',
+                             'harness/lock.py', 'harness/windows_toolchain.json', 'projects/file_manager.toml',
+                             '.github/workflows/bootstrap.yml', '.github/scripts/proof_step.sh',
+                             'harness/install_linux_ci_packages.sh', 'harness/macos_runtime_manifest.py']
+        others: list[str] = ['harness/check_state_machines.py', 'harness/test_bootstrap.py', 'docs/workflow.md',
+                             'checkpoint/checkpoint.py', '.github/workflows/tests.yml', 'projects/notes/x.toml',
+                             'example_app/projects/a.toml', 'README.md']
+        path: str
+        for path in inputs:
+            self.assertTrue(bootstrap_proof.bootstrap_input(path), path)
+        for path in others:
+            self.assertFalse(bootstrap_proof.bootstrap_input(path), path)
+        repository: Path = harness_testing.REPOSITORY
+        pattern: str
+        for pattern in bootstrap_proof.BOOTSTRAP_INPUTS:
+            self.assertTrue(list(repository.glob(pattern)), pattern + ' names no file of this repository')
+
+    def test_no_changed_bootstrap_input_runs_nothing(self) -> None:
+        output: Path
+        summary: Path
+        output, summary = self.plan_files()
+        arguments: argparse.Namespace = plan_arguments(harness_testing.REPOSITORY / 'projects', output, summary,
+                                                       ['gui_forms'], changed_from='a' * 40)
+        with mock.patch.object(bootstrap_proof, 'changed_paths', return_value=['harness/check_state_machines.py']):
+            with contextlib.redirect_stdout(io.StringIO()):
+                status: int = bootstrap_proof.plan(arguments, self.ready())
+        self.assertEqual(status, 0)
+        self.assertEqual(output.read_text(encoding='utf-8').splitlines()[1], 'count=0')
+        self.assertIn('every project: not run, because no bootstrap input changed since aaaaaaaaaaaa',
+                      summary.read_text(encoding='utf-8'))
+
+    def test_a_changed_input_or_an_unknown_base_runs_every_job(self) -> None:
+        answer: list[str] | None
+        for answer in (['harness/check_state_machines.py', 'harness/restore_local.py'], None):
+            output: Path
+            summary: Path
+            output, summary = self.plan_files()
+            arguments: argparse.Namespace = plan_arguments(harness_testing.REPOSITORY / 'projects', output, summary,
+                                                           ['gui_forms'], changed_from='a' * 40)
+            with mock.patch.object(bootstrap_proof, 'changed_paths', return_value=answer):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    bootstrap_proof.plan(arguments, self.ready())
+            self.assertEqual(output.read_text(encoding='utf-8').splitlines()[1],
+                             'count=' + str(len(bootstrap_proof.HOSTS)))
+
+    def test_an_unreadable_base_compares_nothing(self) -> None:
+        self.assertIsNone(bootstrap_proof.changed_paths('', harness_testing.REPOSITORY))
+        self.assertIsNone(bootstrap_proof.changed_paths('0' * 40, harness_testing.REPOSITORY))
+        self.assertIsNone(bootstrap_proof.changed_paths('f' * 40, harness_testing.REPOSITORY))
+
+    def test_a_tree_that_passed_is_not_repeated_on_main(self) -> None:
+        output: Path
+        summary: Path
+        output, summary = self.plan_files()
+        arguments: argparse.Namespace = plan_arguments(harness_testing.REPOSITORY / 'projects', output, summary,
+                                                       ['gui_forms'], skip_passed=True)
+        receipts: ReceiptLookup = ReceiptLookup(self)
+        with mock.patch.object(bootstrap_proof.ci_tree_receipt, 'lookup', side_effect=receipts.lookup):
+            with mock.patch.object(bootstrap_proof.ci_tree_receipt, 'git_field', return_value='t' * 40):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    bootstrap_proof.plan(arguments, self.ready())
+        lines: list[str] = output.read_text(encoding='utf-8').splitlines()
+        self.assertEqual(lines[1], 'count=' + str(len(bootstrap_proof.HOSTS) - 1))
+        self.assertNotIn('windows-2022', lines[0])
+        self.assertIn('gui_forms on windows-2022: not repeated, because run 11 passed it on tree ' + 't' * 40,
+                      summary.read_text(encoding='utf-8'))
+        self.assertEqual(receipts.looked_up[0], ('bootstrap-gui_forms-windows-x64',
+                                                 'bootstrap (gui_forms, windows-2022)',
+                                                 '.github/workflows/bootstrap.yml'))
+
+    def test_a_failed_lookup_runs_the_job(self) -> None:
+        entry: dict[str, str] = {'project': 'file_manager', 'runner': 'macos-15', 'platform': 'macos-arm64'}
+        remaining: list[dict[str, str]]
+        passed: list[str]
+        with mock.patch.object(bootstrap_proof.ci_tree_receipt, 'lookup',
+                               side_effect=subprocess.CalledProcessError(1, ['gh'])):
+            with contextlib.redirect_stdout(io.StringIO()):
+                remaining, passed = bootstrap_proof.passed_entries(
+                    [entry], bootstrap_proof.ci_tree_receipt.GitHub('o/r'), 't' * 40, 20)
+        self.assertEqual((remaining, passed), ([entry], []))
+
+    def test_a_project_without_published_caches_keeps_a_warm_one(self) -> None:
+        reference: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
+        unpublished: project.Project = dataclasses.replace(reference, cache_asset_prefix=None)
+        entries: list[dict[str, str]]
+        skipped: list[str]
+        entries, skipped = bootstrap_proof.matrix_entries([unpublished], self.ready())
+        self.assertEqual(sorted(set(entry['warm_cache'] for entry in entries)), ['true'])
+        entries, skipped = bootstrap_proof.matrix_entries([reference], self.ready())
+        self.assertEqual(sorted(set(entry['warm_cache'] for entry in entries)), ['false'])
+
+    def test_the_receipt_names_the_checkout_tree(self) -> None:
+        directory: tempfile.TemporaryDirectory[str] = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        out: Path = Path(directory.name) / 'receipt'
+        github_output: Path = Path(directory.name) / 'github_output'
+        arguments: argparse.Namespace = argparse.Namespace(project='file_manager', platform='linux-x64',
+                                                           source=Path('.'), out=out, run_id='31')
+        fields: dict[str, str] = {'%T': 't' * 40, '%H': 'h' * 40}
+        with mock.patch.object(bootstrap_proof.ci_tree_receipt, 'git_field', side_effect=fields.get):
+            with mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(github_output)}):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(bootstrap_proof.write_receipt(arguments), 0)
+        receipt: dict[str, object] = json.loads((out / 'receipt.json').read_text(encoding='utf-8'))
+        self.assertEqual(receipt, bootstrap_proof.ci_tree_receipt.receipt_for(
+            'bootstrap-file_manager-linux-x64', 't' * 40, 'h' * 40, '31', 'everything'))
+        self.assertEqual(github_output.read_text(encoding='utf-8'),
+                         'artifact=bootstrap-receipt-file_manager-linux-x64-' + 't' * 40 + '\n')

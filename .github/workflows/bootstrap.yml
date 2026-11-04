@@ -48,6 +48,26 @@ name: Bootstrap proof
 # scripts; dispatch with build_macos_runtime to build it from source. The
 # build environment matches GUI.Forms' native CI: clang through ccache, with
 # ccache's directory where the restored cache puts it (<workspace>/.ccache).
+#
+# The proof is not repeated (owner, 2026-11-03: a cold toolkit build takes
+# about 40 minutes a job):
+# - A pull request or a push runs it only when a bootstrap input changed
+#   (bootstrap_proof.py BOOTSTRAP_INPUTS: the entry, bootstrap, pin and
+#   restore scripts, the toolchain and runtime definitions, the products'
+#   project files, this workflow and its scripts). Otherwise the plan has no
+#   jobs and its summary says why. A dispatch always runs.
+# - The push to main leaves out each project and platform whose job already
+#   passed on the same tree in an older run (the pull request's): a passing
+#   job uploads bootstrap-receipt-<project>-<platform>-<tree>, and the plan
+#   names the run it carried. Only a tree that differs (main moved on while
+#   the pull request waited) runs again.
+# - A project that publishes no compiler cache (file_manager) keeps a warm
+#   one in an Actions cache, keyed by the product's pinned dependencies (its
+#   submodule commits, GUI.Forms for file_manager), the compiler and the OS,
+#   and saved only after the whole job passed. ccache keys every object by
+#   its preprocessed source and compiler, so a warm cache changes the time,
+#   never the result; the bootstrap itself still starts from an empty
+#   workspace. Dispatch with cold_build for a build without it.
 on:
   push:
     branches: [main]
@@ -62,8 +82,14 @@ on:
         description: Build the macOS LLVM runtime from source instead of restoring it from the Actions cache
         type: boolean
         default: false
+      cold_build:
+        description: Build without the warm compiler cache of a project that publishes none
+        type: boolean
+        default: false
 permissions:
   contents: read
+  # The plan reads earlier runs, their jobs and their receipt artifacts.
+  actions: read
 concurrency:
   group: bootstrap-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -75,7 +101,10 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       count: ${{ steps.plan.outputs.count }}
     steps:
+      # The whole history, so the plan can compare the base with this commit.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -84,10 +113,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ONLY: ${{ inputs.projects }}
+          PULL_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
         run: |
+          # A pull request compares with its base, a push with the commit before it; a dispatch runs all.
+          set --
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) set -- --changed-from "$PULL_BASE" ;;
+            push) set -- --changed-from "$PUSH_BEFORE" --skip-passed --repo "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID" ;;
+          esac
           # shellcheck disable=SC2086
           python3 -B harness/bootstrap_proof.py matrix --projects projects --output "$GITHUB_OUTPUT" \
-            --summary "$GITHUB_STEP_SUMMARY" --only $ONLY
+            --summary "$GITHUB_STEP_SUMMARY" "$@" --only $ONLY
   bootstrap:
     name: bootstrap (${{ matrix.project }}, ${{ matrix.runner }})
     needs: plan
@@ -257,6 +294,39 @@ jobs:
         with:
           path: ws/.build/toolchain/llvm-22.1.8-macos14
           key: bootstrap-macos-runtime-v1-${{ hashFiles('ws/template_harness/harness/build_macos_runtimes.py', 'ws/template_harness/harness/macos_runtime_manifest.py', 'harness/harness/build_macos_runtimes.py', 'harness/harness/macos_runtime_manifest.py') }}
+      # The warm compiler cache of a project that publishes none (the header
+      # says why it cannot change a result). Named after the first bootstrap
+      # cloned the product and installed the compiler: the product's pinned
+      # dependencies (its submodule commits), the compiler, and the OS.
+      - name: Name the warm compiler cache
+        id: warm-key
+        if: matrix.warm_cache == 'true' && inputs.cold_build != true
+        run: |
+          set -eu
+          dependencies=$(git -C "$PROOF_WORKSPACE/$PROOF_CHECKOUT" submodule status --recursive | sed 's/^[-+ U]//' \
+            | sha256sum | cut -c1-16)
+          if [ "$RUNNER_OS" = Windows ]; then
+            # The pinned harness's toolchain release names the CLANG64 archive the restore unpacked.
+            release="$PROOF_WORKSPACE/template_harness/harness/windows_toolchain_release.json"
+            if [ ! -f "$release" ]; then release=harness/harness/windows_toolchain_release.json; fi
+            compiler=$(sha256sum "$release" | cut -c1-16)
+          else
+            compiler=$(clang --version | head -n 1 | sha256sum | cut -c1-16)
+          fi
+          prefix="bootstrap-ccache-v1-$PROOF_PROJECT-${{ matrix.platform }}-"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "key=$prefix$dependencies-$compiler" >> "$GITHUB_OUTPUT"
+          # The toolkit's objects outgrow the published-cache default.
+          echo "CCACHE_MAXSIZE=2G" >> "$GITHUB_ENV"
+          echo "Warm compiler cache $prefix$dependencies-$compiler"
+      # An older key's cache still hits for every object whose inputs did not change.
+      - uses: actions/cache/restore@v4
+        id: warm-cache
+        if: steps.warm-key.outcome == 'success'
+        with:
+          path: ws/.ccache
+          key: ${{ steps.warm-key.outputs.key }}
+          restore-keys: ${{ steps.warm-key.outputs.prefix }}
       - name: Full bootstrap (update, restore, smoke build)
         run: |
           python -B harness/harness/bootstrap_proof.py snapshot --workspace "$PROOF_WORKSPACE" --checkout "$PROOF_CHECKOUT" --out "$PROOF_LOGS/bootstrap-full.before.json"
@@ -283,6 +353,27 @@ jobs:
           python -B harness/harness/bootstrap_proof.py again --log "$PROOF_LOGS/bootstrap-again.log"
           --workspace "$PROOF_WORKSPACE" --checkout "$PROOF_CHECKOUT" --notes-branch "$PROOF_NOTES_BRANCH"
           --platform ${{ matrix.platform }} --before "$PROOF_LOGS/bootstrap-again.before.json"
+      - name: Show the warm compiler cache's hits
+        if: always() && steps.warm-key.outcome == 'success'
+        run: ccache --show-stats || true
+      # Only a job that passed every check saves its cache, and only under a new key.
+      - uses: actions/cache/save@v4
+        if: steps.warm-key.outcome == 'success' && steps.warm-cache.outputs.cache-hit != 'true'
+        with:
+          path: ws/.ccache
+          key: ${{ steps.warm-key.outputs.key }}
+      # The receipt that lets the push to main leave this tree's job out.
+      - name: Write the receipt of this passing job
+        id: receipt
+        run: >-
+          python -B harness/harness/bootstrap_proof.py receipt --project "$PROOF_PROJECT"
+          --platform ${{ matrix.platform }} --source harness --out "$RUNNER_TEMP/receipt" --run-id "$GITHUB_RUN_ID"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.receipt.outputs.artifact }}
+          path: ${{ runner.temp }}/receipt/receipt.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Time the job
         if: always()
         run: |

@@ -54,12 +54,10 @@ import zipfile
 
 import project
 
-SOURCE: Path = project.current().source_root()
 SCHEMA: int = 1
 RECEIPT_NAME: str = 'receipt.json'
 RECEIPT_BOUND: int = 64 * 1024
 ARTIFACTS_READ: int = 30
-WORKFLOW: str = project.current().native_workflow
 # A merge group runs on a temporary branch of this repository, the commit
 # main then becomes.
 TRUSTED_EVENTS: tuple[str, ...] = ('push', 'merge_group', 'pull_request', 'workflow_dispatch')
@@ -69,11 +67,23 @@ TRUSTED_EVENTS: tuple[str, ...] = ('push', 'merge_group', 'pull_request', 'workf
 COVERAGES: tuple[str, ...] = ('nothing', 'selected', 'everything')
 
 
-def git_field(format_code: str) -> str:
+def native_workflow() -> str:
+    """The project's native workflow, the producer every lookup trusts unless it names another.
+
+    Read when used, not on import: the harness's own bootstrap proof
+    (bootstrap_proof.py) uses this module's lookup with no product project.
+    """
+    workflow: str = project.current().native_workflow
+    return workflow
+
+
+def git_field(format_code: str, source: Path | None = None) -> str:
+    """A field of HEAD in source (the project's source root by default)."""
+    checkout: Path = project.current().source_root() if source is None else source
     # git show --format, not rev-parse HEAD^{tree}: MSYS2's argument
     # conversion can turn the braces into HEAD^tree (tools/ci_reuse.py).
     field: str = subprocess.check_output(
-        ['git', '-C', str(SOURCE), 'show', '-s', '--format=' + format_code, 'HEAD'], text=True).strip()
+        ['git', '-C', str(checkout), 'show', '-s', '--format=' + format_code, 'HEAD'], text=True).strip()
     return field
 
 
@@ -137,8 +147,8 @@ class GitHub:
         return data
 
 
-def trusted_run(run: dict[str, Any], repository: str) -> bool:
-    return (run.get('path') == WORKFLOW
+def trusted_run(run: dict[str, Any], repository: str, workflow: str) -> bool:
+    return (run.get('path') == workflow
             and run.get('repository', {}).get('full_name') == repository
             and run.get('head_repository', {}).get('full_name') == repository
             and run.get('event') in TRUSTED_EVENTS)
@@ -196,19 +206,26 @@ def checked_out_tree(github: GitHub, run: dict[str, Any], receipt: dict[str, Any
     return False
 
 
-def lookup(github: GitHub, kind: str, job: str, tree: str, current_run: int) -> dict[str, Any] | None:
-    """The receipt that lets this job skip its work, or None."""
+def lookup(github: GitHub, kind: str, job: str, tree: str, current_run: int, workflow: str | None = None,
+           name: str | None = None) -> dict[str, Any] | None:
+    """The receipt that lets this job skip its work, or None.
+
+    workflow is the producer workflow's path and name the receipt artifact's
+    name; by default the project's native workflow and artifact_name().
+    """
+    producer_workflow: str = native_workflow() if workflow is None else workflow
+    wanted: str = artifact_name(kind, tree) if name is None else name
     artifact: dict[str, Any]
-    for artifact in github.artifacts(artifact_name(kind, tree)):
+    for artifact in github.artifacts(wanted):
         producer: int = int(artifact['workflow_run']['id'])
         # Older runs only: a rerun of this run, or a newer one, checks afresh.
-        if producer >= current_run or artifact.get('expired') or artifact.get('name') != artifact_name(kind, tree):
+        if producer >= current_run or artifact.get('expired') or artifact.get('name') != wanted:
             continue
         if int(artifact.get('size_in_bytes', RECEIPT_BOUND + 1)) > RECEIPT_BOUND:
             continue
         run: dict[str, Any] = github.run(producer)
-        if not trusted_run(run, github.repository):
-            print('Run ' + str(producer) + ' is not a trusted native.yml run', flush=True)
+        if not trusted_run(run, github.repository, producer_workflow):
+            print('Run ' + str(producer) + ' is not a trusted ' + producer_workflow + ' run', flush=True)
             continue
         if not job_succeeded(github.jobs(producer), job):
             print('Run ' + str(producer) + "'s job " + job + ' did not succeed', flush=True)

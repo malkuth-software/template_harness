@@ -41,7 +41,7 @@ class FakeGitHub(ci_tree_receipt.GitHub):
         self.data: bytes = b''
         self.digest: str = ''
         self.run_record: dict[str, Any] = {
-            'path': ci_tree_receipt.WORKFLOW, 'event': 'pull_request', 'head_sha': HEAD,
+            'path': ci_tree_receipt.native_workflow(), 'event': 'pull_request', 'head_sha': HEAD,
             'repository': {'full_name': REPOSITORY}, 'head_repository': {'full_name': REPOSITORY}}
         self.job_records: list[dict[str, Any]] = [{'name': JOB, 'conclusion': 'success'},
                                                   {'name': 'docs', 'conclusion': 'success'}]
