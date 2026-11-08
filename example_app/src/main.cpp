@@ -53,7 +53,7 @@ int run(const bool close_when_ready) {
     // The model, then the window bound to it, then the behaviour over both:
     // each ends before what it borrows.
     GreeterModel model{};
-    std::unique_ptr<GreeterWindow> window = std::make_unique<GreeterWindow>(model);
+    std::unique_ptr<GreeterWindow> window = std::make_unique<GreeterWindow>(application, model);
     Greeter greeter(*window, model);
 
     gui_forms::ApplicationWindowOptions options{};

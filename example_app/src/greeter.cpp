@@ -41,25 +41,25 @@ Greeter::Greeter(GreeterWindow& window, GreeterModel& model) : window_(window), 
     show_list_state();
 }
 
-void Greeter::clear_name() { (*window_.example_name).set_text(""); }
+void Greeter::clear_name() { (*window_.example_name).text = ""; }
 
 void Greeter::on_greet() {
-    const std::string_view typed = (*window_.example_name).text();
+    const std::string typed = (*window_.example_name).text.read();
     if (typed.empty()) {
-        (*window_.example_greeting).set_text("Type a name first.");
+        (*window_.example_greeting).text = "Type a name first.";
         return;
     }
     const std::string person(typed);
     std::string text = "Hello, " + person + "!";
     if (model_.shout.get()) text = shouted(text);
-    (*window_.example_greeting).set_text(text);
+    (*window_.example_greeting).text = text;
     (*window_.example_greeted).add_item(person);
     show_list_state();
 }
 
 void Greeter::on_clear() {
     (*window_.example_greeted).clear_items();
-    (*window_.example_greeting).set_text("Type a name, then press Greet.");
+    (*window_.example_greeting).text = "Type a name, then press Greet.";
     show_list_state();
 }
 
