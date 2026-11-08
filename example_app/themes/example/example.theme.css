@@ -1,0 +1,25 @@
+/* The example's theme package, compiled onto GUI.Forms' own theme
+   (ThemeBase::gui_forms) when the application is created. The form names
+   roles with `classes`; this sheet gives them their look. Colours are
+   written in light terms: the base derives the dark variant by rule. */
+
+/* The palette: text colours are colour roles, so that forced high
+   contrast replaces each one by its meaning. */
+:root {
+  ink-on-paper: #1d3557 on #ffffff;
+}
+
+/* The greeting: the content face, larger and heavier than body text. */
+.greeting {
+  color: role(ink-on-paper);
+  font-family: content;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* The window's default action: rounder, and it grows a little when hot. */
+button.default-action::part(face) { border-radius: 6px; }
+button.default-action::part(face):hover { scale: 1.02; transition: scale 90ms ease; }
+
+/* Every accent button the theme draws, whatever control draws it. */
+:family(accent-button) { border-radius: 6px; }

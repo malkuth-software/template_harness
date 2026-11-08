@@ -1,0 +1,7 @@
+{
+  "format": "gui-forms-theme/1",
+  "name": "example",
+  "version": "1.0.0",
+  "engine": ">=0.3",
+  "sheet": {"path": "example.theme.css", "sha256": "b55fd44986b4afc3b30e7c7849d5a1dc93b7ad8f9b2af842b52b938d22aeeeb3"}
+}

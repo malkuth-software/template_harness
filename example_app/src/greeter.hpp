@@ -1,36 +1,38 @@
 #pragma once
 
-#include <gui_forms/basic_controls.hpp>
-#include <gui_forms/component.hpp>
-#include <gui_forms/input_controls.hpp>
+#include "greeter_form.hpp"
+#include "greeter_model.hpp"
 
-#include <memory>
+#include <gui_forms/component.hpp>
+#include <gui_forms/rules.hpp>
 
 namespace example_app {
 
-// The app's one form: a text box for a name, a button that greets that name
-// in the label, and a list of every name greeted so far.
+// What the window does, attached from program code (a form names no
+// handlers): Greet greets the typed name in the label and appends it to
+// the list; Clear empties the list; Escape in the name box clears the name
+// (a window rule). The list stays hidden until it has a name.
 //
-// The root panel owns the four controls (a parent owns its children); the
-// greeter keeps shared references to them and owns the button's click
-// subscription, which ends when the greeter is disposed or destroyed. The
-// controls are public so that the app can hand `root` to a window and a test
-// can drive the form as a user would; replacing one would detach it from
-// `root`, so callers only read them.
+// The greeter borrows the window and the model, which must outlive it: the
+// program declares the model, then the window, then the greeter, so the
+// greeter ends first. It owns its command subscriptions (disposing it ends
+// them); the window owns the rule, which the greeter's disposal revokes.
 class Greeter final : public gui_forms::Component {
 public:
-    Greeter();
+    Greeter(GreeterWindow& window, GreeterModel& model);
 
-    std::shared_ptr<gui_forms::Panel> root;
-    std::shared_ptr<gui_forms::Label> greeting;
-    std::shared_ptr<gui_forms::TextBox> name;
-    std::shared_ptr<gui_forms::Button> greet;
-    std::shared_ptr<gui_forms::ListBox> greeted;
+    // The rule's named action: clears the name box.
+    void clear_name();
 
 private:
-    // The button's click: an empty name changes only the label; any other
-    // name is greeted and appended to the list.
+    // The commands' handlers.
     void on_greet();
+    void on_clear();
+    // Shows the list and enables Clear exactly when the list has names.
+    void show_list_state();
+
+    GreeterWindow& window_;
+    GreeterModel& model_;
 };
 
 } // namespace example_app

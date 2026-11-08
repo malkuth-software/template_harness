@@ -12,18 +12,21 @@ project(GUIFormsExampleApp LANGUAGES CXX)
 # rule).
 find_package(GUIForms 0.2 CONFIG REQUIRED COMPONENTS Controls OPTIONAL_COMPONENTS Application)
 
+# The reference app's shape: the window is a form document
+# (forms/greeter.form) generated at build time into
+# example_app::GreeterWindow, bound to example_app::GreeterModel; the look is
+# a theme package (themes/example) embedded into the program and checked
+# against the form; the behaviour (src/greeter.cpp) attaches handlers and a
+# window rule from program code.
+#
+# Each target generates its own copies of the form's and the theme's
+# headers into its own directory's build tree (the tests in tests/), so no
+# two targets share one generated output.
+
 enable_testing()
 
 # The form's behaviour, without a native window.
-add_executable(greeter_tests src/greeter.cpp tests/greeter_tests.cpp)
-target_compile_features(greeter_tests PRIVATE cxx_std_20)
-target_include_directories(greeter_tests PRIVATE src)
-target_link_libraries(greeter_tests PRIVATE GUIForms::Controls)
-# Keep the selected SDK ahead of any other GUI.Forms installation in the
-# compiler's normal include search path.
-set_target_properties(greeter_tests PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
-add_test(NAME greeter_tests COMMAND greeter_tests)
-set_tests_properties(greeter_tests PROPERTIES TIMEOUT 30)
+add_subdirectory(tests)
 
 if(TARGET GUIForms::Application)
     add_executable(example_app src/greeter.cpp src/main.cpp)
@@ -31,6 +34,10 @@ if(TARGET GUIForms::Application)
     target_include_directories(example_app PRIVATE src)
     target_link_libraries(example_app PRIVATE GUIForms::Application)
     set_target_properties(example_app PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
+    gui_forms_add_form(example_app forms/greeter.form CLASS GreeterWindow NAMESPACE example_app
+                       MODEL example_app::GreeterModel MODEL_HEADER greeter_model.hpp)
+    gui_forms_add_theme(example_app themes/example FUNCTION example_theme NAMESPACE example_app
+                        FORMS forms/greeter.form)
 
     # Controls draw only the bundled faces, so the SDK's font directory goes
     # where the host looks: Contents/Resources/fonts in a macOS bundle, and

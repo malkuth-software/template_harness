@@ -1,0 +1,29 @@
+/* The example's window. The form says what exists, where it sits and what
+   it binds to; the theme (themes/example) says how it looks, through the
+   classes named here; the program (src/greeter.cpp) says what it does.
+   The build generates example_app::GreeterWindow, a gui_forms::Window,
+   with gui_forms_add_form MODEL example_app::GreeterModel. */
+form example.window {
+  text: "GUI.Forms example";
+  client-size: 420 360;
+  accept-button: example.greet;
+
+  panel example.root {
+    label example.greeting {
+      text: "Type a name, then press Greet.";
+      bounds: 20 20 380 28;
+      classes: "greeting";
+    }
+    text-box example.name { bounds: 20 60 260 30; tab-index: 0; }
+    button example.greet {
+      text: "Greet";
+      bounds: 292 60 108 30;
+      tab-index: 1;
+      command: bind(greet);
+      classes: "default-action";
+    }
+    check-box example.shout { text: "Shout the greeting"; bounds: 20 100 380 28; tab-index: 2; checked: bind(shout); }
+    list-box example.greeted { bounds: 20 136 380 164; tab-index: 3; }
+    button example.clear { text: "Clear"; bounds: 292 312 108 30; tab-index: 4; command: bind(clear); }
+  }
+}
