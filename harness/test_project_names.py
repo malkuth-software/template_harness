@@ -107,7 +107,7 @@ class ReferenceProjectTests(unittest.TestCase):
                          'native Release plus separately tested development text/host profiles')
 
     def test_linux_package_profiles(self) -> None:
-        toolkit: str = ('cmake ninja-build ccache clang-22 generate-ninja pkg-config '
+        toolkit: str = ('cmake ninja-build ccache clang-22 llvm-22-dev libclang-22-dev generate-ninja pkg-config '
                         'libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev '
                         'libatk1.0-dev libatk-bridge2.0-dev '
                         'xvfb xauth xcompmgr weston xwayland xdg-utils dbus at-spi2-core python3-gi gir1.2-atspi-2.0')
