@@ -286,10 +286,12 @@ reuse, seeding, sanitizers, packaging and release. Each job:
    - run: sh template_harness/harness/install_linux_ci_packages.sh toolkit "$RUNNER_TEMP/apt-archives"
    ```
 
-The harness has no CI of its own yet. Until it does, GUI.Forms'
-house-style job also runs the pinned harness's whole test suite
-(`python3 -B -m unittest discover -s ../template_harness/harness -p "test_*.py"`),
-so a bump is tested against the harness it pins.
+The harness's own CI (`bootstrap.yml`, the bootstrap proof, and
+`example.yml`, the example app) runs on every push and pull request, but it
+does not run the harness's unit tests, and GUI.Forms' native job runs only
+`test_ci_reuse.py` from the pinned harness. So run the whole suite before
+bumping a pin
+(`python3 -B -m unittest discover -s ../template_harness/harness -p "test_*.py"`).
 
 **Cache keys that name harness files** must hash the harness's copies,
 never a shim or an old path:
