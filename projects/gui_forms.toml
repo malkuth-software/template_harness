@@ -45,9 +45,13 @@ name_prefixes = ["gui_forms_", "gui_drawing_"]
 # gate under Xvfb (owner decision T5-Q12). weston and xwayland: a headless
 # Wayland compositor and its X server, for the same probe under XWayland
 # (owner, 2026-10-25; Linux CI only).
+# llvm-22-dev and libclang-22-dev: LLVM's and Clang's headers for the
+# gui_forms Clang plugin, so the native and sanitizer jobs verify effect
+# programs instead of building them unverified (C-10, owner 2026-11-08;
+# GUI.Forms' ci_build.py sets GUI_FORMS_EFFECT_VERIFY_REQUIRED on Linux CI).
 [linux_packages.toolkit]
 packages = [
-    "cmake", "ninja-build", "ccache", "clang-22", "generate-ninja", "pkg-config",
+    "cmake", "ninja-build", "ccache", "clang-22", "llvm-22-dev", "libclang-22-dev", "generate-ninja", "pkg-config",
     "libx11-dev", "libxext-dev", "libxrandr-dev", "libxcursor-dev", "libxfixes-dev", "libxi-dev",
     "libatk1.0-dev", "libatk-bridge2.0-dev",
     "xvfb", "xauth", "xcompmgr", "weston", "xwayland", "xdg-utils", "dbus", "at-spi2-core",

@@ -63,7 +63,7 @@ class FileManagerProjectNameTests(unittest.TestCase):
         self.assertEqual(self.product.toolchain_asset_prefix, 'gui-forms-toolchain-')
 
     def test_linux_package_profile(self) -> None:
-        native: str = ('cmake ninja-build ccache clang-22 generate-ninja pkg-config '
+        native: str = ('cmake ninja-build ccache clang-22 llvm-22-dev libclang-22-dev generate-ninja pkg-config '
                        'libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev '
                        'libatk1.0-dev libatk-bridge2.0-dev '
                        'xvfb xauth xcompmgr weston xwayland xdg-utils dbus at-spi2-core python3-gi '
