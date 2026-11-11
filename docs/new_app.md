@@ -81,7 +81,8 @@ nothing.
 | `.claude/agents/<app>-{coder,integrator,tedium}.md` | project agents, from GUI.Forms' worker definitions |
 | `CLAUDE.md`, `AGENTS.md` | imports AGENTS.md and points at `../notes/HOUSE_STYLE.md`; guardrails, the checkpoint workflow, the commands and the roles |
 | `.sushi/*.json`, `.sushi/sushicomms/roles.json` | the plugins' project config: SushiStyle reads `../template_harness/claude/rules/house.json`; seats in `../projects/desks/seats/`; the SushiComms ticket store in `../projects/desks/<app>/sushicomms.json`; the role registry |
-| `LICENSE` | PolyForm Noncommercial 1.0.0 with a `Required Notice:` line (`--licensor`) |
+| `LICENSE` | `--license proprietary` (default: all rights reserved), `mit`, `polyform-noncommercial` (Malkuth in-house apps), or `none`; holder `--licensor`, default your git `user.name` |
+| `THIRD_PARTY_NOTICES.md` | GUI.Forms (MIT) and its components: what any distribution, open or closed, must carry |
 | `.gitignore`, `.gitattributes` | the workspace entries and `.sushi/state`, `.sushi/logs`; LF everywhere but `.ps1`/`.cmd` |
 
 Agent files name paths as `<workspace>/...` (the directory holding the app,

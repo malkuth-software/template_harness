@@ -47,4 +47,4 @@ python3 -B -m unittest discover -s {{app}} -p "test_*.py"
 
 ## License
 
-PolyForm Noncommercial 1.0.0; see `LICENSE`.
+Chosen when the app was generated (`new_app --license`); see `LICENSE`. GUI.Forms and its components are permissively licensed and allow closed-source use; see `THIRD_PARTY_NOTICES.md`.

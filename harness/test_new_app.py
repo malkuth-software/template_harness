@@ -34,7 +34,7 @@ APP: str = 'paint_box'
 SUSHICOMMS: Path = harness_testing.REPOSITORY / 'claude' / 'plugins' / 'sushicomms' / 'scripts' / 'sushicomms.py'
 # What templates/app/ must render to, at least.
 APP_FILES: tuple[str, ...] = (
-    'LICENSE', 'README.md', '.gitignore', '.gitattributes', 'CLAUDE.md', 'AGENTS.md', 'harness.lock',
+    'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', '.gitignore', '.gitattributes', 'CLAUDE.md', 'AGENTS.md', 'harness.lock',
     'CMakeLists.txt', 'ci_build.py', 'fetch_sdk.py', 'test_fetch_sdk.py', 'gui_forms.lock',
     'src/greeter.cpp', 'src/greeter.hpp', 'src/main.cpp', 'tests/greeter_tests.cpp',
     '.claude/settings.json', '.claude/agents/paint_box-coder.md', '.claude/agents/paint_box-integrator.md',
@@ -66,7 +66,7 @@ def plan_values() -> dict[str, str]:
     plan: new_app.Plan = new_app.Plan(
         names=names, workspace=Path('/nonexistent'), harness=harness_testing.REPOSITORY, remote=remote, dry_run=True,
         restore=False, smoke=False, skip_workspace=True, build_host='', build_host_workspace='', claude='',
-        options={'licensor': 'Malkuth Software', 'build_wrapper': 'm4ws', 'workers_dir': '', 'projects_dir': '',
+        options={'license': 'proprietary', 'licensor': 'Test Holder', 'build_wrapper': 'm4ws', 'workers_dir': '', 'projects_dir': '',
                  'notes_dir': ''})
     values: dict[str, str] = new_app.values_for(plan, HARNESS_COMMIT)
     return values
@@ -111,8 +111,27 @@ class TemplateTests(unittest.TestCase):
 
     def render(self, template: str) -> Path:
         destination: Path = self.root / template
-        new_app.render_tree(new_app.TEMPLATES / template, destination, self.values)
+        if template == 'app':
+            new_app.render_app(destination, self.values, 'proprietary')
+        else:
+            new_app.render_tree(new_app.TEMPLATES / template, destination, self.values)
         return destination
+
+    def test_each_license_choice(self) -> None:
+        expected: dict[str, str] = {'proprietary': 'All rights reserved.', 'mit': 'MIT License',
+                                    'polyform-noncommercial': 'PolyForm Noncommercial License 1.0.0'}
+        choice: str
+        for choice in new_app.LICENSES:
+            destination: Path = self.root / ('license-' + choice)
+            new_app.render_app(destination, self.values, choice)
+            if choice == 'none':
+                self.assertFalse((destination / 'LICENSE').exists())
+            else:
+                text: str = (destination / 'LICENSE').read_text(encoding='utf-8')
+                self.assertIn(expected[choice], text)
+                self.assertIn('Test Holder', text)
+                self.assertFalse(new_app.leftover_placeholders(text))
+            self.assertIn('MIT License', (destination / 'THIRD_PARTY_NOTICES.md').read_text(encoding='utf-8'))
 
     def test_the_app_renders_without_placeholders(self) -> None:
         app: Path = self.render('app')
@@ -129,8 +148,7 @@ class TemplateTests(unittest.TestCase):
                 self.assertNotIn('/Users/', text, str(path))
         lock: dict[str, Any] = tomllib.loads((app / 'harness.lock').read_text(encoding='utf-8'))
         self.assertEqual(lock['harness'], {'repository': OWNER + '/template_harness', 'commit': HARNESS_COMMIT})
-        self.assertIn('Required Notice: Copyright ', (app / 'LICENSE').read_text(encoding='utf-8'))
-        self.assertIn('PolyForm Noncommercial License 1.0.0', (app / 'LICENSE').read_text(encoding='utf-8'))
+        self.assertIn('All rights reserved.', (app / 'LICENSE').read_text(encoding='utf-8'))
         self.assertIn('@AGENTS.md', (app / 'CLAUDE.md').read_text(encoding='utf-8'))
         workflow: str = (app / '.github/workflows/ci.yml').read_text(encoding='utf-8')
         self.assertEqual(workflow.count('@' + HARNESS_COMMIT), 3)
@@ -279,7 +297,7 @@ class RunTests(unittest.TestCase):
         output: io.StringIO = io.StringIO()
         errors: io.StringIO = io.StringIO()
         arguments: list[str] = ['--name', APP, '--title', 'Paint Box', '--workspace', str(self.workspace),
-                                '--remote-base', 'file://' + str(self.remotes), '--harness', str(self.harness),
+                                '--remote-base', 'file://' + str(self.remotes), '--harness', str(self.harness), '--licensor', 'Test Holder',
                                 '--create-repo', '--no-restore', '--claude', '/nonexistent/claude', *extra]
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
             status: int = new_app.main(arguments)
@@ -371,7 +389,7 @@ class RunTests(unittest.TestCase):
         errors: io.StringIO = io.StringIO()
         arguments: list[str] = ['--name', APP, '--workspace', str(self.workspace), '--remote-base',
                                 'file://' + str(self.remotes), '--harness', str(self.harness), '--no-restore',
-                                '--skip-workspace']
+                                '--skip-workspace', '--licensor', 'Test Holder']
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
             status: int = new_app.main(arguments)
         self.assertEqual(status, 1)
@@ -383,7 +401,8 @@ class RunTests(unittest.TestCase):
         output: io.StringIO = io.StringIO()
         errors: io.StringIO = io.StringIO()
         arguments: list[str] = ['--name', 'example', '--workspace', str(self.workspace), '--remote-base',
-                                'file://' + str(self.remotes), '--harness', str(self.harness), '--create-repo']
+                                'file://' + str(self.remotes), '--harness', str(self.harness), '--create-repo',
+                                '--licensor', 'Test Holder']
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
             status: int = new_app.main(arguments)
         self.assertEqual(status, 1)
