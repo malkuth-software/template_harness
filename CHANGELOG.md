@@ -7,6 +7,40 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Added
+- `new_app.sh`/`new_app.ps1` and `harness/new_app.py`: one command to a
+  harnessed GUI.Forms app (`docs/new_app.md`). It validates the name and
+  derives the names (`docs/adopting.md` §2, checked against every project
+  file), commits `projects/<app>.toml` and its names test to this
+  repository's `main`, creates the private app repository from
+  `templates/app/` pinned to that commit, adds the notes branch and the
+  projects repository's tracks, desk and seats, bootstraps the workspace
+  (`--in-house`) and runs a first verify (`claude plugin validate`, the
+  house checkers). Each step is idempotent and `--dry-run` prints every
+  step, repository and path. Remote operations go through `--remote-base`
+  (default `https://github.com/malkuth-software`; `file://` bare
+  repositories in `harness/test_new_app.py`), and `--create-repo` creates
+  the app repository with `gh`.
+- `templates/app/`: the example app parameterised (`{{app}}`, `{{App}}`,
+  `{{namespace}}`, `{{title}}`, the prefixes), with the PolyForm
+  Noncommercial license, `.gitignore`, `CLAUDE.md`, `AGENTS.md`, project
+  agents (`<app>-coder`, `-integrator`, `-tedium`), `.claude/settings.json`
+  declaring the `fransushi` marketplace at the pin with every plugin but
+  sushidelivery enabled, `.sushi/*.json` pointing into the projects clone,
+  and a CI workflow calling the reusable workflows at the pin.
+  `templates/harness/`, `templates/notes/` and `templates/projects/` hold
+  what new_app writes to the other repositories.
+- `claude/`: the `fransushi` marketplace with the seven FranSushi plugins,
+  copied from the private development repository by
+  `harness/sync_fransushi.py --from DIR` (`claude/FRANSUSHI.lock` records
+  the source commit, whether it was dirty, and each plugin's version), and
+  `claude/rules/house.json`, the single house rule pack: each rule cites
+  its HOUSE_STYLE section (current numbering) and has fail and pass
+  fixtures. `.github/workflows/plugins.yml` validates it with the Claude
+  Code CLI.
+- `harness/lock.py bump` also moves the `ref` of every
+  `extraKnownMarketplaces` entry in the product's `.claude/settings.json`
+  (beside the lock) whose source is the lock's repository, so the plugins
+  move with the tools. A product without the file is unaffected.
 - `checkpoint/checkpoint.py regenerate <clone>:<branch>`: records one branch
   of regenerated files built on the folded head. The tree moves to it, the
   fold record's head and tree follow, and the fold log (the PR body) names

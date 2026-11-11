@@ -1,0 +1,17 @@
+# The workspace keeps these beside the checkout (<workspace>/template_harness,
+# <workspace>/.build, ...); they are listed here too, so a checkout used as a
+# workspace root never commits them (docs/adopting.md in template_harness).
+/template_harness/
+/.build/
+/.ccache/
+/.ci/
+/.toolchain/
+/.bootstrap/
+/.harness-cache/
+# FranSushi's per-machine state and logs; .sushi/*.json is committed.
+/.sushi/state/
+/.sushi/logs/
+.claude/settings.local.json
+__pycache__/
+*.pyc
+.DS_Store

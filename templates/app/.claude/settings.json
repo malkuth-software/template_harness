@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "extraKnownMarketplaces": {
+    "fransushi": {
+      "source": {
+        "source": "directory",
+        "path": "../template_harness/claude"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "sushibuild@fransushi": true,
+    "sushicomms@fransushi": true,
+    "sushidelivery@fransushi": false,
+    "sushirice@fransushi": true,
+    "sushistyle@fransushi": true,
+    "sushiwrap@fransushi": true,
+    "wasabi@fransushi": true
+  }
+}

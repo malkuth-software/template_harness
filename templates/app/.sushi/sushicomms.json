@@ -1,0 +1,5 @@
+{
+  "state_file": "../projects/desks/{{app}}/sushicomms.json",
+  "monitor": true,
+  "monitor_interval_s": 5
+}

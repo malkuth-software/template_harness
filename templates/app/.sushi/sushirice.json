@@ -1,0 +1,8 @@
+{
+  "watchdog_mode": "enforce",
+  "monitor_roles": ["orchestrator"],
+  "trees": {
+    "roots": ["../.build"],
+    "max_per_source": 2
+  }
+}

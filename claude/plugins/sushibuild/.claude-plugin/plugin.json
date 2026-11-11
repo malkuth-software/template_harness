@@ -1,0 +1,9 @@
+{
+  "name": "sushibuild",
+  "version": "0.1.0",
+  "description": "Hand a build to a Haiku triage subagent. It runs your build command, routes each small local error to a Sonnet fixer that may edit exactly one file (enforced by a hook), logs every fixup, and escalates anything big back to you with the build log.",
+  "author": {"name": "Malkuth Software"},
+  "homepage": "https://malkuthsoft.com",
+  "license": "MIT",
+  "keywords": ["c++", "build", "compiler-errors", "subagents", "triage"]
+}

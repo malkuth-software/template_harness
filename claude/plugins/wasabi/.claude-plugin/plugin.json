@@ -1,0 +1,9 @@
+{
+  "name": "wasabi",
+  "version": "0.1.0",
+  "description": "Guard hooks for Bash: protect shared working trees from stash/switch/clean/commit -a, stop mass CRLF staging, ask before dependency downloads, and warn about commands that will hang on stdin.",
+  "author": {"name": "Malkuth Software"},
+  "homepage": "https://malkuthsoft.com",
+  "license": "MIT",
+  "keywords": ["git", "guard", "hooks", "safety", "shared-tree", "crlf", "offline"]
+}
