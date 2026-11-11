@@ -877,21 +877,39 @@ def complete_with_fallback(text: str, switch: Switch) -> bool:
     return fallback_after(text, switch) or fallback_at_end(text, switch)
 
 
+# Compiler caches a compile command may start with, and the form of a
+# setting such a cache takes before the compiler (KEY=VALUE, the key a
+# lower-case identifier with underscores).
+LAUNCHERS: tuple[str, ...] = ("ccache", "ccache.exe", "sccache", "sccache.exe")
+LAUNCHER_SETTING: re.Pattern[str] = re.compile(r"^[a-z_][a-z0-9_]*=")
+
+
 def syntax_command(command: str) -> list[str]:
     """A compile command turned into a front-end-only run with only the switch warnings."""
     arguments: list[str] = shlex.split(command, posix=(os.name != "nt"))
     result: list[str] = []
     skip: bool = False
+    # After a compiler cache, before the compiler: the cache's own KEY=VALUE
+    # settings. CMake writes "ccache sloppiness=pch_defines,time_macros
+    # clang++ ..." for a precompiled-header build; those words are not a
+    # program and are dropped with the cache.
+    in_launcher: bool = False
     argument: str
     for argument in arguments:
         argument = argument.strip('"')
         if skip:
             skip = False
             continue
+        if not result and Path(argument).name.lower() in LAUNCHERS:
+            in_launcher = True
+            continue
+        if in_launcher and not result and LAUNCHER_SETTING.match(argument):
+            continue
+        in_launcher = False
         if argument in ("-o", "-MT", "-MF", "-MQ"):
             skip = True
             continue
-        if argument in ("-MD", "-MMD", "-c") or Path(argument).name.lower() in ("ccache", "ccache.exe"):
+        if argument in ("-MD", "-MMD", "-c"):
             continue
         result.append(argument)
     result.extend(["-fsyntax-only", "-Wno-everything", "-Wswitch", "-Wswitch-enum", "-Wswitch-default",

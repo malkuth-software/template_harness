@@ -278,6 +278,19 @@ int b(E e) {
         self.assertIn("-fsyntax-only", arguments)
         self.assertIn("-Wswitch-default", arguments)
 
+    def test_syntax_command_drops_the_cache_settings_of_a_precompiled_header_build(self) -> None:
+        # CMake's precompiled-header commands pass ccache a setting before
+        # the compiler; it is neither the program nor a compiler argument.
+        arguments: list[str] = hunt.syntax_command(
+            "ccache sloppiness=pch_defines,time_macros clang++ -DX=1 -include-pch a.pch -o a.o -c src/a.cpp")
+        self.assertEqual(arguments[:2], ["clang++", "-DX=1"])
+        self.assertNotIn("sloppiness=pch_defines,time_macros", arguments)
+        self.assertIn("src/a.cpp", arguments)
+        # A KEY=VALUE word after the compiler is the compiler's (a define
+        # written without -D would be one) and is kept.
+        kept: list[str] = hunt.syntax_command("clang++ name=value -c src/b.cpp")
+        self.assertEqual(kept[:2], ["clang++", "name=value"])
+
     def test_a_covered_switch_with_a_fallback_after_it_is_noted(self) -> None:
         source: str = """const char* name(Side side) {
     switch (side) {
