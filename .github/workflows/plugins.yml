@@ -1,0 +1,32 @@
+name: Plugins
+# The FranSushi marketplace this repository ships (claude/): the marketplace
+# manifest and each plugin pass Claude Code's own validator, the plugin
+# directory's profile included. harness/test_sync_fransushi.py (run by
+# example.yml's python-tests) checks the copies against FRANSUSHI.lock and the
+# house rule pack's citations and fixtures.
+on:
+  push:
+    branches: [main]
+    paths: ['claude/**', '.github/workflows/plugins.yml']
+  pull_request:
+    paths: ['claude/**', '.github/workflows/plugins.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install the Claude Code CLI (validation needs no login)
+        run: npm install --global @anthropic-ai/claude-code@2.1.321
+      - name: Validate the marketplace and every plugin
+        run: |
+          claude plugin validate claude
+          for plugin in claude/plugins/*/; do
+            claude plugin validate --profile directory "$plugin"
+          done

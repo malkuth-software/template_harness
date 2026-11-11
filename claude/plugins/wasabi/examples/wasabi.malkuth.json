@@ -1,0 +1,16 @@
+{
+  "_about": "Example Wasabi config with the Malkuth Software tools. Copy to ~/.sushi/wasabi.json (all projects) or <project>/.sushi/wasabi.json. Keys starting with _ are ignored.",
+  "stdin_wait": {
+    "_remote_wrappers": "m4ws <workspace> <command...> and m4run <workspace> [options] -- <command...> run the command on the M4 through ssh, joining the words with spaces, with stdin forwarded.",
+    "remote_wrappers": {"m4ws": 1, "m4run": "--"}
+  },
+  "shared_tree": {
+    "_trees": "The coordinator clone is also a Codex agent's working folder (memory shared-coordinator-clone.md): never switch, stash, clean, reset or commit there. Per-clone marking with `wasabi.py mark-shared` works too and uses the general rules.",
+    "trees": {
+      "~/Developer/gui_forms": {
+        "rules": {"commit": "deny"},
+        "note": "Do coordinator git work in a separate clone or a worker workspace."
+      }
+    }
+  }
+}

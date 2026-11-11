@@ -7,6 +7,9 @@ bootstrap that sets the product up on a clean machine. GUI.Forms was the
 first product to adopt the harness (its PR #408) and is the worked example
 throughout. `docs/contract.md` lists what may be relied on.
 
+A new GUI.Forms app need not do this by hand: `new_app.sh` (`docs/new_app.md`)
+generates one that already meets the checklist in section 8.
+
 ## 1. Prerequisites, and what the harness provides
 
 You need:

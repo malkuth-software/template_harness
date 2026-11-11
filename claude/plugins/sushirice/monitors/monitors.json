@@ -1,0 +1,7 @@
+[
+  {
+    "name": "sushirice",
+    "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/sushirice.py\" monitor",
+    "description": "Build status: speaks only when machine pressure, a watchdog action, a wasteful build, or duplicate build trees need attention"
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "name": "sushicomms",
+  "version": "0.1.0",
+  "description": "Structured role tickets for Claude Code seats, not swarm chat. A role registry the orchestrator owns, typed and validated ticket files, a silent dropbox monitor that speaks once when a quorum is met, and gentle role-drift reminders.",
+  "author": {"name": "Malkuth Software"},
+  "homepage": "https://malkuthsoft.com",
+  "license": "MIT",
+  "keywords": ["orchestration", "roles", "tickets", "multi-agent", "handoff", "integration-queue"]
+}

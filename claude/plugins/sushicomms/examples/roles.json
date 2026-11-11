@@ -1,0 +1,179 @@
+{
+  "schema": 1,
+  "description": "Example SushiComms role registry: the owner's five roles (GUI.Forms brief, 2026-11). Copy with `registry init`; only the orchestrator edits it.",
+  "settings": {
+    "build_wrapper": {
+      "name": "butterbuild",
+      "command": "build_slot.py -- sh dev/tools/fold23_build.sh",
+      "match": "build_slot\\.py|butterbuild"
+    },
+    "agent_spawn": {
+      "reminder": true,
+      "allowed_subagent_types": [
+        "gui-forms-tedium"
+      ]
+    }
+  },
+  "roles": {
+    "orchestrator": {
+      "responsibilities": "Holds the owner's admin hat. Starts every agent (no other role starts agents), assigns roles, reserves work blocks for coders, does all git that leaves a workspace (commits the projects repo, pushes, merges checkpoints), routes returns from the integrator to coders, answers questions, and is the only role that edits this registry.",
+      "channels": {
+        "block-reserve": [
+          "coder",
+          "standby",
+          "researcher"
+        ],
+        "return": [
+          "coder"
+        ],
+        "done": [
+          "coder",
+          "integrator",
+          "standby",
+          "researcher"
+        ]
+      },
+      "may_set_status": [
+        "open",
+        "claimed",
+        "batched",
+        "fixed",
+        "returned",
+        "folded",
+        "superseded",
+        "closed"
+      ],
+      "agent_types": []
+    },
+    "coder": {
+      "responsibilities": "Reads instructions and code and writes the whole item, with its tests, on a local branch (code first, verify once). Never builds or runs tests; runs only the laptop's static checks and source generators, sweeps callers with git grep, commits, and files one handoff per finished branch. Never pushes or starts agents. Decisions go to the orchestrator as a question with numbered options.",
+      "channels": {
+        "handoff": [
+          "integrator"
+        ],
+        "notify": [
+          "orchestrator"
+        ],
+        "question": [
+          "orchestrator"
+        ],
+        "done": [
+          "orchestrator"
+        ]
+      },
+      "may_set_status": [
+        "claimed",
+        "closed"
+      ],
+      "agent_types": [
+        "gui-forms-coder"
+      ]
+    },
+    "integrator": {
+      "responsibilities": "The standby seat (w3) in its integrator duty. Takes queued handoffs in batches of unrelated changes, folds them onto one batch branch on the current base, builds and tests the batch once through the build wrapper, fixes Minor breakage itself as separate commits attributed to the entry, and returns Substantive problems with the failing output to the coder through the orchestrator. The only role that builds.",
+      "channels": {
+        "return": [
+          "orchestrator"
+        ],
+        "question": [
+          "orchestrator"
+        ],
+        "done": [
+          "orchestrator"
+        ],
+        "notify": [
+          "orchestrator"
+        ]
+      },
+      "may_set_status": [
+        "claimed",
+        "batched",
+        "fixed",
+        "returned",
+        "folded",
+        "closed"
+      ],
+      "agent_types": []
+    },
+    "standby": {
+      "responsibilities": "Takes standalone tasks outside a worker's domain that the orchestrator routes to it, and returns the result to the orchestrator. Does not take work from other seats directly.",
+      "channels": {
+        "done": [
+          "orchestrator"
+        ],
+        "question": [
+          "orchestrator"
+        ]
+      },
+      "may_set_status": [
+        "claimed",
+        "closed"
+      ],
+      "agent_types": []
+    },
+    "researcher": {
+      "responsibilities": "Investigates questions the orchestrator assigns (code, notes, documentation) and reports findings once, with sources, to the orchestrator. Writes no product code.",
+      "channels": {
+        "done": [
+          "orchestrator"
+        ],
+        "question": [
+          "orchestrator"
+        ]
+      },
+      "may_set_status": [
+        "claimed",
+        "closed"
+      ],
+      "agent_types": []
+    }
+  },
+  "drift_rules": [
+    {
+      "id": "coder-no-build",
+      "roles": [
+        "coder"
+      ],
+      "pattern": "{cmd}(?:cmake\\s+--build|ninja|make|gmake|ctest|ci_build\\.py|xcodebuild|m4run){end}",
+      "unless": "-fsyntax-only|\\b(?:ninja|make)(?:\\s+-C\\s*\\S+)?\\s+[\\w./-]+\\.(?:o|obj)\\s*$",
+      "mode": "reminder",
+      "message": "SushiComms role note (a reminder, not a stop): coders don't build or run tests; the integrator builds each batch once (code first, verify once). A one-file compiler check goes to the M4 through m4ws. When the item is written, file the handoff: {cli} handoff --branch <branch> --intent ... --touched ... --tests ... --risks ..."
+    },
+    {
+      "id": "integrator-use-wrapper",
+      "roles": [
+        "integrator"
+      ],
+      "pattern": "{cmd}(?:cmake\\s+--build|ninja|make|gmake|ctest|ci_build\\.py|xcodebuild|fold\\d+_build\\.sh){end}",
+      "unless": "{wrapper}",
+      "mode": "reminder",
+      "message": "SushiComms role note (a reminder, not a stop): the integrator builds through {wrapper_name} (`{wrapper_command}`), so the build slots and the machine limits hold. Running the build tool directly skips them."
+    }
+  ],
+  "quorum_rules": [
+    {
+      "name": "batch-all-in",
+      "kind": "all-reserved",
+      "description": "Every block reserved for a batch has a handoff."
+    },
+    {
+      "name": "batch-mostly-in",
+      "kind": "n-of-m",
+      "min": 4,
+      "below_all": true,
+      "description": "At least 4 of a batch's reserved blocks have handoffs (silent once all are in; batch-all-in covers that)."
+    },
+    {
+      "name": "loose-handoffs",
+      "kind": "count",
+      "type": "handoff",
+      "to_role": "integrator",
+      "statuses": [
+        "open"
+      ],
+      "min": 4,
+      "enabled": false,
+      "description": "Four or more open handoffs are waiting for the integrator, reserved or not."
+    }
+  ]
+}

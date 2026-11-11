@@ -1,0 +1,9 @@
+{
+  "name": "sushistyle",
+  "version": "0.1.0",
+  "description": "House coding rules as tested clang AST matchers. Light inline reminders after each C/C++ edit; a hard gate for CI. The clang tier runs on a build host you name, never on the machine hosting Claude.",
+  "author": {"name": "Malkuth Software"},
+  "homepage": "https://malkuthsoft.com",
+  "license": "MIT",
+  "keywords": ["c++", "clang", "lint", "house-style", "code-review"]
+}

@@ -1,0 +1,13 @@
+{
+  "description": "Wasabi guards: deny, ask or warn on risky Bash commands (see README disclosure).",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/wasabi.py\" hook", "timeout": 30}
+        ]
+      }
+    ]
+  }
+}

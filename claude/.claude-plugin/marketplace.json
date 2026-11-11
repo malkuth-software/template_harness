@@ -1,0 +1,58 @@
+{
+  "name": "fransushi",
+  "owner": {
+    "name": "Malkuth Software"
+  },
+  "description": "FranSushi: free MIT plugins for orchestrated multi-worker coding with Claude Code. Shipped inside template_harness (claude/, synced by harness/sync_fransushi.py).",
+  "plugins": [
+    {
+      "name": "sushibuild",
+      "source": "./plugins/sushibuild",
+      "description": "Hand a build to a Haiku triage subagent. It runs your build command, routes each small local error to a Sonnet fixer that may edit exactly one file (enforced by a hook), logs every fixup, and escalates anything big back to you with the build log.",
+      "version": "0.1.0",
+      "license": "MIT"
+    },
+    {
+      "name": "sushicomms",
+      "source": "./plugins/sushicomms",
+      "description": "Structured role tickets for Claude Code seats, not swarm chat. A role registry the orchestrator owns, typed and validated ticket files, a silent dropbox monitor that speaks once when a quorum is met, and gentle role-drift reminders.",
+      "version": "0.1.0",
+      "license": "MIT"
+    },
+    {
+      "name": "sushidelivery",
+      "source": "./plugins/sushidelivery",
+      "description": "Urgency-tagged, phone-readable decision reports for Claude Code, plus an optional, off-by-default relay of permission prompts and multiple-choice questions to your own Telegram bot or ntfy topic. Prefer Remote Control and the official channel plugins first.",
+      "version": "0.1.0",
+      "license": "MIT"
+    },
+    {
+      "name": "sushirice",
+      "source": "./plugins/sushirice",
+      "description": "Build slots and machine protection: builds wait for a free slot and live headroom (load, memory pressure, compiler count); an opt-in guard pauses your own newest compiler processes under pressure; reuse analysis flags needless rebuilds.",
+      "version": "0.1.0",
+      "license": "MIT"
+    },
+    {
+      "name": "sushistyle",
+      "source": "./plugins/sushistyle",
+      "description": "House coding rules as tested clang AST matchers. Light inline reminders after each C/C++ edit; a hard gate for CI. The clang tier runs on a build host you name, never on the machine hosting Claude.",
+      "version": "0.1.0",
+      "license": "MIT"
+    },
+    {
+      "name": "sushiwrap",
+      "source": "./plugins/sushiwrap",
+      "description": "Oh so tight: seats that hold a worker's identity, task and state apart from the model in them; host-reset deadlines with T-30/T-15/T-5 shutdown checklists; a shutdown lint; and host survey/provision manifests.",
+      "version": "0.1.0",
+      "license": "MIT"
+    },
+    {
+      "name": "wasabi",
+      "source": "./plugins/wasabi",
+      "description": "Guard hooks for Bash: protect shared working trees from stash/switch/clean/commit -a, stop mass CRLF staging, ask before dependency downloads, and warn about commands that will hang on stdin.",
+      "version": "0.1.0",
+      "license": "MIT"
+    }
+  ]
+}

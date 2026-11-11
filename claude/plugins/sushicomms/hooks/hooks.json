@@ -1,0 +1,37 @@
+{
+  "description": "SushiComms: drift reminders, identity and store guards on Bash; registry and store guard on edits and reads; agent-spawn reminder.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/sushicomms.py\" hook-bash",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Read|Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/sushicomms.py\" hook-edit",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/sushicomms.py\" hook-agent",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

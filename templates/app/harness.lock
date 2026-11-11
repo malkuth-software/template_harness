@@ -1,0 +1,6 @@
+# The template_harness commit {{title}} builds with (template_harness docs/adopting.md §3).
+# Bump with: python3 ../template_harness/harness/lock.py bump --to <ref>
+# (it also moves the plugin marketplace ref in .claude/settings.json).
+[harness]
+repository = "{{harness_repository}}"
+commit = "{{harness_commit}}"

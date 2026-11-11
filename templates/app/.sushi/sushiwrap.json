@@ -1,0 +1,5 @@
+{
+  "seats_dir": "../projects/desks/seats",
+  "tracks_root": "../projects",
+  "push_allowed": false
+}
