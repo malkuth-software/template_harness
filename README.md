@@ -37,6 +37,38 @@ holds the product's checkout.
 
 Python 3.11 or later is required (`tomllib`); CI uses 3.12 and 3.14.
 
+## Efficient builds
+
+Measured on GUI.Forms in November 2026; the workspace layout and the
+remote build host are in `docs/contract.md` and `docs/workflow.md` §6.
+
+- **ccache:** the compiler launchers set in the build environment
+  (`CMAKE_C/CXX/OBJCXX_COMPILER_LAUNCHER=ccache`), `CCACHE_BASEDIR` at
+  the common root of your workspaces, `CCACHE_COMPILERCHECK=content`, and
+  `CCACHE_SLOPPINESS=pch_defines,time_macros` wherever a precompiled
+  header is used (without it ccache refused 596 compiles). `CCACHE_BASEDIR`
+  does not rewrite absolute paths inside other flags, so pass plugin roots
+  and similar arguments relative to the build directory. Link
+  reproducibly: link-time stamps change every output hash.
+- **One shared cache, one cap.** Point every workspace at one `CCACHE_DIR`
+  and set `max_size` once in its `ccache.conf`; a per-shell
+  `CCACHE_MAXSIZE` trims the cache for everyone. With these settings a
+  touch-everything GUI.Forms rebuild went from 2,751 s to 982 s.
+- **Shared SDK, one prefix per options set.** Build GUI.Forms once per
+  commit into an installed prefix (`harness/lockstep.py`,
+  `example_app/fetch_sdk.py`) and build products against it. Never
+  reconfigure a shared prefix with different options; give each options
+  set its own prefix. Keep one reused build tree per base: fresh trees
+  were 75% of one worker's cmake time.
+- **CPU budget:** one priority build at full `-j`, every other at `-j2`.
+  Parallel full-width builds put 28 compilers on 8 cores and slowed all of
+  them.
+- **Look iteration:** load a theme sheet at run time instead of rebuilding
+  (GUI.Forms' `--theme-sheet`; a universal `--theme` option is coming).
+  Edit the sheet and rerun.
+- **Check real exit codes:** `make ...; echo rc=$?` exits 0 even when the
+  build failed.
+
 ## Tests
 
     python -B -m unittest discover -s harness -p "test_*.py"
