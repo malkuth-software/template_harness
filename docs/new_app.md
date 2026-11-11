@@ -93,10 +93,15 @@ host, `clang-query`, `path_map`, a build wrapper's `build_command`) go in
 
 ## Keeping the pins together
 
-`harness.lock`, the `@<commit>` of every `uses:` line in `ci.yml` and the
-marketplace `ref` in `.claude/settings.json` name one commit, so the tools
-and the plugins move together. `lock.py bump` rewrites the lock and the
-marketplace ref; change the `uses:` lines in the same commit.
+`harness.lock` and the `@<commit>` of every `uses:` line in `ci.yml` name one
+commit. The plugins load from the sibling checkout `../template_harness/claude`
+(a `directory` marketplace in `.claude/settings.json`), which `lock.py checkout`
+keeps at that commit, so the tools and the plugins move together. `lock.py bump`
+rewrites the lock (and the ref of any github-sourced harness marketplace, for
+products that use one); change the `uses:` lines in the same commit.
+
+Claude Code reads a project's marketplaces after you trust the folder: open
+Claude in the app once and accept the trust prompt.
 
 ## Testing
 

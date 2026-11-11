@@ -21,7 +21,7 @@ idempotent (a re-run finds the work done and changes nothing):
    commit that added the project file is the harness pin;
 3. the app repository: create <remote-base>/APP (private, with
    --create-repo, through gh), instantiate templates/app/ with the names
-   and the pin (harness.lock, .claude/settings.json's marketplace ref, the
+   and the pin (harness.lock; the plugins load from the sibling ../template_harness/claude, which lock.py checkout keeps at the pin; the
    CI workflow's uses: lines), first commit, push main;
 4. notes: an orphan branch APP with the brief, decisions and interviews
    skeleton (templates/notes/), pushed;
@@ -493,7 +493,7 @@ def step_app(plan: Plan, harness_commit: str) -> None:
         return
     if plan.dry_run:
         files: list[Path] = template_files(TEMPLATES / 'app')
-        say('  would render ' + str(len(files)) + ' files, pin harness.lock and the marketplace ref to the step 2 '
+        say('  would render ' + str(len(files)) + ' files, pin harness.lock to the step 2 '
             'commit, commit and push main')
         return
     checkout: Path = Path(tempfile.mkdtemp(prefix='new_app-app-'))

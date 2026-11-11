@@ -40,7 +40,7 @@ python3 -B -m unittest discover -s {{app}} -p "test_*.py"
 |---|---|
 | `src/`, `tests/` | the app's form, its entry point and the form's test |
 | `CMakeLists.txt`, `ci_build.py`, `fetch_sdk.py`, `gui_forms.lock` | the build against the pinned GUI.Forms SDK |
-| `harness.lock` | the harness pin; `lock.py bump` also moves the plugin marketplace ref |
+| `harness.lock` | the harness pin; the plugins load from the sibling `../template_harness/claude` at this pin |
 | `.github/workflows/ci.yml` | CI through the harness's reusable workflows at the same commit |
 | `CLAUDE.md`, `AGENTS.md`, `.claude/` | agent instructions, project agents and the FranSushi plugins |
 | `.sushi/*.json` | the plugins' project configuration |

@@ -3,10 +3,8 @@
   "extraKnownMarketplaces": {
     "fransushi": {
       "source": {
-        "source": "github",
-        "repo": "{{harness_repository}}",
-        "ref": "{{harness_ref}}",
-        "path": "claude/.claude-plugin/marketplace.json"
+        "source": "directory",
+        "path": "../template_harness/claude"
       }
     }
   },

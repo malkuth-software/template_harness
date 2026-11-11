@@ -148,8 +148,8 @@ class TemplateTests(unittest.TestCase):
         app: Path = self.render('app')
         settings: dict[str, Any] = json.loads((app / '.claude/settings.json').read_text(encoding='utf-8'))
         source: dict[str, Any] = settings['extraKnownMarketplaces']['fransushi']['source']
-        self.assertEqual(source, {'source': 'github', 'repo': OWNER + '/template_harness', 'ref': HARNESS_COMMIT,
-                                  'path': 'claude/.claude-plugin/marketplace.json'})
+        # The sibling harness checkout, which lock.py checkout keeps at the pin (owner, Q22).
+        self.assertEqual(source, {'source': 'directory', 'path': '../template_harness/claude'})
         expected: dict[str, bool] = {}
         plugin: str
         for plugin in PLUGINS:
@@ -322,7 +322,8 @@ class RunTests(unittest.TestCase):
         lock_text: str = git(self.bare(APP), 'show', 'main:harness.lock')
         self.assertIn('commit = "' + added + '"', lock_text)
         settings: dict[str, Any] = json.loads(git(self.bare(APP), 'show', 'main:.claude/settings.json'))
-        self.assertEqual(settings['extraKnownMarketplaces']['fransushi']['source']['ref'], added)
+        self.assertEqual(settings['extraKnownMarketplaces']['fransushi']['source'],
+                         {'source': 'directory', 'path': '../template_harness/claude'})
         self.assertIn('@' + added, git(self.bare(APP), 'show', 'main:.github/workflows/ci.yml'))
         tree: list[str] = git(self.bare(APP), 'ls-tree', '-r', '--name-only', 'main').split('\n')
         relative: str
