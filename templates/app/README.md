@@ -47,4 +47,4 @@ python3 -B -m unittest discover -s {{app}} -p "test_*.py"
 
 ## License
 
-Chosen when the app was generated (`new_app --license`); see `LICENSE`. GUI.Forms and its components are permissively licensed and allow closed-source use; see `THIRD_PARTY_NOTICES.md`.
+Chosen when the app was generated (`new_app --license`); see `LICENSE`. GUI.Forms and its components are permissively licensed and allow closed-source use; see `THIRD_PARTY_NOTICES.md`. The template this app came from is MIT-0, so nothing is owed to template_harness.
