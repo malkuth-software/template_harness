@@ -2241,14 +2241,12 @@ def worktree_finding(directory, arguments, cwd):
                                          ("; build trees: " + ", ".join(builds[:4])) if builds else ""))
     if len(worktrees) > 4:
         described.append("and %d more" % (len(worktrees) - 4))
-    first = worktrees[0]["path"]
     text = ("SushiRice: `git worktree add` makes another checkout of %s, which already has %d worktree%s: %s. "
             "A fresh tree reconfigures, relinks everything and re-runs package steps (fresh trees were about 75%% "
             "of CMake time in the churn study). The usual shape is one worktree per seat with one Release and one "
-            "sanitizer build tree, reused: a new job is a new branch in the existing worktree "
-            "(e.g. `git -C %s switch -c <job-branch>`), so builds stay incremental." % (
-                common, len(worktrees), "" if len(worktrees) == 1 else "s", "; ".join(described),
-                shlex.quote(first)))
+            "sanitizer build tree, reused: a new job is a new branch in your own seat's worktree, never in a "
+            "tree another agent or person works in, so builds stay incremental." % (
+                common, len(worktrees), "" if len(worktrees) == 1 else "s", "; ".join(described)))
     return {"key": "worktree:" + common, "kind": "trees", "text": text}
 
 

@@ -17,8 +17,9 @@ Script: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sushiwrap.py"` (called `sushiwra
 
 ## 1. Commit WIP to the seat branch
 
-In the seat's worktree, on the seat branch: commit everything tracked, even half-done work
-(`git commit -am "WIP: <what and where it stops>"`). Never stash in a shared tree.
+In the seat's worktree, on the seat branch: commit the files you changed, even half-done work,
+by path (`git add <paths>` then `git commit -m "WIP: <what and where it stops>"`). Don't use
+`git commit -a`: it also picks up other people's uncommitted edits. Never stash in a shared tree.
 
 ## 2. Write the RESUME POINTER
 
