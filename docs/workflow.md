@@ -38,7 +38,7 @@ GUI.Forms is the worked example throughout. It adopted this workflow on
 - Stack later work on your own earlier local branches. When a checkpoint
   lands, rebase onto the new main and delete the branches `after-merge`
   lists as contained.
-- Keep a track file with the state, the decisions in force and the next
+- Keep a track file with the state, the current decisions and the next
   step, so a successor can resume from it alone.
 
 ## 3. The coordinator's cycle
