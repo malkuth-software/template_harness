@@ -1,0 +1,19 @@
+In file included from src/registry.cpp:1:
+In file included from src/registry.h:4:
+/opt/homebrew/opt/llvm/bin/../include/c++/v1/map:780:17: error: no matching function for call to object of type 'const KeyLess'
+  780 |     return static_cast<const _Compare&>(*this)(__x, __y.__get_value().first);
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/opt/homebrew/opt/llvm/bin/../include/c++/v1/__tree:1946:17: note: in instantiation of member function 'std::__map_value_compare<Key, std::__value_type<Key, int>, KeyLess>::operator()' requested here
+ 1946 |       if (value_comp()(__k, __nd->__value_)) {
+      |                 ^
+/opt/homebrew/opt/llvm/bin/../include/c++/v1/__tree:1990:29: note: in instantiation of function template specialization 'std::__tree<...>::__find_equal<Key>' requested here
+/opt/homebrew/opt/llvm/bin/../include/c++/v1/map:1285:20: note: in instantiation of function template specialization 'std::__tree<...>::__emplace_unique_key_args<Key>' requested here
+src/registry.cpp:17:12: note: in instantiation of member function 'std::map<Key, int, KeyLess>::operator[]' requested here
+   17 |     entries[key] = 1;
+      |            ^
+src/registry.h:9:10: note: candidate function not viable: 'this' argument has type 'const KeyLess', but method is not marked const
+    9 |     bool operator()(const Key& a, const Key& b) { return a.id < b.id; }
+      |          ^
+/opt/homebrew/opt/llvm/bin/../include/c++/v1/__tree:1990:9: error: no viable conversion from returned value of type 'int' to function return type 'bool'
+/opt/homebrew/opt/llvm/bin/../include/c++/v1/__tree:1991:9: error: static assertion failed due to requirement '__is_invocable_v<const KeyLess &, const Key &, const Key &>': the specified comparator type does not provide a viable const call operator
+3 errors generated.

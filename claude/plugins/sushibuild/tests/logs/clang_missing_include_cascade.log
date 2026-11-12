@@ -1,0 +1,23 @@
+$ rsync -a --delete --exclude .sushi --exclude .git ./ m4mini:/tmp/sbtest_remote/ && ssh -n m4mini 'cd /tmp/sbtest_remote && nice -n 15 make -s'
+/private/tmp/sbtest_remote/main.cpp:4:10: error: no member named 'cnout' in namespace 'std'; did you mean 'cout'?
+    4 |     std::cnout << sum_all(3) << "\n";
+      |          ^~~~~
+      |          cout
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/c++/v1/iostream:57:42: note: 'cout' declared here
+   57 | extern _LIBCPP_EXPORTED_FROM_ABI ostream cout;
+      |                                          ^
+1 error generated.
+/private/tmp/sbtest_remote/util.cpp:3:5: error: use of undeclared identifier 'std'
+    3 |     std::vector<int> values(count, 1);
+      |     ^
+/private/tmp/sbtest_remote/util.cpp:3:20: error: expected '(' for function-style cast or type construction
+    3 |     std::vector<int> values(count, 1);
+      |                 ~~~^
+/private/tmp/sbtest_remote/util.cpp:3:22: error: use of undeclared identifier 'values'
+    3 |     std::vector<int> values(count, 1);
+      |                      ^~~~~~
+/private/tmp/sbtest_remote/util.cpp:5:18: error: use of undeclared identifier 'values'
+    5 |     for (int v : values) { total += v; }
+      |                  ^~~~~~
+4 errors generated.
+make: *** [app] Error 1

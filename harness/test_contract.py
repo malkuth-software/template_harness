@@ -46,9 +46,8 @@ CONTRACT_FILES: tuple[str, ...] = (
     'harness/new_app.py',
     'templates/app/harness.lock',
     'templates/app/.claude/settings.json',
-    'harness/sync_fransushi.py',
     'claude/.claude-plugin/marketplace.json',
-    'claude/FRANSUSHI.lock',
+    'claude/README.md',
     'claude/rules/house.json',
 )
 CHANGE_RULE: str = ('products use this (docs/contract.md); a change needs a Breaking changes '

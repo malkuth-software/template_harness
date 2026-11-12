@@ -1,0 +1,12 @@
+[1/3] Building CXX object CMakeFiles/app.dir/src/main.cpp.o
+FAILED: CMakeFiles/app.dir/src/main.cpp.o
+/opt/homebrew/opt/llvm/bin/clang++ -std=c++23 -O2 -c /Users/dev/proj/src/main.cpp -o CMakeFiles/app.dir/src/main.cpp.o
+/Users/dev/proj/src/main.cpp:12:5: error: use of undeclared identifier 'cnout'; did you mean 'cout'?
+   12 |     cnout << total << '\n';
+      |     ^~~~~
+      |     std::cout
+/opt/homebrew/opt/llvm/bin/../include/c++/v1/iostream:58:33: note: 'cout' declared here
+   58 | extern _LIBCPP_EXPORTED_FROM_ABI ostream cout;
+      |                                  ^
+1 error generated.
+ninja: build stopped: subcommand failed.

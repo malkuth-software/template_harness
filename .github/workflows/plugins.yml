@@ -1,9 +1,9 @@
 name: Plugins
 # The FranSushi marketplace this repository ships (claude/): the marketplace
 # manifest and each plugin pass Claude Code's own validator, the plugin
-# directory's profile included. harness/test_sync_fransushi.py (run by
-# example.yml's python-tests) checks the copies against FRANSUSHI.lock and the
-# house rule pack's citations and fixtures.
+# directory's profile included. harness/test_fransushi.py (run by
+# example.yml's python-tests) runs each plugin's own tests and checks the
+# manifest and the house rule pack's citations and fixtures.
 on:
   push:
     branches: [main]

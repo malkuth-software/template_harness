@@ -1,0 +1,242 @@
+{
+ "boot_time": 1793753278,
+ "ccache": {
+  "config": {
+   "base_dir": {
+    "origin": "default",
+    "value": ""
+   },
+   "cache_dir": {
+    "origin": "default",
+    "value": "~/Library/Caches/ccache"
+   },
+   "compiler_check": {
+    "origin": "default",
+    "value": "mtime"
+   },
+   "compression": {
+    "origin": "default",
+    "value": "true"
+   },
+   "depend_mode": {
+    "origin": "default",
+    "value": "false"
+   },
+   "direct_mode": {
+    "origin": "default",
+    "value": "true"
+   },
+   "hash_dir": {
+    "origin": "default",
+    "value": "true"
+   },
+   "max_size": {
+    "origin": "default",
+    "value": "5.0 GiB"
+   },
+   "sloppiness": {
+    "origin": "default",
+    "value": ""
+   },
+   "temporary_dir": {
+    "origin": "default",
+    "value": "~/Library/Caches/ccache/tmp"
+   }
+  },
+  "version": "ccache version 4.14.1"
+ },
+ "collected_at": "2026-11-11T07:55:46Z",
+ "cpu": {
+  "efficiency": 6,
+  "logical": 10,
+  "performance": 4,
+  "physical": 10
+ },
+ "env": {
+  "HOME": "~",
+  "SDKROOT": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+  "SHELL": "/bin/zsh",
+  "TMPDIR": "/var/folders/<id>/T/"
+ },
+ "errors": [],
+ "host": {
+  "hostname": "<host>",
+  "machine": "arm64",
+  "macos_version": "26.7.2",
+  "os": "Darwin",
+  "os_release": "25.6.0",
+  "os_version": "Darwin Kernel Version 25.6.0: Mon Oct 12 00:41:28 PDT 2026; root:xnu-12377.161.15.701.48~2/RELEASE_ARM64_T8132",
+  "python": "3.9.6",
+  "python_executable": "/Applications/Xcode.app/Contents/Developer/usr/bin/python3"
+ },
+ "known_traps": [
+  "m4ws syncs by content, not mtime",
+  "never pass bash -c strings through m4run"
+ ],
+ "load_avg": [
+  1.86,
+  1.72,
+  1.69
+ ],
+ "memory_bytes": 17179869184,
+ "path": {
+  "entries": [
+   "~/.cargo/bin",
+   "/usr/bin",
+   "/bin",
+   "/usr/sbin",
+   "/sbin"
+  ],
+  "login_shell_entries": [
+   "/opt/homebrew/bin",
+   "/opt/homebrew/sbin",
+   "/usr/local/bin",
+   "/System/Cryptexes/App/usr/bin",
+   "/usr/bin",
+   "/bin",
+   "/usr/sbin",
+   "/sbin",
+   "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin",
+   "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin",
+   "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin",
+   "/pkg/env/global/bin",
+   "/Library/Apple/usr/bin",
+   "/Applications/VMware Fusion.app/Contents/Public",
+   "/usr/local/go/bin",
+   "~/.cargo/bin",
+   "~/.local/bin"
+  ],
+  "missing_dirs": []
+ },
+ "probe_seconds": 0.15,
+ "probe_version": 1,
+ "tools": {
+  "brew_llvm_clang": {
+   "found": true,
+   "path": "/opt/homebrew/opt/llvm/bin/clang",
+   "version": "Homebrew clang version 23.1.2"
+  },
+  "ccache": {
+   "found": true,
+   "on_path": false,
+   "path": "/opt/homebrew/bin/ccache",
+   "version": "ccache version 4.14.1"
+  },
+  "clang": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/clang",
+   "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)"
+  },
+  "clang++": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/clang++",
+   "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)"
+  },
+  "cmake": {
+   "found": true,
+   "on_path": false,
+   "path": "/opt/homebrew/bin/cmake",
+   "version": "cmake version 4.2.1"
+  },
+  "g++": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/g++",
+   "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)"
+  },
+  "gcc": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/gcc",
+   "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)"
+  },
+  "git": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/git",
+   "version": "git version 2.50.1 (Apple Git-155)"
+  },
+  "macos_sdk": {
+   "found": true,
+   "version": "26.5"
+  },
+  "make": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/make",
+   "version": "GNU Make 3.81"
+  },
+  "ninja": {
+   "found": true,
+   "on_path": false,
+   "path": "/opt/homebrew/bin/ninja",
+   "version": "1.13.2"
+  },
+  "python3": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/python3",
+   "version": "Python 3.9.6"
+  },
+  "rsync": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/rsync",
+   "version": "openrsync: protocol version 29"
+  },
+  "ssh": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/ssh",
+   "version": "OpenSSH_10.5p1, LibreSSL 3.3.6"
+  },
+  "xcode_select": {
+   "found": true,
+   "path": "/Applications/Xcode.app/Contents/Developer"
+  }
+ },
+ "traps": [
+  "This non-interactive process lacks 12 PATH entries the login shell has (/opt/homebrew/bin, /opt/homebrew/sbin, /usr/local/bin, /System/Cryptexes/App/usr/bin, /var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin, /var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin): commands run over ssh may not find tools.",
+  "ccache base_dir is unset in this environment (an env script may set it): identical sources in different workspaces share no cache hits without it."
+ ],
+ "user": {
+  "home": "~",
+  "name": "<user>"
+ },
+ "volumes": [
+  {
+   "free_bytes": 41226063872,
+   "free_pct": 16.8,
+   "path": "~",
+   "total_bytes": 245107195904
+  }
+ ],
+ "workspaces": [
+  {
+   "exists": true,
+   "repos": [
+    {
+     "branch": "claude/mac-handoff-probes",
+     "head": "4f6e26426fa5",
+     "is_worktree": false,
+     "path": "~/Developer/Projects/gui_forms_workers/w4/gui_forms",
+     "remotes": {
+      "origin": "https://github.com/malkuth-software/gui_forms.git"
+     }
+    },
+    {
+     "branch": null,
+     "head": "c20afa3c619d",
+     "is_worktree": false,
+     "path": "~/Developer/Projects/gui_forms_workers/w4/stx-skia-reference",
+     "remotes": {
+      "origin": "https://github.com/malkuth-software/stx_skia"
+     }
+    }
+   ],
+   "root": "~/Developer/Projects/gui_forms_workers/w4"
+  }
+ ]
+}

@@ -6,6 +6,15 @@ and new form. Provisional rows there may change without an entry.
 
 ## Unreleased
 
+### Changed
+- `claude/` is now where the FranSushi plugins are developed: each plugin
+  keeps its tests in `claude/plugins/<name>/tests/`, and
+  `harness/test_fransushi.py` runs them with the harness suite. The
+  plugins came from `malkuth-software/fransushi` at b428c5e, deprecated as
+  of 2026-11-12. `harness/sync_fransushi.py` and `claude/FRANSUSHI.lock`
+  are removed (both were provisional); `claude/README.md` records the
+  provenance.
+
 ### Added
 - `new_app.sh`/`new_app.ps1` and `harness/new_app.py`: one command to a
   harnessed GUI.Forms app (`docs/new_app.md`). It validates the name and

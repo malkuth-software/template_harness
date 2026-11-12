@@ -3,7 +3,7 @@
   "owner": {
     "name": "Malkuth Software"
   },
-  "description": "FranSushi: free MIT plugins for orchestrated multi-worker coding with Claude Code. Shipped inside template_harness (claude/, synced by harness/sync_fransushi.py).",
+  "description": "FranSushi: free MIT plugins for orchestrated multi-worker coding with Claude Code. Developed and shipped inside template_harness (claude/).",
   "plugins": [
     {
       "name": "sushibuild",
