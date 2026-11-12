@@ -171,6 +171,24 @@ class TreesTests(SandboxCase):
         self.assertTrue(any(w.startswith("5 build trees for one source") and w.endswith("; 1 duplicate")
                             for w in warnings), warnings)
 
+    def test_g1_census_reaches_depth_four_and_follows_symlinked_trees_once(self):
+        workers = os.path.join(self.root, "workers")
+        workspace = os.path.join(workers, "w4")
+        write_cache(os.path.join(workspace, ".build", "native-macos-arm64", "gui-forms"), workspace)
+        volume = os.path.join(self.root, "volume", "gui-forms-sanitize")
+        write_cache(volume, workspace, "Debug", {"CMAKE_CXX_FLAGS": "-fsanitize=address"})
+        os.symlink(volume, os.path.join(workspace, ".build", "native-macos-arm64", "gui-forms-sanitize"))
+        os.symlink(volume, os.path.join(workspace, "sanitize-again"))
+        os.symlink(workspace, os.path.join(workspace, "loop"))
+        found = sushirice.find_build_dirs([workers])
+        self.assertEqual(len(found), 2, found)
+        self.assertEqual(sorted({os.path.realpath(d) for d in found}),
+                         sorted({os.path.realpath(os.path.join(workspace, ".build", "native-macos-arm64", "gui-forms")),
+                                 os.path.realpath(volume)}))
+        shallow = sushirice.find_build_dirs([workers], 3)  # <workers>/w4/.build/<platform>/<tree> is depth 4
+        self.assertEqual([os.path.realpath(d) for d in shallow], [os.path.realpath(volume)])
+        self.assertEqual(sushirice.DEFAULT_CONFIG["trees"]["max_depth"], 4)
+
     def test_ab_option_trees_are_not_duplicates(self):
         source = os.path.join(self.root, "consumer")
         for name, value in (("build-on", "ON"), ("build-off", "OFF"), ("build-off2", "OFF")):

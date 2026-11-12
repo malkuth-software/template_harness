@@ -123,8 +123,12 @@ wins). `$SUSHIRICE_CONFIG` replaces both.
   count. `watchdog.max_compilers` (running jobs within one build) defaults to 1.5 x cores. Pressure levels come from the macOS kernel
   (`kern.memorystatus_vm_pressure_level`: normal / warn / critical) or Linux PSI. Free memory
   comes from `memory_pressure -Q`, falling back to `vm_stat`, or `/proc/meminfo`.
-- **Trees.** `trees.roots` defaults to the project root. `max_per_source` (2: one Release and
-  one sanitizer tree) sets when "N build trees for one source" is reported.
+- **Trees.** `trees.roots` defaults to the project root. The census looks `trees.max_depth` (4)
+  levels down, enough for `<workers>/<ws>/.build/<platform>/<tree>`, and follows symlinked
+  directories, counting each real directory once. `max_per_source` (2: one Release and one
+  sanitizer tree) sets when "N build trees for one source" is reported.
+- **Shared trees.** In a tree wasabi marks shared and that has no `.sushi/`, state and logs go
+  under `~/.sushi/` instead of creating one.
 
 ## Commands
 

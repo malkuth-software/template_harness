@@ -48,5 +48,22 @@ class ConfigLayers(SandboxCase):
         self.assertEqual(config["start_spacing_s"], 3)
 
 
+class SharedTreeState(SandboxCase):
+    """G7: no .sushi/ is created in a tree wasabi marks shared; state and logs go under the home directory."""
+
+    def test_state_falls_back_to_home_in_a_shared_tree(self):
+        shared = os.path.join(self.root, "shared")
+        os.makedirs(os.path.join(shared, ".git"))
+        with open(os.path.join(shared, ".git", "sushi-shared-tree"), "w") as handle:
+            handle.write("marked\n")
+        directory = sushirice.state_dir(shared)
+        self.assertTrue(directory.startswith(ISOLATED_HOME), directory)
+        sushirice.log(shared, "probe")
+        self.assertFalse(os.path.exists(os.path.join(shared, ".sushi")))
+        plain = os.path.join(self.root, "plain")
+        os.makedirs(os.path.join(plain, ".git"))
+        self.assertTrue(sushirice.state_dir(plain).startswith(plain))
+
+
 if __name__ == "__main__":
     unittest.main()
