@@ -74,7 +74,7 @@ From the workspace root (the directory holding `{{app}}/` and
 
 | Role | Seat | Agent type | Does |
 |---|---|---|---|
-| orchestrator | `{{app}}-orchestrator` | (the main session) | Holds the owner's admin hat: starts every agent, assigns tracks, folds, verifies, pushes and merges checkpoints, commits the projects repository, brings decisions to the owner. The only role that edits the SushiComms registry. |
+| orchestrator | `{{app}}-orchestrator` | (the main session) | The coordinating session: starts every agent, assigns tracks, folds, verifies, pushes and merges checkpoints, commits the projects repository, brings decisions to the owner. The only role that edits the SushiComms registry. |
 | coder | `{{app}}-w1`, ... | `{{app}}-coder` | Writes code and tests on a local branch, runs the static checks, files one handoff per finished branch. Never builds. |
 | integrator | `{{app}}-integrator` | `{{app}}-integrator` | Batches handoffs, builds and tests each batch once on the build host, fixes minor breakage, returns substantive problems. The only role that builds. |
 | tedium | (per worker) | `{{app}}-tedium` | A Haiku helper for one worker's repetitive sequence; reports only at its stop condition. |

@@ -18,7 +18,7 @@
   },
   "roles": {
     "orchestrator": {
-      "responsibilities": "Holds the owner's admin hat. Starts every agent (no other role starts agents), assigns roles, reserves work blocks for coders, does all git that leaves a workspace (commits the projects repo, pushes, merges checkpoints), routes returns from the integrator to coders, answers questions, and is the only role that edits this registry.",
+      "responsibilities": "The coordinating session. Starts every agent (no other role starts agents), assigns roles, reserves work blocks for coders, does all git that leaves a workspace (commits the projects repo, pushes, merges checkpoints), routes returns from the integrator to coders, answers questions, and is the only role that edits this registry.",
       "channels": {
         "block-reserve": [
           "coder",
@@ -48,7 +48,7 @@
       "agent_types": []
     },
     "coder": {
-      "responsibilities": "Reads instructions and code and writes the whole item, with its tests, on a local branch (code first, verify once). Never builds or runs tests; runs only the laptop's static checks and source generators, sweeps callers with git grep, commits, and files one handoff per finished branch. Never pushes or starts agents. Decisions go to the orchestrator as a question with numbered options.",
+      "responsibilities": "Reads instructions and code and writes the whole item, with its tests, on a local branch (code first, verify once). Doesn't build or run tests; runs only the laptop's static checks and source generators, sweeps callers with git grep, commits, and files one handoff per finished branch. Doesn't push or start agents. Decisions go to the orchestrator as a question with numbered options.",
       "channels": {
         "handoff": [
           "integrator"
@@ -141,7 +141,7 @@
       "pattern": "{cmd}(?:cmake\\s+--build|ninja|make|gmake|ctest|ci_build\\.py|xcodebuild|m4run){end}",
       "unless": "-fsyntax-only|\\b(?:ninja|make)(?:\\s+-C\\s*\\S+)?\\s+[\\w./-]+\\.(?:o|obj)\\s*$",
       "mode": "reminder",
-      "message": "SushiComms role note (a reminder, not a stop): coders don't build or run tests; the integrator builds each batch once (code first, verify once). A one-file compiler check goes to the build host through {{build_wrapper}}. When the item is written, file the handoff: {cli} handoff --branch <branch> --intent ... --touched ... --tests ... --risks ..."
+      "message": "Coders don't build or run tests; the integrator builds each batch once (code first, verify once). A one-file compiler check goes to the build host through {{build_wrapper}}. When the item is written, file the handoff: {cli} handoff --branch <branch> --intent ... --touched ... --tests ... --risks ..."
     },
     {
       "id": "integrator-use-wrapper",
@@ -151,7 +151,7 @@
       "pattern": "{cmd}(?:cmake\\s+--build|ninja|make|gmake|ctest|ci_build\\.py|xcodebuild|fold\\d+_build\\.sh){end}",
       "unless": "{wrapper}",
       "mode": "reminder",
-      "message": "SushiComms role note (a reminder, not a stop): the integrator builds through {wrapper_name} (`{wrapper_command}`), so the build slots and the machine limits hold. Running the build tool directly skips them."
+      "message": "The integrator builds through {wrapper_name} (`{wrapper_command}`), which applies the build slots and machine limits; running the build tool directly skips them."
     }
   ],
   "quorum_rules": [
