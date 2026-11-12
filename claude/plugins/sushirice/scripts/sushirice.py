@@ -2324,10 +2324,13 @@ def command_hook():
         kinds = sorted(set(find_unwrapped_builds(command, config)))
         if kinds:
             wrapper = "python3 %s slot --" % shlex.quote(SCRIPT_PATH)
+            # Name the wrappers this machine is configured with (hook_wrappers), not a fixed list.
+            others = [name for name in config.get("hook_wrappers") or [] if name not in ("sushirice", "sushirice.py")]
+            through = "`%s <cmd>`" % wrapper + "".join(", %s" % name for name in others)
             findings.append({"key": "build:" + ",".join(kinds), "kind": "build", "text": (
-                "SushiRice: this command runs a build (%s) outside a build slot. On this machine, builds run "
-                "through `%s <cmd>`, build_slot.py, or m4ws, so parallel builds "
-                "wait for headroom instead of overloading the Mac." % (", ".join(kinds), wrapper))})
+                "SushiRice: this command runs a build (%s) outside a build slot. Builds here run through %s, "
+                "so parallel builds wait for headroom instead of overloading the machine." % (
+                    ", ".join(kinds), through))})
     if modes["trees"] != "off":
         findings.extend(tree_findings(command, cwd, config))
     if not findings:

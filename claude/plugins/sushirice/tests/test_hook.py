@@ -64,6 +64,12 @@ class BuildHookTests(HookCase):
                 self.assertIn("outside a build slot", context)
                 self.assertEqual(output["hookSpecificOutput"]["hookEventName"], "PreToolUse")
 
+    def test_g3_the_reminder_names_the_configured_wrappers(self):
+        output = self.hook("ninja -C build", session="wrappers")
+        context = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("build_slot.py, m4ws, m4run", context)
+        self.assertNotIn("the Mac", context)
+
     def test_unflagged_commands(self):
         for index, command in enumerate(NOT_FLAGGED):
             with self.subTest(command=command):
