@@ -598,5 +598,47 @@ class SurveyTests(Isolated):
         self.assertEqual(manifest["errors"], [])
 
 
+class ProjectOptionAndSharedTree(Isolated):
+    """G7: --project anywhere on the command line; no .sushi/ created in a tree wasabi marks shared."""
+
+    def shared_tree(self):
+        shared = os.path.join(self.tmp, "shared")
+        os.makedirs(os.path.join(shared, ".git"))
+        with open(os.path.join(shared, ".git", "sushi-shared-tree"), "w") as handle:
+            handle.write("marked\n")
+        return shared
+
+    def test_project_before_the_subcommand(self):
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            code = sw.main(["--project", self.project, "seat", "init", "w1", "--role", "coder"])
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertTrue(os.path.isfile(os.path.join(self.project, ".sushi", "seats", "w1.md")))
+
+    def test_no_sushi_directory_in_a_shared_tree(self):
+        shared = self.shared_tree()
+        os.environ.pop("SUSHIWRAP_CONFIG", None)
+        os.environ["HOME"] = self.tmp
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            code = sw.main(["seat", "init", "w1", "--project=" + shared])
+        self.assertEqual(code, 2)
+        self.assertIn("shared working tree", err.getvalue())
+        self.assertFalse(os.path.exists(os.path.join(shared, ".sushi")))
+
+    def test_listed_in_the_user_wasabi_config(self):
+        plain = os.path.join(self.tmp, "listed")
+        os.makedirs(os.path.join(plain, ".git"))
+        os.environ.pop("SUSHIWRAP_CONFIG", None)
+        os.environ["HOME"] = self.tmp
+        os.makedirs(os.path.join(self.tmp, ".sushi"), exist_ok=True)
+        with open(os.path.join(self.tmp, ".sushi", "wasabi.json"), "w") as handle:
+            json.dump({"shared_tree": {"trees": {plain: {"rules": {}}}}}, handle)
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            code = sw.main(["seat", "init", "w1", "--project", plain])
+        self.assertEqual(code, 2)
+        self.assertFalse(os.path.exists(os.path.join(plain, ".sushi")))
+
+
 if __name__ == "__main__":
     unittest.main()

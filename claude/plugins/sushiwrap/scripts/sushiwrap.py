@@ -26,7 +26,8 @@ Subcommands
   survey [--host H] [--out FILE] [--json] [--anonymize]
   provision --manifest FILE         print a step plan to recreate a surveyed host
 
-Global: --project DIR (default: $CLAUDE_PROJECT_DIR, else nearest .sushi/.git ancestor).
+Global: --project DIR, before or after the subcommand (default: $CLAUDE_PROJECT_DIR, else the
+        nearest .sushi/.git ancestor). .sushi/ is not created in a tree wasabi marks shared.
 Config: $SUSHIWRAP_CONFIG, else ~/.sushi/sushiwrap.json overlaid by
 <project>/.sushi/sushiwrap.json. Standard library only; Python 3.9+.
 """
@@ -127,10 +128,53 @@ def human_age(seconds):
     return "%d days" % round(seconds / 86400.0)
 
 
+# The project root this process works for; directories under its .sushi/ are created only through
+# ensure_dir, which refuses to create .sushi/ in a shared working tree (sushitree.py).
+CURRENT_ROOT = None
+_SUSHITREE = None
+
+
+def sushitree():
+    """This plugin's copy of sushitree.py, loaded by path on first use (hooks stay fast)."""
+    global _SUSHITREE
+    if _SUSHITREE is None:
+        import importlib.util
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sushitree.py")
+        spec = importlib.util.spec_from_file_location("sushiwrap_sushitree", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _SUSHITREE = module
+    return _SUSHITREE
+
+
+def ensure_dir(directory):
+    """Create directory; raises sushitree.SharedTreeError for a new .sushi/ in a shared working tree."""
+    if os.path.isdir(directory):
+        return
+    if CURRENT_ROOT:
+        sushitree().check_sushi_creation(CURRENT_ROOT, directory)
+    os.makedirs(directory, exist_ok=True)
+
+
+def sushi_base(project_root):
+    """<project>/.sushi, or ~/.sushi when the project's .sushi/ may not be created (a shared tree)."""
+    home = os.path.join(os.path.expanduser("~"), ".sushi")
+    if not project_root:
+        return home
+    base = os.path.join(project_root, ".sushi")
+    if os.path.isdir(base):
+        return base
+    try:
+        sushitree().check_sushi_creation(project_root, base)
+    except sushitree().SharedTreeError:
+        return home
+    return base
+
+
 def atomic_write(path, text):
     directory = os.path.dirname(path)
     if directory:
-        os.makedirs(directory, exist_ok=True)
+        ensure_dir(directory)
     temporary = "%s.tmp.%d" % (path, os.getpid())
     with open(temporary, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(text)
@@ -139,7 +183,7 @@ def atomic_write(path, text):
 
 def log(project_root, message):
     try:
-        directory = os.path.join(project_root or os.path.expanduser("~"), ".sushi", "logs")
+        directory = os.path.join(sushi_base(project_root), "logs")
         os.makedirs(directory, exist_ok=True)
         with open(os.path.join(directory, "sushiwrap.log"), "a", encoding="utf-8") as handle:
             handle.write("%s %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%S"), message))
@@ -478,7 +522,7 @@ def hook_decide(event, project_root, config, now):
     bucket = int(minutes // bucket_size) if minutes > 0 else -1 - int(-minutes // bucket_size)
     key = "%s-%s" % (event.get("session_id") or "nosession", event.get("agent_id") or "main")
     key = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in key)[:120]
-    base = os.path.join(project_root, ".sushi", "state", "sushiwrap", "hook")
+    base = os.path.join(sushi_base(project_root), "state", "sushiwrap", "hook")
     directory = os.path.join(base, str(int(deadline["at"])))
     if not os.path.isdir(directory):
         os.makedirs(directory, exist_ok=True)
@@ -505,6 +549,8 @@ def command_hook():
         raw = sys.stdin.read()
         event = json.loads(raw) if raw.strip() else {}
         project_root = os.environ.get("CLAUDE_PROJECT_DIR") or find_project_root(event.get("cwd") or None)
+        global CURRENT_ROOT
+        CURRENT_ROOT = project_root
         config = load_config(project_root)
         text = hook_decide(event, project_root, config, now_epoch())
         if text:
@@ -520,6 +566,8 @@ def command_session_start():
         raw = sys.stdin.read()
         event = json.loads(raw) if raw.strip() else {}
         project_root = os.environ.get("CLAUDE_PROJECT_DIR") or find_project_root(event.get("cwd") or None)
+        global CURRENT_ROOT
+        CURRENT_ROOT = project_root
         config = load_config(project_root)
         now = now_epoch()
         current_boot = boot_time()
@@ -1259,20 +1307,27 @@ def parse_options(args, spec):
 
 def main(argv=None):
     args = list(sys.argv[1:] if argv is None else argv)
+    if args and args[0] == "hook":
+        return command_hook()
+    if args and args[0] == "session-start":
+        return command_session_start()
+    # --project is global: before or after the subcommand.
+    project, args = sushitree().take_project_option(args)
     if not args:
         print(__doc__)
         return 2
     command = args.pop(0)
-    if command == "hook":
-        return command_hook()
-    if command == "session-start":
-        return command_session_start()
-    project = None
-    if "--project" in args:
-        index = args.index("--project")
-        project = args[index + 1] if index + 1 < len(args) else None
-        del args[index:index + 2]
-    project_root = os.path.abspath(project) if project else find_project_root()
+    project_root = os.path.abspath(os.path.expanduser(project)) if project else find_project_root()
+    global CURRENT_ROOT
+    CURRENT_ROOT = project_root
+    try:
+        return run_command(command, args, project_root)
+    except sushitree().SharedTreeError as error:
+        sys.stderr.write("sushiwrap: %s\n" % error)
+        return 2
+
+
+def run_command(command, args, project_root):
     if command == "monitor":
         return command_monitor(args, project_root)
     config = load_config(project_root)

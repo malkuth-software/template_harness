@@ -59,6 +59,14 @@ class MarketplaceTests(unittest.TestCase):
                               if '__pycache__/' in name or name.endswith('.pyc')]
         self.assertEqual(tracked, [])
 
+    def test_every_copy_of_sushitree_is_identical(self) -> None:
+        copies: list[Path] = sorted((CLAUDE / 'plugins').glob('*/scripts/sushitree.py'))
+        self.assertGreaterEqual(len(copies), 4)
+        reference: str = copies[0].read_text(encoding='utf-8')
+        copy: Path
+        for copy in copies[1:]:
+            self.assertEqual(copy.read_text(encoding='utf-8'), reference, str(copy) + ' differs from ' + str(copies[0]))
+
     def test_each_house_rule_cites_its_section_and_has_fixtures(self) -> None:
         pack: dict[str, Any] = json.loads((CLAUDE / 'rules' / 'house.json').read_text(encoding='utf-8'))
         self.assertEqual(pack['pack'], 'house')

@@ -118,6 +118,11 @@ default to the usual Homebrew locations shown above; override them for other lay
 
 Seat identity for hooks comes from `SUSHI_SEAT` / `SUSHI_ROLE` in the session environment.
 
+`--project DIR` may come before or after the subcommand. SushiWrap doesn't create `.sushi/` in a
+tree wasabi marks shared (a `sushi-shared-tree` marker in its git dir, `.sushi/shared-tree`, or
+`shared_tree.trees`/`paths` in `~/.sushi/wasabi.json`): commands that would refuse with a message,
+and hooks keep their markers and log under `~/.sushi/` instead.
+
 ## Commands
 
 ```bash
