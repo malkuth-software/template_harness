@@ -294,10 +294,10 @@ def seat_text(names: Names, seat: str, role: str, values: dict[str, str]) -> str
         'host_manifest': None, 'holder': None, 'updated_at': values['timestamp'], 'pointer_updated_at': None,
         'app': names.app}
     lines: list[str] = ['# Seat ' + names.app + '-' + seat, '',
-                        'Managed by SushiWrap. Edit the header with `sushiwrap seat set`, the pointer with '
+                        'Managed by SushiWrap. Edit the header with `sushiwrap seat set`, the resume note with '
                         '`sushiwrap seat pointer`.', '',
                         '```json', json.dumps(header, indent=1, ensure_ascii=False), '```', '',
-                        '## RESUME POINTER (never)', '',
+                        '## Resume note (never)', '',
                         'Seeded by template_harness new_app on ' + values['date'] + '; not taken yet.']
     text: str = '\n'.join(lines) + '\n'
     return text

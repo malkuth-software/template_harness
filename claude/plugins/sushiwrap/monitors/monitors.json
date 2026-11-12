@@ -2,6 +2,6 @@
   {
     "name": "host-reset-deadline",
     "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/sushiwrap.py\" monitor --project \"${CLAUDE_PROJECT_DIR}\"",
-    "description": "Host reset deadline: shutdown checklist at T-30, T-15 and T-5"
+    "description": "Host reset deadline: shutdown checklist 30, 15 and 5 minutes before the reset"
   }
 ]

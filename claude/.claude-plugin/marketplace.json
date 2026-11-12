@@ -15,7 +15,7 @@
     {
       "name": "sushicomms",
       "source": "./plugins/sushicomms",
-      "description": "Structured role tickets for Claude Code seats, not swarm chat. A role registry the orchestrator owns, typed and validated ticket files, a silent dropbox monitor that speaks once when a quorum is met, and gentle role-drift reminders.",
+      "description": "Typed handoff and question tickets between workers: a role registry the coordinator edits, validated ticket files, a monitor that prints one line when every handoff of a batch is in, and reminders when a command breaks a role rule.",
       "version": "0.1.0",
       "license": "MIT"
     },
@@ -43,7 +43,7 @@
     {
       "name": "sushiwrap",
       "source": "./plugins/sushiwrap",
-      "description": "Oh so tight: seats that hold a worker's identity, task and state apart from the model in them; host-reset deadlines with T-30/T-15/T-5 shutdown checklists; a shutdown lint; and host survey/provision manifests.",
+      "description": "Worker records (seats) that keep a worker's role, track, branch, worktree and resume note in files; host-reset deadlines with shutdown checklists 30, 15 and 5 minutes before the reset; a shutdown lint; and host survey/provision manifests.",
       "version": "0.1.0",
       "license": "MIT"
     },

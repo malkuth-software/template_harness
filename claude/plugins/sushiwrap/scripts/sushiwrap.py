@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
 """SushiWrap: seats, host-reset deadlines and portable host state.
 
-A seat holds a worker's identity, task and state, independent of whichever model
-occupies it. A deadline says when this host resets. Survey/provision describe a build
+A seat is a worker record: the worker's role, track, branch, worktree and latest resume
+note, kept in a file so any session can pick the work up. A deadline says when this host resets. Survey/provision describe a build
 host so it can be rebuilt elsewhere.
 
 Subcommands
-  seat list                         all seats, holder and pointer age
+  seat list                         all seats, the claiming host and resume note age
   seat show SEAT                    the seat file
   seat init SEAT [fields]           create a seat file
   seat set SEAT [fields]            change header fields
-  seat take SEAT [--by NAME]        record the holder, print a resume brief
+  seat take SEAT [--by NAME]        claim it for this host, print a resume brief
   seat pointer SEAT --text T | --file F [--append-track]
-                                    replace the seat's RESUME POINTER
-  seat release [SEAT]               clear the holder (default $SUSHI_SEAT)
+                                    replace the seat's resume note
+  seat release [SEAT]               clear the claim (default $SUSHI_SEAT)
      fields: --role R --track F --branch B --worktree [HOST=]PATH --owned P (repeat)
              --ticket T (repeat) --manifest REF
   deadline set (--at ISO | --in 45m | --from-boot 8h) [--scope host|all] [--note T]
   deadline show | clear
-  monitor [--interval S] [--once]   background monitor: checklist at T-30/T-15/T-5
+  monitor [--interval S] [--once]   background monitor: checklist 30, 15 and 5 min before the reset
   hook                              PreToolUse hook: "N min left" once per 5-min bucket
   session-start                     SessionStart hook: renew boot-based deadlines
   shutdown-check [--seat S] [--max-age MIN]
-  shutdown-template [--reason TEXT] a SHUTDOWN section draft for STATE.md (stdout only)
+  shutdown-template [--reason TEXT] a draft shutdown entry for STATE.md (stdout only)
   survey [--host H] [--out FILE] [--json] [--anonymize]
   provision --manifest FILE         print a step plan to recreate a surveyed host
 
@@ -52,12 +52,15 @@ DEFAULT_CONFIG = {
     "pointer_max_age_min": 45,
     "push_allowed": False,
     "memory_mirror": [],
-    "pointer_heading": "RESUME POINTER",
+    "pointer_heading": "Resume note",
     "pointer_skip": r"\b(previous|superseded|old)\b",
     "shutdown_heading": r"\b(SHUTDOWN|STOPPED|PAUSE)\b",
     "survey": {},
     "hosts": {},
 }
+
+# Seat files and track files written before the rename use this heading; it is still read.
+LEGACY_POINTER_HEADING = "RESUME POINTER"
 
 SEAT_FIELDS = ["seat", "role", "track_file", "branch", "worktree", "owned_paths", "open_tickets",
                "host_manifest", "holder", "updated_at", "pointer_updated_at"]
@@ -384,21 +387,21 @@ def command_deadline(args, project_root, config):
 # ---------------------------------------------------------------- monitor
 
 def checklist(config, seat, minutes, threshold):
-    push = "push the seat branch" if config.get("push_allowed") else "do NOT push (not allowed here); note the branch head"
+    push = "push the seat branch" if config.get("push_allowed") else "don't push (not allowed here); note the branch head"
     state = config.get("state_file") or "STATE.md"
     who = (" (seat %s)" % seat) if seat else ""
     if minutes <= 0:
-        head = "SushiWrap: the host reset deadline has passed%s. Stop new work now." % who
+        head = "The host reset time has passed%s." % who
     else:
-        head = "SushiWrap T-%d: %d min until the host resets%s." % (threshold, max(1, round(minutes)), who)
+        head = "Host reset in %d min%s." % (max(1, round(minutes)), who)
     return "\n".join([
         head,
         "Shutdown checklist:",
-        "1. Commit WIP to the seat branch (a 'WIP:' commit is fine).",
-        "2. Write the RESUME POINTER: `%s seat pointer %s --text \"...\" --append-track`." % (CLI, seat or "<seat>"),
+        "1. Commit your work in progress to the seat branch, by path (`git add <paths>`, then `git commit`).",
+        "2. Update the resume note: `%s seat pointer %s --text \"...\" --append-track`." % (CLI, seat or "<seat>"),
         "3. %s." % (push[0].upper() + push[1:]),
-        "4. Coordinator: append a SHUTDOWN section with a numbered Resume order to %s." % os.path.basename(state),
-        "Then run the `shutdown` skill, or `%s shutdown-check` to verify." % CLI,
+        "4. Coordinator: add a shutdown entry to %s (what is in flight, and the order to resume in)." % os.path.basename(state),
+        "The `shutdown` skill walks through this; `%s shutdown-check` verifies it." % CLI,
     ])
 
 
@@ -457,13 +460,12 @@ def command_monitor(args, project_root):
 # ---------------------------------------------------------------- hooks
 
 def hook_message(minutes, deadline, seat):
-    branch = ("seat %s's branch" % seat) if seat else "your seat branch"
+    branch = ("seat %s's branch" % seat) if seat else "the seat branch"
     if minutes <= 0:
-        return ("SushiWrap: the host reset deadline (%s local) passed %d min ago. Commit WIP to %s and write "
-                "your RESUME POINTER now; start nothing new." % (local_hm(deadline["at"]), round(-minutes), branch))
-    return ("SushiWrap: %d min left until the host resets (%s local). Finish the current step, then commit WIP "
-            "to %s and write your RESUME POINTER before starting anything long."
-            % (max(1, round(minutes)), local_hm(deadline["at"]), branch))
+        return ("The host reset time (%s local) passed %d min ago. Commit your work in progress to %s and "
+                "update the resume note." % (local_hm(deadline["at"]), round(-minutes), branch))
+    return ("Host reset in %d min (%s local). Commit your work in progress to %s and update the resume note "
+            "before starting anything long." % (max(1, round(minutes)), local_hm(deadline["at"]), branch))
 
 
 def hook_decide(event, project_root, config, now):
@@ -551,10 +553,10 @@ def render_seat(header, pointer):
             ordered[key] = header[key]
     stamp = header.get("pointer_updated_at") or "never"
     lines = ["# Seat %s" % header["seat"], "",
-             "Managed by SushiWrap. Edit the header with `sushiwrap seat set`, the pointer with "
+             "Managed by SushiWrap. Edit the header with `sushiwrap seat set`, the resume note with "
              "`sushiwrap seat pointer`.", "",
              "```json", json.dumps(ordered, indent=1, ensure_ascii=False), "```", "",
-             "## RESUME POINTER (%s)" % stamp, ""]
+             "## Resume note (%s)" % stamp, ""]
     body = (pointer or "").strip("\n")
     return "\n".join(lines) + (body + "\n" if body else "")
 
@@ -569,7 +571,9 @@ def parse_seat(text):
         raise ValueError("seat file header block is not closed")
     header = json.loads(text[start + 7:end])
     rest = text[end + 4:]
-    marker = rest.find("## RESUME POINTER")
+    marker = rest.find("## Resume note")
+    if marker < 0:
+        marker = rest.find("## " + LEGACY_POINTER_HEADING)
     if marker < 0:
         return header, ""
     after = rest[marker:].split("\n", 1)
@@ -620,11 +624,12 @@ def apply_fields(header, options):
         header["open_tickets"] = options["--ticket"]
 
 
-def track_pointer(path, heading="RESUME POINTER", skip=r"\b(previous|superseded|old)\b"):
-    """Return (heading line, section text) of the latest RESUME POINTER in a track file.
+def track_pointer(path, heading="Resume note", skip=r"\b(previous|superseded|old)\b"):
+    """Return (heading line, section text) of the latest resume note in a track file.
 
-    The latest is the last heading (in file order) that contains `heading` and does not
-    match `skip`; its section runs to the next heading of the same or a higher level."""
+    The latest is the last heading (in file order) that contains `heading` (or the legacy
+    "RESUME POINTER") and does not match `skip`; its section runs to the next heading of the
+    same or a higher level."""
     import re
     try:
         with open(path, encoding="utf-8", errors="replace") as handle:
@@ -639,7 +644,7 @@ def track_pointer(path, heading="RESUME POINTER", skip=r"\b(previous|superseded|
             in_fence = not in_fence
         if in_fence or not line.startswith("#"):
             continue
-        if heading in line and not (skip_re and skip_re.search(line)):
+        if (heading in line or LEGACY_POINTER_HEADING in line) and not (skip_re and skip_re.search(line)):
             found = index
     if found is None:
         return None, None
@@ -733,17 +738,17 @@ def take_brief(config, project_root, header, pointer, now):
         lines.append("Deadline:  %s local, %d min left" % (local_hm(deadline["at"]), round(minutes)))
     lines.append("")
     written = header.get("pointer_updated_at")
-    lines.append("== Seat RESUME POINTER (written %s) ==" % (written or "never"))
+    lines.append("== Seat resume note (written %s) ==" % (written or "never"))
     lines.append(clip(pointer, 80) if pointer else "(empty)")
     if track_path:
-        heading, body = track_pointer(track_path, config.get("pointer_heading", "RESUME POINTER"),
+        heading, body = track_pointer(track_path, config.get("pointer_heading", "Resume note"),
                                       config.get("pointer_skip"))
         lines.append("")
         if heading:
-            lines.append("== Track file's latest pointer: %s ==" % heading.lstrip("# ").strip())
+            lines.append("== Track file's latest resume note: %s ==" % heading.lstrip("# ").strip())
             lines.append(clip(body, 120))
         else:
-            lines.append("== Track file has no RESUME POINTER heading ==")
+            lines.append("== Track file has no resume note heading ==")
     state_file = resolve_path(config.get("state_file"), project_root) if config.get("state_file") else None
     if state_file:
         heading, body = latest_section(state_file, config.get("shutdown_heading"))
@@ -761,9 +766,9 @@ def take_brief(config, project_root, header, pointer, now):
         lines.append("2. Work in %s on branch %s (switch to it if the worktree is elsewhere)." % (worktree, header.get("branch")))
     else:
         lines.append("2. Record the worktree: `%s seat set %s --worktree PATH`." % (CLI, seat))
-    lines.append("3. Resume from the newer RESUME POINTER above (seat written %s; track file modified as shown). "
-                 "It is the authority, not memory." % (written or "never"))
-    lines.append("4. Update the pointer at every milestone and before stopping: "
+    lines.append("3. Resume from the newer resume note above (seat written %s; track file modified as shown)."
+                 % (written or "never"))
+    lines.append("4. Update the resume note at every milestone and before stopping: "
                  "`%s seat pointer %s --text \"...\" --append-track`." % (CLI, seat))
     return "\n".join(lines)
 
@@ -790,10 +795,10 @@ def command_seat(args, project_root, config):
             holder = header.get("holder") or {}
             age = ""
             if header.get("pointer_updated_at"):
-                age = "pointer %s ago" % human_age(now - parse_iso(header["pointer_updated_at"]))
+                age = "resume note %s ago" % human_age(now - parse_iso(header["pointer_updated_at"]))
             print("%-8s %-12s %-40s %-22s %s" % (name, header.get("role") or "-", header.get("branch") or "-",
-                                                 ("held by %s" % holder.get("host")) if holder else "free",
-                                                 age or "no pointer"))
+                                                 ("claimed by %s" % holder.get("host")) if holder else "unclaimed",
+                                                 age or "no resume note"))
         return 0
     if action in ("show", "take", "pointer", "init", "set", "release"):
         seat = rest[0] if rest and not rest[0].startswith("--") else os.environ.get("SUSHI_SEAT")
@@ -823,7 +828,7 @@ def command_seat(args, project_root, config):
         options = parse_options(rest, {"--by": 1})
         holder = header.get("holder") or {}
         if holder and holder.get("host") != hostname():
-            print("NOTE: seat was held by %s since %s; taking it over. Make sure nothing still runs there.\n"
+            print("Note: seat was claimed by %s since %s; claiming it for this host. Check that nothing still runs there.\n"
                   % (holder.get("host"), holder.get("taken_at")))
         header["holder"] = {"host": hostname(), "taken_at": iso_utc(now), "by": options.get("--by")}
         save_seat(config, project_root, header, pointer, now)
@@ -840,14 +845,14 @@ def command_seat(args, project_root, config):
             raise SystemExit("seat pointer needs --text or --file")
         header["pointer_updated_at"] = iso_utc(now)
         save_seat(config, project_root, header, text, now)
-        print("pointer updated for %s" % seat)
+        print("resume note updated for %s" % seat)
         if "--append-track" in options:
             track = header.get("track_file")
             if not track:
                 raise SystemExit("seat has no track_file; set it with `seat set %s --track FILE`" % seat)
             track_path = resolve_path(track, resolve_path(config.get("tracks_root", "."), project_root))
             section = "\n## %s (%s, seat %s, via sushiwrap)\n%s\n" % (
-                config.get("pointer_heading", "RESUME POINTER"), time.strftime("%Y-%m-%d %H:%M", time.localtime(now)),
+                config.get("pointer_heading", "Resume note"), time.strftime("%Y-%m-%d %H:%M", time.localtime(now)),
                 seat, text.strip("\n"))
             with open(track_path, "a", encoding="utf-8", newline="\n") as handle:
                 handle.write(section)
@@ -906,7 +911,7 @@ def check_worktree(worktree, branch, config):
     _, status = git(worktree, "status", "--porcelain=v1", "--untracked-files=no")
     dirty = [line for line in status.splitlines() if line.strip()]
     if dirty:
-        yield "FAIL", ("%d uncommitted change(s) in %s; commit them: git -C %s commit -am 'WIP: <what>'"
+        yield "FAIL", ("%d uncommitted change(s) in %s; commit them by path: git -C %s add <paths>, then commit"
                        % (len(dirty), worktree, worktree))
     else:
         _, subject = git(worktree, "log", "-1", "--format=%h %s")
@@ -940,11 +945,11 @@ def command_shutdown_check(args, project_root, config):
             continue
         stamp = header.get("pointer_updated_at")
         if not stamp or not pointer.strip():
-            results.append((seat, "FAIL", "no RESUME POINTER written"))
+            results.append((seat, "FAIL", "no resume note written"))
         else:
             age = (now - parse_iso(stamp)) / 60.0
             level = "PASS" if age <= max_age else "FAIL"
-            results.append((seat, level, "pointer updated %s ago (limit %d min)" % (human_age(age * 60), max_age)))
+            results.append((seat, level, "resume note updated %s ago (limit %d min)" % (human_age(age * 60), max_age)))
         for level, message in check_worktree(for_host(header.get("worktree")), header.get("branch"), config):
             results.append((seat, level, message))
     for pair in config.get("memory_mirror", []):
@@ -986,10 +991,10 @@ def command_shutdown_template(args, project_root, config):
         if worktree and os.path.isdir(worktree):
             code, out = git(worktree, "rev-parse", "--short", "HEAD")
             head = (" @ " + out.strip()) if code == 0 else ""
-        first = next((line.strip() for line in pointer.splitlines() if line.strip()), "(no pointer)")
+        first = next((line.strip() for line in pointer.splitlines() if line.strip()), "(no resume note)")
         print("%d. %s (%s, %s, %s on %s%s): %s" % (number, seat, header.get("role") or "?", header.get("track_file") or "no track",
                                                    worktree, header.get("branch") or "?", head, first[:200]))
-    print("- Each seat's RESUME POINTER is authoritative. Draft only: edit, then append it to STATE yourself.")
+    print("- Draft from the seats' resume notes: edit it, then append it to STATE yourself.")
     return 0
 
 
