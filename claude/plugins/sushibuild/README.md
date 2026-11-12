@@ -51,6 +51,7 @@ file when it differs per machine.
   "template_note_threshold": 3,
   "log_excerpt_lines": 40,
   "path_map": [],
+  "diagnostic_base": null,
   "triage_model": null,
   "fixer_model": null,
   "fixer_agent_types": ["sushi-fixer"],
@@ -62,25 +63,37 @@ file when it differs per machine.
 (relative to the project root; default the root). On a laptop that must not compile, make it
 your remote wrapper, for example
 `rsync -a --exclude .sushi ./ m4mini:/path/tree/ && ssh m4mini "cd /path/tree && nice -n 15 make"`.
-Relative paths in the compiler output are resolved against `build_cwd`.
+Relative paths in the compiler output start in the directory make or ninja says it entered
+(`Entering directory ...`, itself relative to `build_cwd`), else in `diagnostic_base` (relative
+to the project root) when set, else in `build_cwd`. Errors are grouped by the file they resolve
+to, so two spellings of one file are one unit. A file outside the project root makes its unit
+big, and `lock` refuses any file whose real path is outside the project root or inside a tree
+wasabi marks shared.
+
+One run at a time per project: `begin` refuses (exit 4) while another run is active, that is,
+begun, without its `summary` yet, and within `max_wall_minutes` plus `build_timeout_s`.
+`begin --takeover` ends the other run. For two builds at once, use two workspaces (`--project`).
+`--project DIR` may appear anywhere on the command line, and SushiBuild doesn't create `.sushi/`
+in a tree wasabi marks shared.
 
 **`path_map`** handles builds that print the build host's absolute paths. It is a list of
-`[remote_prefix, local_prefix]` pairs. The longest matching prefix wins, it matches only at a
+`{"remote": prefix, "local": prefix}` entries, the form SushiStyle uses too; a legacy
+`[remote_prefix, local_prefix]` pair still works. The longest matching prefix wins, it matches only at a
 path-component boundary, and `~` in the local prefix is expanded. It is applied to every
 diagnostic path (file, include stack, notes, linker references) before the small/big
 judgement, to `lock` and `log` arguments, and to the summary's log excerpt. A diagnostic file
 that does not exist on this machine after mapping counts as "can't fix locally" and makes the
 run **big**, with a reason naming the printed and local paths. Example for gui_forms workers
 built on the M4 through `m4ws`, which rsyncs `~/Developer/gui_forms_workers/wN/` on the laptop
-to `/Users/joshuahkuttenkuler/Developer/Projects/gui_forms_workers/wN/` on the M4:
+to `/Users/builder/Developer/Projects/gui_forms_workers/wN/` on the M4:
 
 ```jsonc
 {
   // one entry covers every worker tree wN
   "build_command": "m4ws w4 <your usual build arguments>",
   "path_map": [
-    ["/Users/joshuahkuttenkuler/Developer/Projects/gui_forms_workers/",
-     "/Users/ultimussecundai/Developer/gui_forms_workers/"]
+    {"remote": "/Users/builder/Developer/Projects/gui_forms_workers/",
+     "local": "~/Developer/gui_forms_workers/"}
   ]
 }
 ```
@@ -92,8 +105,15 @@ uses `run --detach`, which starts the build in its own session and returns at on
 `wait --max 540` repeatedly until it prints `"status": "done"`. A detached build that
 exceeds `build_timeout_s` is stopped by `wait` (SIGTERM to the process group it started).
 
-Caps: `max_fixes` fixer calls per run; `max_wall_minutes` for the whole run; the same error
-twice ends the run (the script compares a normalized file + message signature).
+Caps: `max_fixes` fix units per run; `max_wall_minutes` for the whole run; the same error
+twice ends the run (the script compares a normalized file + message signature). A fix unit is
+one fixer call, except that one missing include fixed in several files counts once (each file
+still gets its own one-file call). For the same reason, files that fail on one missing include
+count as one toward `max_small_files`; other repeated errors (a renamed API across files) count
+per file.
+
+`result [FILE|-]` checks a return block (default: the last summary's, `last-result.txt`) and
+prints its fields as JSON, or exits 1 when the block is malformed.
 
 ## Script
 

@@ -29,7 +29,10 @@ touch. It reports once, when it finishes. If your session started
 it in the background, its result arrives as one completion notification.
 
 ## What comes back
-One block, from `=== SUSHIBUILD RESULT ===` to `=== END SUSHIBUILD ===`:
+One block, from `=== SUSHIBUILD RESULT ===` to `=== END SUSHIBUILD ===`. If the reply has no
+well-formed block, don't read the outcome from its text. Run
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sushibuild.py" result`: it checks the block the run's
+summary saved and prints its fields. If that also fails, ask the agent for its block again.
 
 - `outcome: success`: the build passed. `fixups:` lists every edit the fixer made (file,
   error, fix, diff size). Review those few lines; the full diffs are in the `fixups file`

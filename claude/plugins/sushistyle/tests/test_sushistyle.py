@@ -151,5 +151,15 @@ class LocalClangRefused(unittest.TestCase):
         self.assertIn("local clang disabled", status)
 
 
+class PathMapForms(unittest.TestCase):
+    """G8: {"local", "remote"} entries, the convention shared with SushiBuild; legacy pairs keep their order."""
+
+    def test_named_and_legacy_entries(self):
+        path_map = [{"local": "/l/w4/", "remote": "/r/w4/"}, ["/l/", "/r/base/"], {"remote": "/x/"}]
+        self.assertEqual(sushistyle.map_remote_path("/l/w4/a.cpp", path_map), "/r/w4/a.cpp")
+        self.assertEqual(sushistyle.map_remote_path("/l/b.cpp", path_map), "/r/base/b.cpp")
+        self.assertIsNone(sushistyle.map_remote_path("/elsewhere/c.cpp", path_map))
+
+
 if __name__ == "__main__":
     unittest.main()

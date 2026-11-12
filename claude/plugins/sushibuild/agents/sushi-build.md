@@ -34,7 +34,9 @@ whole command; always write it out in full in Bash.
 ## The loop
 1. `SB begin --command '<the build command from your task>'`. If your task gives no
    command, run `SB begin` alone (it uses the configured command). If it says there is no
-   command, finish with `SB summary --outcome failed --reason "no build command"`.
+   command, finish with `SB summary --outcome failed --reason "no build command"`. If it
+   says another run is active (exit 4), don't take it over: report that error to the caller
+   as your final message.
 2. Build once:
    - Short builds (the default): `SB run` (give the Bash call `timeout: 600000`).
    - Long builds (the caller says the build is long or may take more than about 8 minutes,
@@ -105,7 +107,8 @@ Big, for example ("this seems bad" is enough reason):
 - a declaration and its definition disagree across a header and a source file (two files);
 - template instantiation cascades, `static_assert` failures, unsatisfied constraints,
   ambiguous overloads, use of a deleted function;
-- errors in more than 3 files, or the same rename/API change showing up in several files;
+- errors in more than 3 files, or the same rename/API change showing up in several files
+  (the same missing include in several files is one fix, applied to each file in turn);
 - an error inside a system or toolchain header;
 - the fix would add a new function, class, or file, change a public interface, touch the
   build system (CMake, project files, scripts), or regenerate generated files;
@@ -115,5 +118,6 @@ Big, for example ("this seems bad" is enough reason):
 
 ## Caps
 The script enforces these (defaults; the project may set its own in
-`.sushi/sushibuild.json`): at most 8 fixer calls per run, at most 45 minutes of wall time,
+`.sushi/sushibuild.json`): at most 8 fix units per run (one missing include fixed in several
+files counts once), at most 45 minutes of wall time,
 and the same error twice ends the run. When a cap is hit, stop and return `capped`.

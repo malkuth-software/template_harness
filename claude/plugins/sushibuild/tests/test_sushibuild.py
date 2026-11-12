@@ -312,6 +312,8 @@ class StateTests(ProjectCase):
     def test_begin_clears_previous_run(self):
         run_json(["begin", "--command", "true"], self.root)
         run_json(["log", "--file", self.main, "--error", "e", "--verdict", "applied"], self.root)
+        subprocess.run([sys.executable, SCRIPT, "summary", "--outcome", "success"], cwd=self.root,
+                       capture_output=True, check=True)
         run_json(["begin", "--command", "true"], self.root)
         self.assertFalse(os.path.exists(self.state("fixups.jsonl")))
 
@@ -754,6 +756,160 @@ class ConfigLayers(unittest.TestCase):
             del os.environ["SUSHIBUILD_CONFIG"]
         self.assertEqual(config["max_fixes"], sushibuild.DEFAULT_CONFIG["max_fixes"])
         self.assertEqual(config["max_small_files"], 1)
+
+
+class GapTests(ProjectCase):
+    """Gaps found while using SushiBuild (notes: desks/coordinator/fransushi/PLAN.md, G8 and G12-G15)."""
+
+    def test_g12_relative_paths_resolve_against_the_entered_build_directory(self):
+        build = os.path.join(self.root, "out", "build")
+        os.makedirs(build)
+        text = ("ninja: Entering directory `out/build'\n"
+                "../../src/main.cpp:3:5: error: use of undeclared identifier 'cnout'\n")
+        result = sushibuild.classify_text(text, 1, base=self.root, check_local=True, project_root=self.root)
+        self.assertEqual(result["units"][0]["abs_file"], self.main)
+        self.assertEqual(result["prelim"], "small", result["reasons"])
+
+    def test_g12_make_directories_nest_and_leave(self):
+        text = ("make[1]: Entering directory '%s/out'\n"
+                "make[1]: Leaving directory '%s/out'\n"
+                "src/main.cpp:3:5: error: use of undeclared identifier 'cnout'\n" % (self.root, self.root))
+        result = sushibuild.classify_text(text, 1, base=self.root, check_local=True, project_root=self.root)
+        self.assertEqual(result["units"][0]["abs_file"], self.main)
+
+    def test_g12_a_file_outside_the_project_is_big(self):
+        outside = tempfile.mkdtemp(prefix="sushibuild-outside-")
+        self.addCleanup(shutil.rmtree, outside, True)
+        stray = os.path.join(outside, "a.cpp")
+        with open(stray, "w") as handle:
+            handle.write("int a;\n")
+        text = "%s:1:1: error: use of undeclared identifier 'x'\n" % stray
+        result = sushibuild.classify_text(text, 1, base=self.root, check_local=True, project_root=self.root)
+        self.assertEqual(result["prelim"], "big")
+        self.assertIn("outside the project root", result["units"][0]["reasons"][0])
+
+    def test_g12_lock_refuses_a_file_outside_the_project(self):
+        outside = tempfile.mkdtemp(prefix="sushibuild-outside-")
+        self.addCleanup(shutil.rmtree, outside, True)
+        stray = os.path.join(outside, "a.cpp")
+        with open(stray, "w") as handle:
+            handle.write("int a;\n")
+        run_json(["begin", "--command", "true"], self.root)
+        code, out = run_json(["lock", stray, "--fix", "x"], self.root)
+        self.assertEqual(code, 2)
+        self.assertIn("outside the project root", out["error"])
+        link = os.path.join(self.root, "src", "link.cpp")
+        os.symlink(stray, link)
+        code, out = run_json(["lock", link, "--fix", "x"], self.root)
+        self.assertEqual(code, 2)
+        self.assertIn("outside the project root", out["error"])
+
+    def test_g12_lock_refuses_a_shared_tree(self):
+        os.makedirs(os.path.join(self.root, ".git"))
+        run_json(["begin", "--command", "true"], self.root)
+        with open(os.path.join(self.root, ".git", "sushi-shared-tree"), "w") as handle:
+            handle.write("marked\n")
+        code, out = run_json(["lock", self.main, "--fix", "x"], self.root)
+        self.assertEqual(code, 2)
+        self.assertIn("shared working tree", out["error"])
+
+    def test_g13_two_spellings_of_one_file_are_one_unit(self):
+        os.makedirs(os.path.join(self.root, "build"))
+        text = ("ninja: Entering directory `build'\n"
+                "../src/main.cpp:3:5: error: use of undeclared identifier 'cnout'\n"
+                "%s:4:1: error: expected ';' after expression\n" % self.main)
+        config = dict(sushibuild.DEFAULT_CONFIG, max_small_files=1)
+        result = sushibuild.classify_text(text, 1, base=self.root, config=config, check_local=True,
+                                          project_root=self.root)
+        self.assertEqual(len(result["units"]), 1)
+        self.assertEqual(result["prelim"], "small", result["reasons"])
+        self.assertEqual(len(result["units"][0]["spellings"]), 2)
+
+    def test_g14_one_missing_include_in_many_files_is_one_fix_unit(self):
+        names = []
+        for name in ("a", "b", "c", "d"):
+            path = os.path.join(self.root, "src", name + ".cpp")
+            with open(path, "w") as handle:
+                handle.write('#include "gone.hpp"\n')
+            names.append(path)
+        text = "".join("%s:1:10: fatal error: 'gone.hpp' file not found\n" % path for path in names)
+        result = sushibuild.classify_text(text, 1, base=self.root, check_local=True, project_root=self.root)
+        self.assertEqual(result["prelim"], "small", result["reasons"])
+        self.assertEqual(result["counts"]["distinct_causes"], 1)
+        compact = sushibuild.compact_classification(result)
+        self.assertEqual(compact["units"][0]["same_cause_files"], 4)
+
+    def test_g14_the_same_include_fix_in_many_files_counts_once_toward_max_fixes(self):
+        self.write_config(max_fixes=2)
+        run_json(["begin", "--command", "true"], self.root)
+        for index, path in enumerate((self.main, self.other, self.main)):
+            self.assertEqual(run_json(["lock", path, "--fix", "add #include <vector>"], self.root)[0], 0)
+            run_json(["log", "--file", path, "--error", "%s:%d:1: error: no template named 'vector' in namespace "
+                      "'std'; did you forget to '#include <vector>'?" % (path, index + 1),
+                      "--fix", "add #include <vector>", "--verdict", "applied"], self.root)
+            run_json(["unlock"], self.root)
+        code, out = run_json(["status"], self.root)
+        self.assertEqual(out["caps"]["fixes"], 1)
+        self.assertEqual(out["caps"]["fixer_calls"], 3)
+        self.assertEqual(out["caps"]["cap_hit"], [])
+
+    def test_g14_result_accepts_a_well_formed_block_and_rejects_free_text(self):
+        run_json(["begin", "--command", "true"], self.root)
+        run_cli(["summary", "--outcome", "escalated", "--reason", "linker errors"], self.root)
+        code, out = run_json(["result"], self.root)
+        self.assertEqual(code, 0)
+        self.assertEqual(out["fields"]["outcome"], "escalated")
+        self.assertEqual(out["fields"]["reason"], "linker errors")
+        loose = ("  ===  sushibuild result ===\n reason: x\n   OUTCOME :  Success \n"
+                 "=== END SUSHIBUILD ===\n")
+        process = run_cli(["result", "-"], self.root, stdin=loose)
+        self.assertEqual(process.returncode, 0, process.stdout)
+        self.assertEqual(json.loads(process.stdout)["fields"]["outcome"], "success")
+        process = run_cli(["result", "-"], self.root, stdin="The build failed on 5 undefined symbols.\n")
+        self.assertEqual(process.returncode, 1)
+        self.assertIn("ask the sushi-build agent", json.loads(process.stdout)["next"])
+        process = run_cli(["result", "-"], self.root, stdin="=== SUSHIBUILD RESULT ===\noutcome: maybe\n"
+                                                            "=== END SUSHIBUILD ===\n")
+        self.assertEqual(process.returncode, 1)
+
+    def test_g8_named_path_map_entries(self):
+        pairs = sushibuild.normalized_path_map([{"remote": "/r/", "local": "/l/"}, ["/q/", "/p/"], {"local": "/x"}])
+        self.assertEqual(sushibuild.map_path("/r/a.cpp", pairs), "/l/a.cpp")
+        self.assertEqual(sushibuild.map_path("/q/a.cpp", pairs), "/p/a.cpp")
+        self.assertEqual(len(pairs), 2)
+
+    def test_g15_a_second_run_is_refused_while_one_is_active(self):
+        self.assertEqual(run_json(["begin", "--command", "true"], self.root)[0], 0)
+        run_json(["log", "--file", self.main, "--error", "e", "--verdict", "applied"], self.root)
+        code, out = run_json(["begin", "--command", "false"], self.root)
+        self.assertEqual(code, 4)
+        self.assertIn("another SushiBuild run is active", out["error"])
+        self.assertTrue(os.path.exists(self.state("fixups.jsonl")))  # the first run's state is untouched
+        code, out = run_json(["begin", "--command", "false", "--takeover"], self.root)
+        self.assertEqual(code, 0)
+        run_cli(["summary", "--outcome", "failed"], self.root)
+        self.assertEqual(run_json(["begin", "--command", "true"], self.root)[0], 0)
+
+    def test_g15_an_abandoned_run_does_not_block(self):
+        self.write_config(max_wall_minutes=0, build_timeout_s=0)
+        run_json(["begin", "--command", "true"], self.root)
+        self.assertEqual(run_json(["begin", "--command", "true"], self.root)[0], 0)
+
+    def test_g7_project_option_anywhere_and_no_sushi_in_a_shared_tree(self):
+        shared = tempfile.mkdtemp(prefix="sushibuild-shared-")
+        self.addCleanup(shutil.rmtree, shared, True)
+        os.makedirs(os.path.join(shared, ".git"))
+        with open(os.path.join(shared, ".git", "sushi-shared-tree"), "w") as handle:
+            handle.write("marked\n")
+        code, out = run_json(["begin", "--command", "true"], shared)
+        self.assertEqual(code, 2)
+        self.assertIn("shared working tree", out["error"])
+        self.assertFalse(os.path.exists(os.path.join(shared, ".sushi")))
+        code, out = run_json(["--project", self.root, "begin", "--command", "true"], shared)
+        self.assertEqual(code, 0)
+        self.assertEqual(out["project_root"], self.root)
+        code, out = run_json(["status", "--project=" + self.root], shared)
+        self.assertEqual(out["project_root"], self.root)
 
 
 if __name__ == "__main__":

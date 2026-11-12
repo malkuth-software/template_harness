@@ -22,11 +22,20 @@ Subcommands (all print JSON unless noted; run from anywhere inside the project)
                         snapshot when it matches F. Reports repeats.
   status                Run state: elapsed, builds, fixes, caps.
   summary --outcome success|escalated|capped|failed [--reason R] [--log PATH]
-                        Render fixups.jsonl as the return block (plain text, not JSON).
+                        Render fixups.jsonl as the return block (plain text, not JSON), and
+                        end the run.
+  result [FILE|-]       Check a return block (default: the last summary's) and print its fields
+                        as JSON; exit 1 when it is malformed, so the caller asks for it again
+                        instead of reading free text.
   hook                  PreToolUse hook: reads hook JSON on stdin. Enforces the one-file
                         lock for the fixer, keeps the triage agent's writes inside its state
                         directory, its Bash away from source edits and other build commands,
                         and its Agent calls to the fixer only.
+
+Global: --project DIR, anywhere on the command line (default: the nearest ancestor with .sushi/
+or .git). .sushi/ is not created in a tree wasabi marks shared.
+One run at a time per project: begin refuses while another run is active (it has not printed
+its summary and is within its wall-time cap); begin --takeover ends that run first.
 
 Config: ~/.sushi/sushibuild.json overlaid by <project>/.sushi/sushibuild.json (the project wins;
 $SUSHIBUILD_CONFIG replaces both).
@@ -57,7 +66,9 @@ DEFAULT_CONFIG = {
     "log_excerpt_lines": 40,
     "fixer_agent_types": ["sushi-fixer"],
     "build_agent_types": ["sushi-build"],
-    "path_map": [],                # [[remote_prefix, local_prefix], ...] for diagnostic paths
+    "path_map": [],                # [{"remote": R, "local": L}, ...] (or legacy [R, L] pairs) for diagnostic paths
+    "diagnostic_base": None,       # where relative diagnostic paths start when the log names no
+                                   # directory (relative to the project root); default: the build cwd
     "triage_model": None,          # null: the sushi-build agent's own model (haiku)
     "fixer_model": None,           # null: the sushi-fixer agent's own model (sonnet)
 }
@@ -92,7 +103,27 @@ def find_project_root(start):
         directory = parent
 
 
+# Set by main from a global --project option.
+PROJECT_OVERRIDE = None
+_SUSHITREE = None
+
+
+def sushitree():
+    """This plugin's copy of sushitree.py, loaded by path on first use."""
+    global _SUSHITREE
+    if _SUSHITREE is None:
+        import importlib.util
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sushitree.py")
+        spec = importlib.util.spec_from_file_location("sushibuild_sushitree", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _SUSHITREE = module
+    return _SUSHITREE
+
+
 def project_root_or_cwd(start=None):
+    if PROJECT_OVERRIDE:
+        return os.path.abspath(os.path.expanduser(PROJECT_OVERRIDE))
     start = start or os.getcwd()
     root = find_project_root(start)
     if root is None:
@@ -127,7 +158,7 @@ def load_config(root):
 def state_dir(root, create=False):
     path = os.path.join(root, *STATE_PARTS)
     if create:
-        os.makedirs(path, exist_ok=True)
+        sushitree().make_dirs(root, path)
     return path
 
 
@@ -151,10 +182,10 @@ def write_json(path, data):
 def append_log(root, message):
     try:
         directory = os.path.join(root, ".sushi", "logs")
-        os.makedirs(directory, exist_ok=True)
+        sushitree().make_dirs(root, directory)
         with open(os.path.join(directory, "sushibuild.log"), "a", encoding="utf-8") as handle:
             handle.write("%s %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%S"), message))
-    except OSError:
+    except (OSError, Exception):  # includes SharedTreeError: no log in a shared tree
         pass
 
 
@@ -190,7 +221,10 @@ def format_duration(seconds):
 
 def caps_state(root, config, run=None):
     run = run if run is not None else read_json(os.path.join(state_dir(root), "run.json"), {}) or {}
-    fixes = len(read_fixups(root))
+    records = read_fixups(root)
+    # Fixes with one cause (the same message in several files, e.g. one missing include) count as
+    # one fix unit toward max_fixes; each still needs its own one-file fixer call.
+    fixes = len(fix_units(records))
     started = run.get("started")
     elapsed = (time.time() - started) if started else 0.0
     max_fixes = int(run.get("max_fixes", config["max_fixes"]))
@@ -202,6 +236,7 @@ def caps_state(root, config, run=None):
         hit.append("wall_time (%s)" % format_duration(max_wall_s))
     return {
         "fixes": fixes,
+        "fixer_calls": len(records),
         "max_fixes": max_fixes,
         "elapsed_s": int(elapsed),
         "max_wall_s": int(max_wall_s),
@@ -212,6 +247,9 @@ def caps_state(root, config, run=None):
 
 # ---------------------------------------------------------------- classify
 
+# Make and ninja name the directory the compiler runs in; diagnostics after it are relative to it.
+RE_ENTERING = re.compile(r"^\S*?(?:make|ninja)(?:\[\d+\])?: Entering directory [`'\u2018\"](?P<dir>.+?)['\u2019\"]\s*$")
+RE_LEAVING = re.compile(r"^\S*?make(?:\[\d+\])?: Leaving directory [`'\u2018\"](?P<dir>.+?)['\u2019\"]\s*$")
 RE_INCLUDED_FROM = re.compile(r"^(?:In file included from|\s+from)\s+(?P<file>.+?):(?P<line>\d+)(?::\d+)?[:,]?\s*$")
 RE_GCC = re.compile(
     r"^(?P<file>(?:[A-Za-z]:[\\/])?[^:\n]+?):(?P<line>\d+):(?:(?P<col>\d+):)?\s*"
@@ -306,6 +344,7 @@ def parse_log(text):
     flags = {"too_many_errors": False, "link_failed": False}
     include_stack = []
     pending_context = []
+    directories = []
     last = None
     lines = strip_ansi(text).splitlines()
     index = 0
@@ -317,6 +356,16 @@ def parse_log(text):
             continue
         if RE_TOO_MANY.search(line):
             flags["too_many_errors"] = True
+
+        match = RE_ENTERING.match(line.strip())
+        if match:
+            directories.append(match.group("dir"))
+            continue
+        match = RE_LEAVING.match(line.strip())
+        if match:
+            if directories:
+                directories.pop()
+            continue
 
         match = RE_INCLUDED_FROM.match(line)
         if match:
@@ -389,13 +438,15 @@ def parse_log(text):
 
         match = RE_MSVC.match(line)
         if match:
-            last = add_diagnostic(diagnostics, match, include_stack, pending_context, last, code=match.group("code"))
+            last = add_diagnostic(diagnostics, match, include_stack, pending_context, last, code=match.group("code"),
+                                  directory=directories[-1] if directories else None)
             include_stack = []
             continue
 
         match = RE_GCC.match(line)
         if match and not line.lstrip().startswith(("ld:", "clang:", "clang++:", "g++:", "gcc:", "collect2:")):
-            last = add_diagnostic(diagnostics, match, include_stack, pending_context, last)
+            last = add_diagnostic(diagnostics, match, include_stack, pending_context, last,
+                                  directory=directories[-1] if directories else None)
             include_stack = []
             continue
 
@@ -420,7 +471,7 @@ def parse_log(text):
     return diagnostics, linker, build_system, flags
 
 
-def add_diagnostic(diagnostics, match, include_stack, pending_context, last, code=None):
+def add_diagnostic(diagnostics, match, include_stack, pending_context, last, code=None, directory=None):
     severity = match.group("sev")
     message = match.group("msg").strip()
     record = {
@@ -433,6 +484,8 @@ def add_diagnostic(diagnostics, match, include_stack, pending_context, last, cod
     }
     if code:
         record["code"] = code
+    if directory:
+        record["dir"] = directory
     if include_stack:
         record["included_from"] = list(include_stack)
     if severity in ("note", "remark") and last is not None:
@@ -457,13 +510,27 @@ def dedupe(diagnostics):
     return unique
 
 
+def path_map_entry(entry):
+    """(remote, local) from {"remote": R, "local": L} (the FranSushi convention, shared with SushiStyle)
+    or a legacy [remote, local] pair; None for anything else."""
+    if isinstance(entry, dict):
+        remote, local = entry.get("remote"), entry.get("local")
+    elif isinstance(entry, (list, tuple)) and len(entry) == 2:
+        remote, local = entry[0], entry[1]
+    else:
+        return None
+    if not remote or local is None:
+        return None
+    return str(remote), os.path.expanduser(str(local))
+
+
 def normalized_path_map(path_map):
-    """[[remote, local], ...] -> [(remote, local)], longest remote prefix first, ~ expanded."""
+    """path_map entries -> [(remote, local)], longest remote prefix first, ~ expanded."""
     pairs = []
     for entry in path_map or []:
-        if not isinstance(entry, (list, tuple)) or len(entry) != 2 or not entry[0]:
-            continue
-        pairs.append((str(entry[0]), os.path.expanduser(str(entry[1]))))
+        pair = path_map_entry(entry)
+        if pair is not None:
+            pairs.append(pair)
     pairs.sort(key=lambda pair: len(pair[0]), reverse=True)
     return pairs
 
@@ -495,6 +562,8 @@ def apply_path_map(diagnostics, linker, pairs):
         if mapped != record["file"]:
             record["printed_file"] = record["file"]
             record["file"] = mapped
+        if record.get("dir"):
+            record["dir"] = map_path(record["dir"], pairs)
         if record.get("included_from"):
             record["included_from"] = [map_text(item, pairs) for item in record["included_from"]]
         record["notes"] = [map_text(note, pairs) for note in record["notes"]]
@@ -502,9 +571,60 @@ def apply_path_map(diagnostics, linker, pairs):
         entry["referenced_from"] = [map_text(item, pairs) for item in entry["referenced_from"]]
 
 
-def classify_text(text, exit_code=None, base=None, config=None, check_local=False):
+def is_absolute(path):
+    return os.path.isabs(path) or re.match(r"^[A-Za-z]:[\\/]", path) is not None
+
+
+def resolve_diagnostic_path(record, base):
+    """The local path of a diagnostic's file. A relative path starts in the directory make or ninja
+    said it entered (itself relative to base when relative), else in base."""
+    name = record["file"]
+    if is_absolute(name):
+        return os.path.normpath(name)
+    directory = record.get("dir")
+    if directory and not is_absolute(directory) and base:
+        directory = os.path.join(base, directory)
+    directory = directory or base
+    return os.path.normpath(os.path.join(directory, name)) if directory else os.path.normpath(name)
+
+
+def unit_key(path):
+    """Units group by the file itself: two spellings of one file are one unit."""
+    return os.path.realpath(path) if os.path.exists(path) else os.path.normpath(path)
+
+
+# A missing include repeated in several files is one mistake with one fix per file; a repeated
+# undeclared name is more often an API change across files, which stays big (the agent's rubric).
+RE_INCLUDE_KIND = re.compile(r"file not found|no such file or directory|cannot open (?:include|source) file|"
+                             r"C1083|forget to ['\"\u2018]?#include|try to include", re.I)
+
+
+def error_cause(message, fix=None):
+    """The cause of a missing-include error: its message without paths or numbers, so the same
+    include missing in several files compares equal. None for any other error (each file counts)."""
+    if not (RE_INCLUDE_KIND.search(message or "") or "#include" in (fix or "")):
+        return None
+    return error_signature("", message)
+
+
+def fix_units(records):
+    """The distinct causes among logged fixups (a record without a cause is its own unit)."""
+    units = set()
+    for record in records:
+        units.add(record.get("cause") or ("#%s" % record.get("n")))
+    return units
+
+
+def inside(path, root):
+    real_root = os.path.realpath(root)
+    real = os.path.realpath(path)
+    return real == real_root or real.startswith(real_root.rstrip(os.sep) + os.sep)
+
+
+def classify_text(text, exit_code=None, base=None, config=None, check_local=False, project_root=None):
     """Parse and judge a build log. check_local: a file that does not exist on this machine
-    (after path_map) cannot be fixed here, so its unit is big."""
+    (after path_map) cannot be fixed here, so its unit is big. project_root: a file outside it is
+    not fixed by this run, so its unit is big too."""
     config = config or DEFAULT_CONFIG
     pairs = normalized_path_map(config.get("path_map"))
     diagnostics, linker, build_system, flags = parse_log(text)
@@ -516,21 +636,24 @@ def classify_text(text, exit_code=None, base=None, config=None, check_local=Fals
 
     units = {}
     for record in errors:
-        unit = units.setdefault(record["file"], {"file": record["file"], "errors": [], "reasons": []})
+        resolved = resolve_diagnostic_path(record, base)
+        unit = units.setdefault(unit_key(resolved), {"file": record["file"], "abs_file": resolved, "errors": [],
+                                                     "reasons": [], "spellings": []})
+        if record["file"] not in unit["spellings"]:
+            unit["spellings"].append(record["file"])
         unit["errors"].append(record)
     unit_list = []
-    for name, unit in units.items():
+    for unit in units.values():
+        name = unit["file"]
         reasons = []
-        if base and not os.path.isabs(name):
-            unit["abs_file"] = os.path.normpath(os.path.join(base, name))
-        else:
-            unit["abs_file"] = os.path.normpath(name)
-        if is_system_path(name):
+        if is_system_path(name) or is_system_path(unit["abs_file"]):
             reasons.append("error inside a system/toolchain header (usually a cascade from user code)")
         elif check_local and not os.path.isfile(unit["abs_file"]):
             printed = unit["errors"][0].get("printed_file", name)
             reasons.append("file not on this machine: %s (printed as %s); can't fix locally. "
                            "If the build host uses another path, add a path_map entry" % (unit["abs_file"], printed))
+        elif project_root and not inside(unit["abs_file"], project_root):
+            reasons.append("file outside the project root %s: %s" % (project_root, unit["abs_file"]))
         if len(unit["errors"]) > int(config["max_errors_per_small_file"]):
             reasons.append("%d errors in one file (cascade?)" % len(unit["errors"]))
         unit_template = sum(1 for d in unit["errors"] for n in d["notes"] if RE_TEMPLATE_NOTE.search(n))
@@ -547,6 +670,10 @@ def classify_text(text, exit_code=None, base=None, config=None, check_local=Fals
         unit["prelim"] = "big" if reasons else "small"
         unit["reasons"] = reasons
         first = unit["errors"][0]
+        if RE_INCLUDE_KIND.search(first["message"] + " " + " ".join(first["notes"])):
+            unit["cause"] = error_signature("", first["message"])
+        else:
+            unit["cause"] = "file:" + unit_key(unit["abs_file"])
         unit["first_error"] = "%s:%d%s: %s" % (
             first["file"], first["line"], (":%d" % first["col"]) if first["col"] else "", first["message"])
         context = first["message"] + " " + " ".join(first["notes"])
@@ -566,8 +693,16 @@ def classify_text(text, exit_code=None, base=None, config=None, check_local=Fals
         reasons.append("template instantiation cascade (%d instantiation notes)" % template_notes)
     if flags["too_many_errors"]:
         reasons.append("compiler gave up: too many errors")
-    if len(unit_list) > int(config["max_small_files"]):
-        reasons.append("errors in %d files (> max_small_files %d)" % (len(unit_list), int(config["max_small_files"])))
+    causes = {}
+    for unit in unit_list:
+        causes.setdefault(unit["cause"], []).append(unit)
+    for unit in unit_list:
+        unit["same_cause_files"] = len(causes[unit["cause"]])
+    # Files that fail for one missing include are one fix unit: four files missing the same include
+    # are one mistake repeated, not four. Other errors count per file.
+    if len(causes) > int(config["max_small_files"]):
+        reasons.append("errors in %d files with %d distinct causes (> max_small_files %d)" % (
+            len(unit_list), len(causes), int(config["max_small_files"])))
     for unit in unit_list:
         if unit["prelim"] == "big":
             reasons.append("%s: %s" % (unit["file"], "; ".join(unit["reasons"][:2])))
@@ -589,7 +724,7 @@ def classify_text(text, exit_code=None, base=None, config=None, check_local=Fals
         "reasons": reasons,
         "counts": {
             "errors": len(errors), "warnings": len(warnings), "linker": len(linker),
-            "files_with_errors": len(unit_list), "template_notes": template_notes,
+            "files_with_errors": len(unit_list), "distinct_causes": len(causes), "template_notes": template_notes,
         },
         "units": unit_list,
         "linker": linker,
@@ -609,6 +744,10 @@ def compact_classification(result, max_units=6):
         }
         if unit["errors"][0].get("printed_file"):
             entry["printed_file"] = unit["errors"][0]["printed_file"]
+        if len(unit.get("spellings") or []) > 1:
+            entry["spellings"] = unit["spellings"]
+        if unit.get("same_cause_files", 1) > 1:
+            entry["same_cause_files"] = unit["same_cause_files"]
         if unit.get("hint"):
             entry["hint"] = unit["hint"]
         if unit["reasons"]:
@@ -640,7 +779,20 @@ def cmd_begin(args):
     cwd = args.cwd or config.get("build_cwd") or root
     if not os.path.isabs(cwd):
         cwd = os.path.join(root, cwd)
-    directory = state_dir(root, create=True)
+    try:
+        directory = state_dir(root, create=True)
+    except sushitree().SharedTreeError as error:
+        emit({"ok": False, "error": str(error)})
+        return 2
+    active = active_run(root, config)
+    if active and not args.takeover:
+        emit({"ok": False, "error": (
+            "another SushiBuild run is active in this project (started %s ago, command %r). Wait for its "
+            "summary, run the second build from another workspace (--project), or pass --takeover to end it."
+            % (format_duration(time.time() - active["started"]), active.get("command")))})
+        return 4
+    if active:
+        append_log(root, "begin --takeover ends the run started %s" % format_duration(time.time() - active["started"]))
     for name in ("fixups.jsonl", "fixlock.json", "lastlock.json", "locked.orig", "last-result.txt"):
         try:
             os.remove(os.path.join(directory, name))
@@ -660,6 +812,22 @@ def cmd_begin(args):
           "max_fixes": run["max_fixes"], "max_wall_minutes": config["max_wall_minutes"],
           "fixer_model": config.get("fixer_model")})
     return 0
+
+
+def active_run(root, config):
+    """The current run.json when a run is active: begun, not yet summarized, and within its wall-time
+    cap plus its build timeout (older runs were abandoned). A detached build still running is active."""
+    run = read_json(os.path.join(state_dir(root), "run.json"))
+    if not run or run.get("finished") or not run.get("started"):
+        return None
+    detached_pid = int((run.get("detached") or {}).get("pid") or 0)
+    if detached_pid > 0 and pid_alive(detached_pid):
+        return run
+    limit = float(run.get("max_wall_s", config["max_wall_minutes"] * 60)) + float(
+        run.get("timeout_s", config["build_timeout_s"]))
+    if time.time() - float(run["started"]) > limit:
+        return None
+    return run
 
 
 def prepare_build(root, config):
@@ -689,7 +857,10 @@ def finalize_build(root, config, run, log_path, exit_code, timed_out, elapsed):
             text = handle.read()
     except OSError:
         text = ""
-    result = classify_text(text, exit_code, base=run["cwd"], config=config, check_local=True)
+    base = run["cwd"]
+    if config.get("diagnostic_base"):
+        base = os.path.join(root, os.path.expanduser(config["diagnostic_base"]))
+    result = classify_text(text, exit_code, base=base, config=config, check_local=True, project_root=root)
     if timed_out:
         result["prelim"] = "big"
         result["reasons"].insert(0, "build timed out after %ss" % run.get("timeout_s"))
@@ -860,6 +1031,14 @@ def cmd_lock(args):
     if not os.path.isfile(args.file):
         emit({"ok": False, "error": "no such file on this machine: %s (check path_map)" % args.file})
         return 2
+    if not inside(args.file, root):
+        emit({"ok": False, "error": "refusing to lock %s: its real path %s is outside the project root %s" % (
+            args.file, os.path.realpath(args.file), os.path.realpath(root))})
+        return 2
+    shared = sushitree().shared_tree_reason(os.path.realpath(args.file))
+    if shared:
+        emit({"ok": False, "error": "refusing to lock %s: it is in a shared working tree (%s)" % (args.file, shared)})
+        return 2
     caps = caps_state(root, config)
     if caps["cap_hit"]:
         emit({"ok": False, "cap_hit": caps["cap_hit"], "caps": caps, "error": "cap reached: escalate instead of fixing"})
@@ -934,7 +1113,7 @@ def cmd_log(args):
         "n": len(previous) + 1, "time": time.strftime("%Y-%m-%dT%H:%M:%S"), "file": file_path,
         "error": args.error, "fix": args.fix, "diff_stat": diff_stat or args.diff_stat,
         "reported_diff_stat": args.diff_stat, "diff": diff_text, "verdict": verdict,
-        "signature": signature, "repeat": repeat,
+        "signature": signature, "cause": error_cause(args.error, args.fix), "repeat": repeat,
     }
     with open(os.path.join(directory, "fixups.jsonl"), "a", encoding="utf-8") as handle:
         handle.write(json.dumps(record) + "\n")
@@ -1015,8 +1194,87 @@ def cmd_summary(args):
             handle.write(text)
     except OSError:
         pass
+    run_path = os.path.join(state_dir(root), "run.json")
+    run = read_json(run_path)
+    if run:
+        run["finished"] = time.time()
+        write_json(run_path, run)
     append_log(root, "summary outcome=%s" % args.outcome)
     sys.stdout.write(text)
+    return 0
+
+
+RESULT_OUTCOMES = ("success", "escalated", "capped", "failed")
+# The block's top-level fields, recognized at any indentation (render_summary writes them).
+RESULT_KEYS = ("outcome", "command", "reason", "fixups", "fixups file", "log", "log excerpt")
+RE_RESULT_START = re.compile(r"^\s*=+\s*SUSHIBUILD\s+RESULT\s*=+\s*$", re.I | re.M)
+RE_RESULT_END = re.compile(r"^\s*=+\s*END\s+SUSHIBUILD\s*=+\s*$", re.I | re.M)
+RE_RESULT_FIELD = re.compile(r"^\s*(?P<key>[A-Za-z][A-Za-z ]*?)\s*:\s*(?P<value>.*?)\s*$")
+
+
+def parse_result_block(text):
+    """The fields of one return block: (fields, None), or (None, why it is malformed).
+
+    Tolerant of indentation, spacing, case of the markers and the order of the top-level fields;
+    strict about what matters: one start and end marker, and an outcome from RESULT_OUTCOMES."""
+    starts = list(RE_RESULT_START.finditer(text or ""))
+    ends = list(RE_RESULT_END.finditer(text or ""))
+    if len(starts) != 1 or len(ends) != 1 or ends[0].start() < starts[0].end():
+        return None, "expected exactly one block from === SUSHIBUILD RESULT === to === END SUSHIBUILD ==="
+    fields = {}
+    fixups = []
+    excerpt = []
+    for line in text[starts[0].end():ends[0].start()].splitlines():
+        if not line.strip():
+            continue
+        if line.lstrip().startswith("|"):
+            excerpt.append(line.lstrip()[1:].strip())
+            continue
+        match = RE_RESULT_FIELD.match(line)
+        if match and match.group("key").strip().lower() in RESULT_KEYS:
+            fields[match.group("key").strip().lower()] = match.group("value")
+            continue
+        if line[:1] in (" ", "\t"):
+            if re.match(r"^\s+\d+\.\s", line):
+                fixups.append(line.strip())
+            continue
+        if line.strip().startswith("builds:"):
+            for part in re.findall(r"(\w+):\s*(\S+)", line):
+                fields[part[0].lower()] = part[1]
+            continue
+        match = RE_RESULT_FIELD.match(line)
+        if match:
+            fields[match.group("key").strip().lower()] = match.group("value")
+    outcome = (fields.get("outcome") or "").strip().lower()
+    if outcome not in RESULT_OUTCOMES:
+        return None, "no valid outcome line (one of %s)" % ", ".join(RESULT_OUTCOMES)
+    fields["outcome"] = outcome
+    fields["fixup_lines"] = fixups
+    if excerpt:
+        fields["log_excerpt"] = excerpt
+    return fields, None
+
+
+def cmd_result(args):
+    root = project_root_or_cwd()
+    if args.file == "-":
+        text = sys.stdin.read()
+        source = "stdin"
+    else:
+        source = args.file or os.path.join(state_dir(root), "last-result.txt")
+        try:
+            with open(source, encoding="utf-8", errors="replace") as handle:
+                text = handle.read()
+        except OSError as error:
+            emit({"ok": False, "source": source, "error": "cannot read the block: %s" % error,
+                  "next": "ask the sushi-build agent for its result block again"})
+            return 1
+    fields, problem = parse_result_block(text)
+    if problem:
+        emit({"ok": False, "source": source, "error": "malformed result block: %s" % problem,
+              "next": "ask the sushi-build agent for its result block again; don't read the outcome from free text"})
+        return 1
+    emit({"ok": True, "source": source, "fields": fields})
     return 0
 
 
@@ -1273,6 +1531,7 @@ def main(argv=None):
     p = sub.add_parser("begin")
     p.add_argument("--command")
     p.add_argument("--cwd")
+    p.add_argument("--takeover", action="store_true")
     p = sub.add_parser("run")
     p.add_argument("--detach", action="store_true")
     p = sub.add_parser("wait")
@@ -1299,12 +1558,17 @@ def main(argv=None):
     p.add_argument("--outcome", required=True, choices=["success", "escalated", "capped", "failed"])
     p.add_argument("--reason")
     p.add_argument("--log")
+    p = sub.add_parser("result")
+    p.add_argument("file", nargs="?")
     sub.add_parser("hook")
-    args = parser.parse_args(argv)
+    global PROJECT_OVERRIDE
+    project, rest = sushitree().take_project_option(list(sys.argv[1:] if argv is None else argv))
+    PROJECT_OVERRIDE = project or None
+    args = parser.parse_args(rest)
     handlers = {
         "begin": cmd_begin, "run": cmd_run, "wait": cmd_wait, "classify": cmd_classify, "lock": cmd_lock,
         "unlock": cmd_unlock, "log": cmd_log, "status": cmd_status, "summary": cmd_summary,
-        "hook": cmd_hook,
+        "result": cmd_result, "hook": cmd_hook,
     }
     if args.cmd not in handlers:
         parser.print_help()

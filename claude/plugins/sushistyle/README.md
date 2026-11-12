@@ -41,7 +41,7 @@ resolve beside the pack file.
     "clang_query": "/opt/homebrew/opt/llvm/bin/clang-query",
     "args": ["-std=c++23"],
     "include_dirs": ["include", "src"],
-    "path_map": [["/Users/me/Developer/", "/Users/me/Developer/Projects/"]],
+    "path_map": [{"local": "/Users/me/Developer/", "remote": "/Users/me/Developer/Projects/"}],
     "max_load_fraction": 0.7,
     "slots": 1,
     "timeout_s": 25
@@ -53,6 +53,9 @@ resolve beside the pack file.
 ```
 
 `path_map` translates local include directories to where the same tree lives on the host.
+Entries are `{"local": prefix, "remote": prefix}`, the form SushiBuild uses too; a legacy
+`[local, remote]` pair still works (SushiBuild's legacy pairs run the other way, which is why
+named keys are the convention).
 The host needs SSH key access (BatchMode) and LLVM's `clang-query`.
 
 Per-line exceptions: `// sushi-allow: <rule-id>[, <rule-id>] <reason>` at the end of the line,

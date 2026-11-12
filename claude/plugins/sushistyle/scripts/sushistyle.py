@@ -187,8 +187,26 @@ def run_regex_tier(rules, lines):
 
 # ---------------------------------------------------------------- clang tier
 
+def path_map_entry(entry):
+    """(local, remote) from {"remote": R, "local": L} (the FranSushi convention, shared with SushiBuild)
+    or a legacy [local, remote] pair (SushiStyle's original order); None for anything else."""
+    if isinstance(entry, dict):
+        local, remote = entry.get("local"), entry.get("remote")
+    elif isinstance(entry, (list, tuple)) and len(entry) == 2:
+        local, remote = entry[0], entry[1]
+    else:
+        return None
+    if not local or remote is None:
+        return None
+    return os.path.expanduser(str(local)), str(remote)
+
+
 def map_remote_path(local_path, path_map):
-    for local_prefix, remote_prefix in path_map:
+    for entry in path_map:
+        pair = path_map_entry(entry)
+        if pair is None:
+            continue
+        local_prefix, remote_prefix = pair
         if local_path.startswith(local_prefix):
             return remote_prefix + local_path[len(local_prefix):]
     return None
