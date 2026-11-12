@@ -25,7 +25,7 @@ Use the Agent tool once:
   swapped per project.
 
 Then wait for it. Do not edit code while it runs: the fixer may be editing a file you would
-touch. You get nothing from it until it finishes; that is the point. If your session started
+touch. It reports once, when it finishes. If your session started
 it in the background, its result arrives as one completion notification.
 
 ## What comes back

@@ -16,8 +16,8 @@ effort.
 - **`sushirice trees`**: census of git worktrees and configured CMake build trees, flagging
   duplicate trees and package dirs shared between trees.
 - A **monitor** that reports to the orchestrator session only when something is wrong. It
-  never signals anything.
-- A **hook** that gives a gentle reminder when a build isn't slot-wrapped, or when a command
+  doesn't signal processes.
+- A **hook** that adds a reminder when a build isn't slot-wrapped, or when a command
   is about to make a fresh worktree or build tree while reusable ones exist.
 
 There is no daemon or OS service. Protection exists only while a build runs through

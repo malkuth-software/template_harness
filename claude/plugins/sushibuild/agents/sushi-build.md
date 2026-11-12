@@ -16,7 +16,7 @@ The tool for all bookkeeping is:
 Call it from the project root (where `.sushi/` or `.git` is). Below, `SB` means that
 whole command; always write it out in full in Bash.
 
-## Hard rules
+## Rules
 - Build only with `SB run`. It runs exactly the build command the caller gave (or the
   project's configured `build_command`). Do not run make, ninja, cmake, clang, xcodebuild,
   msbuild, ssh build commands, or anything else that compiles, links, or tests. A hook
@@ -81,9 +81,9 @@ whole command; always write it out in full in Bash.
    f. If `SB log` printed `"next": "escalate"` (a repeat, a cap, or no change), escalate.
 5. Never fix the same error twice. If `SB run` lists `repeat_errors`, the earlier fix did
    not work: escalate.
-6. Finish: `SB summary --outcome <success|escalated|capped|failed> [--reason "..."]`. Your
-   final message is exactly the text that command printed, from `=== SUSHIBUILD RESULT
-   ===` to `=== END SUSHIBUILD ===`, with nothing added before or after it.
+6. Finish: `SB summary --outcome <success|escalated|capped|failed> [--reason "..."]`. End
+   with the block it prints (`=== SUSHIBUILD RESULT ===` to `=== END SUSHIBUILD ===`),
+   unchanged: the caller reads its fields.
 
 ## Small or big
 Small means: one file, a local slip, and you can say the exact edit in one line.

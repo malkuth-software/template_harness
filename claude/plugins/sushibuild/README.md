@@ -138,14 +138,14 @@ diagnostic. The triage agent makes the final call.
   - **Fallback**: if a subagent call arrives with no `agent_type` while a lock is held, its
     edits are restricted to the locked file.
   - **Everyone else** (your main session, other subagents): no output, untouched.
-  - The hook never approves anything (it emits no `allow`), so your normal permission
-    prompts still apply, and a fixer edit in default mode will ask you.
+  - The hook emits no `allow`, so your normal permission prompts still apply, and a fixer
+    edit in default mode will ask you.
 - **Runs your build command** (only when the `sushi-build` agent calls `sushibuild.py run`)
   through `sh`, exactly as configured or as the caller passed it. With `run --detach` the
   build runs as a background process in its own session (pid, log and exit file recorded in
   state). If that build outlives `build_timeout_s`, `wait` sends SIGTERM to that process group,
-  which SushiBuild started itself. It never signals any other process; `wait` checks whether
-  the pid is alive with signal 0, which delivers nothing. SushiBuild adds no network
+  which SushiBuild started itself, and no other process; `wait` checks whether the pid is
+  alive with signal 0, which delivers nothing. SushiBuild adds no network
   access of its own; whatever your command does (ssh, rsync) is yours.
 - **Writes** `.sushi/state/sushibuild/`: `run.json`, `fixlock.json`/`lastlock.json`,
   `locked.orig` (a copy of the locked file, for the diff), `fixups.jsonl`, `build-N.log`,

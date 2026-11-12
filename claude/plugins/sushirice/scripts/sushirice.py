@@ -2241,11 +2241,9 @@ def worktree_finding(directory, arguments, cwd):
                                          ("; build trees: " + ", ".join(builds[:4])) if builds else ""))
     if len(worktrees) > 4:
         described.append("and %d more" % (len(worktrees) - 4))
-    text = ("SushiRice: `git worktree add` makes another checkout of %s, which already has %d worktree%s: %s. "
-            "A fresh tree reconfigures, relinks everything and re-runs package steps (fresh trees were about 75%% "
-            "of CMake time in the churn study). The usual shape is one worktree per seat with one Release and one "
-            "sanitizer build tree, reused: a new job is a new branch in your own seat's worktree, never in a "
-            "tree another agent or person works in, so builds stay incremental." % (
+    text = ("SushiRice: `git worktree add` adds another checkout of %s, which has %d worktree%s: %s. "
+            "A new tree rebuilds from scratch; reusing an existing worktree of your own keeps builds "
+            "incremental." % (
                 common, len(worktrees), "" if len(worktrees) == 1 else "s", "; ".join(described)))
     return {"key": "worktree:" + common, "kind": "trees", "text": text}
 
@@ -2268,13 +2266,12 @@ def configure_finding(configure, config):
             if configure["build_type"] and tree["build_type"].lower() == configure["build_type"].lower()
             and tree["sanitizers"] == configure["sanitizers"]]
     names = "; ".join(short_tree(tree) for tree in existing[:4])
-    text = ("SushiRice: this configures a NEW build tree %s for %s, which already has configured tree%s: %s. "
+    text = ("SushiRice: this configures a new build tree %s for %s, which already has configured tree%s: %s. "
             % (configure["build"], configure["source"], "" if len(existing) == 1 else "s", names))
     if same:
         text += "%s already has the same configuration. " % same[0]["build_dir"]
-    text += ("Each fresh tree reconfigures, relinks everything and re-runs package steps, and trees sharing a "
-             "package dir clobber each other; reusing an existing tree (switching branches in its worktree) keeps "
-             "builds incremental.")
+    text += ("A new tree rebuilds from scratch, and trees sharing a package dir overwrite each other; reusing "
+             "an existing tree keeps builds incremental.")
     return {"key": "configure:" + source, "kind": "trees", "text": text}
 
 

@@ -2,7 +2,7 @@
 
 House coding rules for C and C++, written as tested clang AST matchers. After every
 `Edit`/`Write` of a C/C++ file, SushiStyle checks the file and, if it finds something new,
-gives Claude a short, light reminder as a system note (never a user turn, never a block).
+gives Claude a short note in its context (not a user turn, and not a denial).
 The same rules run as a hard gate in CI with `check --gate`.
 
 ## What it does on your machine (disclosure)
