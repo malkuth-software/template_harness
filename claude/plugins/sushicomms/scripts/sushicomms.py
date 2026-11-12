@@ -16,8 +16,11 @@ Subcommands
   registry init|validate [FILE]|show           role registry (init: orchestrator only)
   quorum                                       print every batch-complete rule that is met now
   monitor [--once] [--interval S]              batch monitor (orchestrator seat only)
-  export-queue [--all] [--out FILE]            render handoffs as INTEGRATION_QUEUE.md entries
-  import-queue FILE [--apply]                  parse queue entries into tickets (dry run default)
+  export-queue [--all] [--out FILE] [--ticket ID] [--per-branch DIR [--force]]
+                                               render handoffs as queue entries (one file or one
+                                               file per branch, <branch with / as __>.md)
+  import-queue FILE|DIR [--apply]              parse queue entries into tickets (dry run default);
+                                               a directory is the per-branch queue (*.md, not README)
   hook-bash | hook-edit | hook-agent           PreToolUse hooks (read hook JSON on stdin)
   paths                                        print the resolved project, registry and store
 
@@ -34,6 +37,7 @@ import os
 import random
 import re
 import secrets
+import shlex
 import shutil
 import subprocess
 import sys
@@ -162,6 +166,52 @@ def find_project_root(start_path):
         directory = parent
 
 
+# The project root this process works for; .sushi/ is created under it only through ensure_dir,
+# which refuses a new .sushi/ in a shared working tree (sushitree.py).
+CURRENT_ROOT = None
+_SUSHITREE = None
+
+
+def sushitree():
+    """This plugin's copy of sushitree.py, loaded by path on first use."""
+    global _SUSHITREE
+    if _SUSHITREE is None:
+        import importlib.util
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sushitree.py")
+        spec = importlib.util.spec_from_file_location("sushicomms_sushitree", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _SUSHITREE = module
+    return _SUSHITREE
+
+
+def ensure_dir(directory):
+    """os.makedirs, except a new .sushi/ in a shared working tree, which raises CommsError."""
+    if os.path.isdir(directory):
+        return
+    if CURRENT_ROOT:
+        try:
+            sushitree().check_sushi_creation(CURRENT_ROOT, directory)
+        except sushitree().SharedTreeError as error:
+            raise CommsError(str(error))
+    os.makedirs(directory, exist_ok=True)
+
+
+def sushi_base(project_root):
+    """<project>/.sushi, or ~/.sushi when the project's .sushi/ may not be created (a shared tree)."""
+    home = os.path.join(os.path.expanduser("~"), ".sushi")
+    if not project_root:
+        return home
+    base = os.path.join(project_root, ".sushi")
+    if os.path.isdir(base):
+        return base
+    try:
+        sushitree().check_sushi_creation(project_root, base)
+    except sushitree().SharedTreeError:
+        return home
+    return base
+
+
 def resolve_project(explicit=None):
     for candidate in (explicit, os.environ.get("SUSHICOMMS_PROJECT")):
         if candidate:
@@ -171,20 +221,31 @@ def resolve_project(explicit=None):
 
 
 def load_config(project_root):
+    """~/.sushi/sushicomms.json (per machine) overlaid by <project>/.sushi/sushicomms.json."""
     config = dict(DEFAULT_CONFIG)
+    paths = [os.path.join(os.path.expanduser("~"), ".sushi", "sushicomms.json")]
     if project_root:
-        path = os.path.join(project_root, ".sushi", "sushicomms.json")
+        paths.append(os.path.join(project_root, ".sushi", "sushicomms.json"))
+    for path in paths:
         if os.path.isfile(path):
             with open(path, encoding="utf-8") as handle:
                 config.update(json.load(handle))
     return config
 
 
-def registry_path(project_root):
+def registry_path(project_root, config=None):
+    """$SUSHICOMMS_REGISTRY, else registry_file from the config (relative to the project root), else
+    <project>/.sushi/sushicomms/roles.json. ~ expands in both."""
     override = os.environ.get("SUSHICOMMS_REGISTRY")
     if override:
-        return os.path.abspath(override)
-    return os.path.join(project_root or os.getcwd(), ".sushi", "sushicomms", "roles.json")
+        return os.path.abspath(os.path.expanduser(override))
+    config = config if config is not None else load_config(project_root)
+    configured = config.get("registry_file")
+    base = project_root or os.getcwd()
+    if configured:
+        configured = os.path.expanduser(configured)
+        return os.path.abspath(configured if os.path.isabs(configured) else os.path.join(base, configured))
+    return os.path.join(base, ".sushi", "sushicomms", "roles.json")
 
 
 def store_path(project_root, config=None):
@@ -202,14 +263,14 @@ def store_path(project_root, config=None):
 
 
 def state_dir(project_root):
-    directory = os.path.join(project_root or os.path.expanduser("~"), ".sushi", "state", "sushicomms")
+    directory = os.path.join(sushi_base(project_root), "state", "sushicomms")
     os.makedirs(directory, exist_ok=True)
     return directory
 
 
 def log(project_root, message):
     try:
-        directory = os.path.join(project_root or os.path.expanduser("~"), ".sushi", "logs")
+        directory = os.path.join(sushi_base(project_root), "logs")
         os.makedirs(directory, exist_ok=True)
         with open(os.path.join(directory, "sushicomms.log"), "a", encoding="utf-8") as handle:
             handle.write("%s %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%S"), message))
@@ -227,7 +288,7 @@ def read_json(path, default=None):
 
 def write_json_atomic(path, data):
     directory = os.path.dirname(path)
-    os.makedirs(directory, exist_ok=True)
+    ensure_dir(directory)
     temporary = os.path.join(directory, ".%s.%d.%s.tmp" % (os.path.basename(path), os.getpid(), secrets.token_hex(4)))
     with open(temporary, "w", encoding="utf-8") as handle:
         json.dump(data, handle, indent=2, sort_keys=False)
@@ -654,7 +715,7 @@ class TicketStore:
         self.directory = os.path.dirname(path)
 
     def lock(self):
-        os.makedirs(self.directory, exist_ok=True)
+        ensure_dir(self.directory)
         return dir_lock(self.path + ".lock")
 
     def load(self):
@@ -1023,7 +1084,7 @@ def command_registry(args, project_root):
             raise CommsError("refused: only the orchestrator creates the registry")
         if os.path.exists(path) and not args.force:
             raise CommsError("%s exists; pass --force to replace it with the example" % path)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        ensure_dir(os.path.dirname(path))
         shutil.copyfile(EXAMPLE_REGISTRY, path)
         print("wrote %s (the example registry with the five roles); edit it, then run `registry validate`" % path)
         return 0
@@ -1280,12 +1341,91 @@ def parse_queue(text):
     return entries, skipped
 
 
+# A per-branch queue file (queue/<branch with / as __>.md) holds one entry. Its heading may be H1 to
+# H3, with the note and status in the heading or in "- worker:" / "- status:" body lines.
+BRANCH_HEADER_RE = re.compile(
+    r"^#{1,3} (?P<branch>\S+) @ (?P<head>[0-9a-fA-F]{6,40})(?:\s+\((?P<note>.*?)\))?"
+    r"(?:\s+status:\s*(?P<status>.*?))?\s*$")
+BODY_STATUS_RE = re.compile(r"^- status:\s*(.*)$")
+BODY_WORKER_RE = re.compile(r"^- worker:\s*(.*)$")
+SUPERSEDES_RE = re.compile(r"\bsupersedes\s+([0-9a-fA-F]{6,40})\b")
+# Seats are w<n>, aux<n>, integration, standby and the like: a leading token of the note, else any w<n>.
+NOTE_SEAT_RE = re.compile(r"^\s*([a-z][a-z0-9_-]{0,31})(?=[,;)]|$)")
+
+
+def parse_branch_file(text):
+    """(entries, skipped) for one per-branch queue file: at most one entry, from its first entry heading."""
+    lines = text.split("\n")
+    in_fence = False
+    current = None
+    for number, line in enumerate(lines, start=1):
+        if line.startswith("```"):
+            in_fence = not in_fence
+        if current is None:
+            match = None if in_fence else BRANCH_HEADER_RE.match(line)
+            if match:
+                fields = match.groupdict()
+                current = {"line": number, "header": line, "body": [],
+                           "match": {"branch": fields["branch"], "head": fields["head"],
+                                     "note": fields["note"] or "", "status": fields["status"]}}
+            continue
+        current["body"].append(line)
+    if current is None:
+        headings = [(number, line[:120]) for number, line in enumerate(lines, start=1) if line.startswith("#")]
+        return [], headings[:1] or [(1, "(no entry heading)")]
+    body = current["body"]
+    while body and not body[-1].strip():
+        body.pop()
+    fields = current["match"]
+    for line in body:
+        status_match = BODY_STATUS_RE.match(line)
+        if status_match and fields["status"] is None:
+            fields["status"] = status_match.group(1).strip()
+        worker_match = BODY_WORKER_RE.match(line)
+        if worker_match and not fields["note"]:
+            fields["note"] = worker_match.group(1).strip()
+    if fields["status"] is None:
+        fields["status"] = "queued"
+    return [current], []
+
+
+def queue_sources(path):
+    """[(display name, text, per_branch)] for a queue file or a per-branch queue directory."""
+    if os.path.isdir(path):
+        sources = []
+        for name in sorted(os.listdir(path)):
+            if not name.endswith(".md") or name.lower() == "readme.md":
+                continue
+            with open(os.path.join(path, name), encoding="utf-8") as handle:
+                sources.append((name, handle.read(), True))
+        return sources
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    first = next((line for line in text.split("\n") if line.startswith("#")), "")
+    per_branch = BRANCH_HEADER_RE.match(first) is not None and first.startswith("# ")
+    return [(os.path.basename(path), text, per_branch)]
+
+
+def note_seat(note):
+    match = NOTE_SEAT_RE.match(note or "")
+    if match:
+        return match.group(1)
+    match = re.search(r"\b(w\d+)\b", note or "")
+    return match.group(1) if match else None
+
+
+def superseded_heads(ticket):
+    source = ticket.get("source") or {}
+    text = " ".join([source.get("note") or ""] + list(source.get("body") or []))
+    return SUPERSEDES_RE.findall(text)
+
+
 def ticket_from_queue_entry(entry, source_name):
     fields = entry["match"]
     note = fields["note"]
     ticket = blank_ticket()
     status, detail, claimed_by = parse_status_text(fields["status"])
-    seat_match = re.match(r"\s*(w\d+)\b", note)
+    seat = note_seat(note)
     base = None
     base_match = re.search(r"\bbase\s+(\S+?)(?:[,;)]|\s|$)(?:(\S+?)(?:[,;)]|\s|$))?", note)
     if base_match:
@@ -1311,7 +1451,7 @@ def ticket_from_queue_entry(entry, source_name):
     now = now_iso()
     ticket.update({
         "schema": SCHEMA_VERSION, "type": "handoff", "status": status, "status_detail": detail,
-        "claimed_by": claimed_by, "from_seat": seat_match.group(1) if seat_match else None,
+        "claimed_by": claimed_by, "from_seat": seat,
         "from_role": "coder", "to_role": "integrator", "branch": fields["branch"], "head": fields["head"],
         "base": base, "block": block_match.group(1) if block_match else None,
         "batch": block_match.group(2) if block_match else None,
@@ -1352,15 +1492,40 @@ def render_queue_entry(ticket):
     return "\n".join([header] + body)
 
 
+def branch_file_name(branch):
+    """The per-branch queue file name: the branch with / replaced by __, plus .md."""
+    return branch.replace("/", "__") + ".md"
+
+
 def command_export_queue(args, project_root):
     store = TicketStore(store_path(project_root))
-    blocks = []
+    selected = []
     for ticket in store.all():
         if ticket.get("type") != "handoff":
             continue
-        if not args.all and ticket.get("status") not in OPEN_STATUSES:
+        if args.ticket and ticket.get("id") != args.ticket:
             continue
-        blocks.append(render_queue_entry(ticket))
+        if not args.all and not args.ticket and ticket.get("status") not in OPEN_STATUSES:
+            continue
+        selected.append(ticket)
+    if args.ticket and not selected:
+        raise CommsError("no handoff ticket %s" % args.ticket)
+    if args.per_branch:
+        ensure_dir(args.per_branch)
+        written, kept = 0, []
+        for ticket in selected:
+            path = os.path.join(args.per_branch, branch_file_name(ticket["branch"]))
+            if os.path.exists(path) and not args.force:
+                kept.append(os.path.basename(path))
+                continue
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(render_queue_entry(ticket) + "\n")
+            written += 1
+        print("wrote %d file(s) to %s%s" % (written, args.per_branch,
+                                             ("; kept %d existing (pass --force to replace): %s" % (
+                                                 len(kept), ", ".join(kept))) if kept else ""))
+        return 0
+    blocks = [render_queue_entry(ticket) for ticket in selected]
     text = "\n\n".join(blocks) + ("\n" if blocks else "")
     if args.out:
         with open(args.out, "w", encoding="utf-8") as handle:
@@ -1372,11 +1537,12 @@ def command_export_queue(args, project_root):
 
 
 def command_import_queue(args, project_root):
-    with open(args.file, encoding="utf-8") as handle:
-        text = handle.read()
-    entries, skipped = parse_queue(text)
-    name = os.path.basename(args.file)
-    tickets = [ticket_from_queue_entry(entry, name) for entry in entries]
+    tickets, skipped = [], []
+    for name, text, per_branch in queue_sources(args.file):
+        entries, file_skipped = parse_branch_file(text) if per_branch else parse_queue(text)
+        tickets.extend(ticket_from_queue_entry(entry, name) for entry in entries)
+        skipped.extend((("%s:%d" % (name, number)) if per_branch else number, header)
+                       for number, header in file_skipped)
     store = TicketStore(store_path(project_root))
     existing = {(ticket.get("branch"), ticket.get("head")) for ticket in store.all() if ticket.get("type") == "handoff"}
     fresh, duplicate = [], 0
@@ -1394,7 +1560,20 @@ def command_import_queue(args, project_root):
         args.file, len(tickets), "y" if len(tickets) == 1 else "ies",
         ", ".join("%s %d" % item for item in sorted(by_status.items())), len(skipped), duplicate))
     for number, header in skipped:
-        print("  skipped line %d: %s" % (number, header))
+        print("  skipped line %s: %s" % (number, header))
+    # "supersedes <sha>": the named head of the same branch is superseded, in the store and in this import.
+    supersede = set()
+    for ticket in tickets:
+        for head in superseded_heads(ticket):
+            supersede.add((ticket["branch"], head.lower()))
+
+    def is_superseded(candidate):
+        return any(candidate.get("branch") == branch and (candidate.get("head") or "").lower().startswith(head)
+                   for branch, head in supersede)
+
+    for ticket in fresh:
+        if is_superseded(ticket) and ticket["status"] in OPEN_STATUSES:
+            ticket["status"] = "superseded"
     invalid = [(ticket, validate_ticket(dict(ticket, id="T0001-import"))) for ticket in fresh]
     invalid = [(ticket, errors) for ticket, errors in invalid if errors]
     for ticket, errors in invalid:
@@ -1412,7 +1591,17 @@ def command_import_queue(args, project_root):
                 continue
             store.add(data, ticket, seat or role)
             created += 1
-    print("created %d ticket(s) in %s" % (created, store.path))
+        marked = 0
+        for existing_ticket in data["tickets"].values():
+            if existing_ticket.get("type") == "handoff" and existing_ticket.get("status") in OPEN_STATUSES \
+                    and is_superseded(existing_ticket):
+                existing_ticket["status"] = "superseded"
+                existing_ticket["updated"] = now_iso()
+                existing_ticket.setdefault("history", []).append(
+                    history_entry(seat, role, "superseded", "superseded", "by an imported queue entry"))
+                marked += 1
+    print("created %d ticket(s) in %s%s" % (created, store.path,
+                                            ("; marked %d superseded" % marked) if marked else ""))
     return 1 if invalid else 0
 
 
@@ -1486,6 +1675,29 @@ def store_references(roots, cwd=None):
     return {needle for needle in needles if needle and needle not in (".", os.sep)}
 
 
+GIT_STAGE_COMMANDS = ("add", "commit")
+
+
+def is_store_commit(command):
+    """True for a command made only of `git [-C DIR] add|commit ...` steps (joined by && or ;) with no
+    redirect, pipe or substitution: it records the store in git without printing its content."""
+    if re.search(r"[|<>`]|\$\(", command):
+        return False
+    segments = [segment for segment in re.split(r"&&|;", command) if segment.strip()]
+    if not segments:
+        return False
+    for segment in segments:
+        try:
+            words = shlex.split(segment)
+        except ValueError:
+            return False
+        if len(words) >= 3 and words[0] == "git" and words[1] == "-C":
+            words = [words[0]] + words[3:]
+        if len(words) < 2 or words[0] != "git" or words[1] not in GIT_STAGE_COMMANDS:
+            return False
+    return True
+
+
 STORE_DENIAL = ("SushiComms: direct reads and edits of the ticket store are blocked. Read tickets with "
                 "%s ticket list [--open|--mine] or ticket show ID; change them with ticket file|claim|update|close.")
 
@@ -1514,7 +1726,9 @@ def command_hook_bash():
     role, source = hook_identity(event, registry)
 
     # 0. The ticket store is read and written only by the program, for every role.
-    if not SUSHICOMMS_RE.search(command):
+    # The orchestrator commits the store (it may live in a synced projects repo): git add/commit only.
+    store_commit = role == "orchestrator" and is_store_commit(command)
+    if not SUSHICOMMS_RE.search(command) and not store_commit:
         for needle in store_references(roots, event.get("cwd")):
             if needle in command:
                 deny(STORE_DENIAL % cli_command())
@@ -1730,7 +1944,10 @@ def build_parser():
     export = commands.add_parser("export-queue", help="render handoff tickets as INTEGRATION_QUEUE.md entries")
     export.add_argument("--all", action="store_true", help="include handoffs that are no longer open")
     export.add_argument("--out")
-    importer = commands.add_parser("import-queue", help="parse INTEGRATION_QUEUE.md entries into tickets")
+    export.add_argument("--ticket", help="export only this handoff ticket")
+    export.add_argument("--per-branch", metavar="DIR", help="one file per handoff: DIR/<branch with / as __>.md")
+    export.add_argument("--force", action="store_true", help="with --per-branch: replace existing files")
+    importer = commands.add_parser("import-queue", help="parse queue entries (a file or a per-branch directory) into tickets")
     importer.add_argument("file")
     importer.add_argument("--apply", action="store_true")
 
@@ -1750,8 +1967,12 @@ def main(argv=None):
         except Exception as error:  # a hook must never break the session
             log(None, "%s error: %r" % (argv[0], error))
             return 0
+    # --project is global: before or after the subcommand (an empty value means the cwd).
+    project, argv = sushitree().take_project_option(argv)
     parser = build_parser()
     args = parser.parse_args(argv)
+    if project is not None:
+        args.project = project
     if not args.command:
         print(__doc__)
         return 2
@@ -1763,6 +1984,8 @@ def main(argv=None):
             log(None, "monitor fatal: %r" % (error,))
             return 0
     project_root = resolve_project(args.project)
+    global CURRENT_ROOT
+    CURRENT_ROOT = project_root
     try:
         if args.command == "ticket":
             if not args.action:

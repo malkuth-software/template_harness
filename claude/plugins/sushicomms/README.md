@@ -24,8 +24,12 @@ and edits of the store.
   (a coder starts a build; the integrator builds without the wrapper).
 - **Agent-spawn reminder**: a seat other than the orchestrator that starts an agent gets a
   one-line note (the tedium helper is allowed).
-- **INTEGRATION_QUEUE.md interop**: export open handoffs from the store in the queue's exact
-  entry format; import existing entries into the store (dry run by default).
+- **Queue interop**: export open handoffs from the store in the queue's exact entry format, to
+  one file or one file per branch (`--per-branch DIR`, `<branch with / as __>.md`; existing files
+  are kept unless `--force`), or one ticket (`--ticket ID`); import entries from
+  INTEGRATION_QUEUE.md or from a per-branch queue directory (`*.md` except README; H1 to H3
+  headings, `- status:` and `- worker:` body lines, "supersedes <sha>" marks that head
+  superseded). Import is a dry run by default.
 
 ## What it does on your machine (disclosure)
 
@@ -70,7 +74,8 @@ identified by its `agent_type` mapped through the registry's `agent_types`, beca
 inherits its parent session's variables. A subagent seat runs the CLI with its own prefix:
 `SUSHI_ROLE=coder SUSHI_SEAT=w4 python3 .../sushicomms.py handoff ...`.
 
-`<project>/.sushi/sushicomms.json` (all optional):
+`~/.sushi/sushicomms.json` (per machine), overlaid by `<project>/.sushi/sushicomms.json` (all
+optional; `registry_file` points at the registry, relative to the project root, `~` expanded):
 
 ```json
 {
@@ -81,14 +86,16 @@ inherits its parent session's variables. A subagent seat runs the CLI with its o
 ```
 
 `state_file` can point into a synced projects repo; the orchestrator commits it, as with the
-queue file today. Environment overrides: `SUSHICOMMS_STATE` (wins over `state_file`),
-`SUSHICOMMS_REGISTRY`, `SUSHICOMMS_PROJECT`. An unreadable store is reported and never
-overwritten.
+queue file today: the store guard lets the orchestrator run `git add` and `git commit` on it
+(nothing else in the command, no pipes or redirects). Environment overrides: `SUSHICOMMS_STATE` (wins over `state_file`),
+`SUSHICOMMS_REGISTRY` (`~` expanded), `SUSHICOMMS_PROJECT`. An unreadable store is reported and
+never overwritten. `--project DIR` may come before or after the subcommand, and SushiComms doesn't
+create `.sushi/` in a tree wasabi marks shared.
 
 Start: `SUSHI_ROLE=orchestrator python3 scripts/sushicomms.py registry init`, then edit and
 `registry validate`. The example (`examples/roles.json`) encodes the five roles from the
-GUI.Forms brief, the build wrapper ("butterbuild", currently
-`build_slot.py -- sh dev/tools/fold23_build.sh`), two role rules and three batch-complete
+GUI.Forms brief, a placeholder build wrapper (`build-wrapper <workspace> python3 ci_build.py`:
+set `settings.build_wrapper` to your own), two role rules and three batch-complete
 rules (one disabled).
 
 ## Use

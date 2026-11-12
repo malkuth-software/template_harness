@@ -3,9 +3,9 @@
   "description": "Example SushiComms role registry: the owner's five roles (GUI.Forms brief, 2026-11). Copy with `registry init`; only the orchestrator edits it.",
   "settings": {
     "build_wrapper": {
-      "name": "butterbuild",
-      "command": "build_slot.py -- sh dev/tools/fold23_build.sh",
-      "match": "build_slot\\.py|butterbuild"
+      "name": "build-wrapper",
+      "command": "build-wrapper <workspace> python3 ci_build.py",
+      "match": "build-wrapper|build_slot\\.py"
     },
     "agent_spawn": {
       "reminder": true,

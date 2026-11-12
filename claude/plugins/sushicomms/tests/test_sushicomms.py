@@ -509,10 +509,11 @@ class DriftHookTests(ProjectCase):
 
     def test_integrator_wrapper_rule(self):
         output = self.hook("bash", bash_event("sh dev/tools/fold23_build.sh tests", session="i1"), role="integrator")
-        self.assertIn("butterbuild", context_of(output))
-        self.assertIn("build_slot.py -- sh dev/tools/fold23_build.sh", context_of(output))
-        self.assertIsNone(self.hook("bash", bash_event("build_slot.py -- sh dev/tools/fold23_build.sh tests",
+        self.assertIn("build-wrapper <workspace> python3 ci_build.py", context_of(output))
+        self.assertIsNone(self.hook("bash", bash_event("build-wrapper w3 python3 ci_build.py --jobs 4",
                                                        session="i2"), role="integrator"))
+        self.assertIsNone(self.hook("bash", bash_event("build_slot.py -- sh dev/tools/fold23_build.sh tests",
+                                                       session="i4"), role="integrator"))
         self.assertIsNotNone(self.hook("bash", bash_event("cmake --build ../.build/fold23", session="i3"),
                                        role="integrator"))
         self.assertIsNone(self.hook("bash", bash_event("ninja -C build", session="o"), role="orchestrator"))
@@ -824,6 +825,103 @@ class QueueInteropTests(ProjectCase):
         statuses = {ticket["status"] for ticket in self.all_tickets()}
         self.assertTrue({"open", "batched", "folded"} <= statuses, statuses)
         self.assertEqual(os.stat(REAL_QUEUE).st_mtime_ns, before, "the real queue must not be touched")
+
+
+class GapTests(ProjectCase):
+    """Gaps found while using SushiComms (notes: desks/coordinator/fransushi/PLAN.md, G2, G5-G7, G9)."""
+
+    def test_g5_the_orchestrator_may_git_add_and_commit_the_store(self):
+        self.handoff("w4", "claude/a", "abc1234")
+        for command in ("git add %s" % self.store_file,
+                        "git -C %s add .sushi/state/sushicomms/state.json && git commit -m 'tickets'" % self.project):
+            with self.subTest(command=command):
+                self.assertIsNone(self.hook("bash", bash_event(command), role="orchestrator"))
+                self.assertEqual(decision_of(self.hook("bash", bash_event(command), role="coder")), "deny")
+        for command in ("git add %s && cat %s" % (self.store_file, self.store_file),
+                        "git show HEAD:.sushi/state/sushicomms/state.json",
+                        "git add %s | tee x" % self.store_file):
+            with self.subTest(command=command):
+                self.assertEqual(decision_of(self.hook("bash", bash_event(command), role="orchestrator")), "deny")
+
+    def test_g6_registry_path_expands_home_and_reads_the_user_layer(self):
+        os.makedirs(os.path.join(FAKE_HOME, ".sushi"), exist_ok=True)
+        registry = os.path.join(FAKE_HOME, "registries", "roles.json")
+        os.makedirs(os.path.dirname(registry), exist_ok=True)
+        shutil.copyfile(EXAMPLE, registry)
+        result = self.cli(["paths"], SUSHICOMMS_REGISTRY="~/registries/roles.json")
+        self.assertIn("registry: %s" % registry, result.stdout)
+        user_layer = os.path.join(FAKE_HOME, ".sushi", "sushicomms.json")
+        with open(user_layer, "w") as handle:
+            json.dump({"registry_file": "~/registries/roles.json"}, handle)
+        self.addCleanup(os.remove, user_layer)
+        result = self.cli(["paths"])
+        self.assertIn("registry: %s" % registry, result.stdout)
+
+    def test_g7_project_anywhere_and_no_sushi_in_a_shared_tree(self):
+        shared = tempfile.mkdtemp(prefix="sushicomms-shared-")
+        self.addCleanup(shutil.rmtree, shared, True)
+        os.makedirs(os.path.join(shared, ".git"))
+        with open(os.path.join(shared, ".git", "sushi-shared-tree"), "w") as handle:
+            handle.write("marked\n")
+        result = run(shared, ["handoff", "--branch", "claude/a", "--head", "abc1234", "--intent", "i", "--touched", "t",
+                              "--tests", "x", "--risks", "r"], role="coder", seat="w4", SUSHICOMMS_REGISTRY=EXAMPLE)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("shared working tree", result.stderr)
+        self.assertFalse(os.path.exists(os.path.join(shared, ".sushi")))
+        result = run(shared, ["paths", "--project", self.project])
+        self.assertIn("project:  %s" % os.path.realpath(self.project), result.stdout.replace(self.project, os.path.realpath(self.project)))
+
+    def write_queue_dir(self):
+        queue = os.path.join(self.project, "queue")
+        os.makedirs(queue)
+        with open(os.path.join(queue, "README.md"), "w") as handle:
+            handle.write("# Integration queue: one file per branch\n")
+        with open(os.path.join(queue, "claude__a11y.md"), "w") as handle:
+            handle.write("# claude/a11y @ f838f6dc8\n\n- worker: integration; worktree D:/x\n"
+                         "- status: queued\n- intent: accessibility.\n\n#### Notes\n- more\n")
+        with open(os.path.join(queue, "claude__frame.md"), "w") as handle:
+            handle.write("### claude/frame @ 823d9954e  (aux1, base 2290026)  status: queued, on top of 0c7ef0ae6\n\n"
+                         "- intent: frame cost.\n- note: supersedes 0c7ef0ae6\n")
+        with open(os.path.join(queue, "claude__notes.md"), "w") as handle:
+            handle.write("Just notes, no entry heading.\n")
+        return queue
+
+    def test_g2_import_reads_the_per_branch_directory(self):
+        self.handoff("w4", "claude/frame", "0c7ef0ae6")
+        queue = self.write_queue_dir()
+        dry = run(self.project, ["import-queue", queue])
+        self.assertIn("2 entries parsed", dry.stdout)
+        self.assertIn("1 heading(s) skipped", dry.stdout)
+        applied = self.cli(["import-queue", queue, "--apply"], role="orchestrator", seat="o1")
+        self.assertIn("marked 1 superseded", applied.stdout)
+        tickets = {(ticket["branch"], ticket["head"]): ticket for ticket in self.all_tickets()
+                   if ticket["type"] == "handoff"}
+        self.assertEqual(tickets[("claude/a11y", "f838f6dc8")]["from_seat"], "integration")
+        self.assertEqual(tickets[("claude/a11y", "f838f6dc8")]["intent"], "accessibility.")
+        self.assertEqual(tickets[("claude/frame", "823d9954e")]["from_seat"], "aux1")
+        self.assertEqual(tickets[("claude/frame", "0c7ef0ae6")]["status"], "superseded")
+
+    def test_g9_export_one_file_per_branch(self):
+        self.handoff("w4", "claude/x-one", "abc1234")
+        self.handoff("w5", "claude/x-two", "def5678")
+        out = os.path.join(self.project, "queue-out")
+        self.cli(["export-queue", "--per-branch", out])
+        self.assertEqual(sorted(os.listdir(out)), ["claude__x-one.md", "claude__x-two.md"])
+        with open(os.path.join(out, "claude__x-one.md")) as handle:
+            self.assertTrue(handle.read().startswith("### claude/x-one @ abc1234"))
+        with open(os.path.join(out, "claude__x-one.md"), "a") as handle:
+            handle.write("folded at 1234567\n")
+        kept = self.cli(["export-queue", "--per-branch", out])
+        self.assertIn("kept 2 existing", kept.stdout)
+        with open(os.path.join(out, "claude__x-one.md")) as handle:
+            self.assertIn("folded at", handle.read())
+        ticket_id = [t["id"] for t in self.all_tickets() if t.get("branch") == "claude/x-two" and t["type"] == "handoff"][0]
+        single = os.path.join(self.project, "one.md")
+        self.cli(["export-queue", "--ticket", ticket_id, "--out", single])
+        with open(single) as handle:
+            text = handle.read()
+        self.assertIn("claude/x-two", text)
+        self.assertNotIn("claude/x-one", text)
 
 
 if __name__ == "__main__":
