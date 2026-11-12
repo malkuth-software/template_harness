@@ -1,7 +1,7 @@
 {
   "name": "sushiwrap",
   "version": "0.1.0",
-  "description": "Oh so tight: seats that hold a worker's identity, task and state apart from the model in them; host-reset deadlines with T-30/T-15/T-5 shutdown checklists; a shutdown lint; and host survey/provision manifests.",
+  "description": "Worker records (seats) that keep a worker's role, track, branch, worktree and resume note in files; host-reset deadlines with shutdown checklists 30, 15 and 5 minutes before the reset; a shutdown lint; and host survey/provision manifests.",
   "author": {"name": "Malkuth Software"},
   "homepage": "https://malkuthsoft.com",
   "license": "MIT",

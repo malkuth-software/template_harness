@@ -1,0 +1,13 @@
+g++ -std=c++20 -c src/parser.cpp -o parser.o
+src/parser.cpp: In function 'int parse_count(const std::string&)':
+src/parser.cpp:27:12: error: 'lenght' was not declared in this scope; did you mean 'length'?
+   27 |     return lenght;
+      |            ^~~~~~
+      |            length
+src/parser.cpp:31:5: error: expected ';' before '}' token
+   31 |     return 0
+      |             ^
+      |             ;
+   32 | }
+      | ~
+make: *** [Makefile:8: parser.o] Error 1

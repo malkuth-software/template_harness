@@ -26,7 +26,6 @@ Each concern lives in its own repository (owner, 2026-11-11):
 | `malkuth-software/<app>` (created private) | The app, from `templates/app/`: one commit on `main`. |
 | `malkuth-software/notes` | An orphan branch `<app>`: `README.md`, `planning/BRIEF.md`, `decisions/`, `interviews/`. |
 | `malkuth-software/projects` | `tracks/<app>/` (with `w1.md`), `desks/<app>/` (README, integration queue) and the seats `desks/seats/<app>-orchestrator.md`, `<app>-w1.md`, `<app>-integrator.md`, one commit on `main`. |
-| `malkuth-software/fransushi` | Nothing: `harness/sync_fransushi.py` copies released plugins into `claude/` here. |
 
 The owner runs the command, so the harness commit is pushed to `main`
 directly; there is no PR to wait for.

@@ -1,0 +1,212 @@
+{
+ "boot_time": 1793183352,
+ "ccache": null,
+ "collected_at": "2026-11-11T07:55:45Z",
+ "cpu": {
+  "efficiency": 4,
+  "logical": 6,
+  "performance": 2,
+  "physical": 6
+ },
+ "env": {
+  "HOME": "~",
+  "SHELL": "/bin/zsh",
+  "TMPDIR": "/var/folders/<id>/T/"
+ },
+ "errors": [],
+ "host": {
+  "hostname": "<host>",
+  "machine": "arm64",
+  "macos_version": "26.7.2",
+  "os": "Darwin",
+  "os_release": "25.6.0",
+  "os_version": "Darwin Kernel Version 25.6.0: Mon Oct 12 00:40:52 PDT 2026; root:xnu-12377.161.15.701.48~2/RELEASE_ARM64_T8140",
+  "python": "3.15.2",
+  "python_executable": "/opt/homebrew/opt/python@3.15/bin/python3.15"
+ },
+ "known_traps": [
+  "m4ws syncs by content, not mtime",
+  "never pass bash -c strings through m4run"
+ ],
+ "load_avg": [
+  2.53,
+  2.46,
+  2.79
+ ],
+ "memory_bytes": 8589934592,
+ "path": {
+  "entries": [
+   "/opt/homebrew/bin",
+   "/opt/homebrew/sbin",
+   "/usr/local/bin",
+   "/System/Cryptexes/App/usr/bin",
+   "/usr/bin",
+   "/bin",
+   "/usr/sbin",
+   "/sbin",
+   "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin",
+   "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin",
+   "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin",
+   "/pkg/env/global/bin",
+   "/opt/homebrew/bin",
+   "~/.local/bin",
+   "~/.local/bin",
+   "~/Library/pnpm"
+  ],
+  "login_shell_entries": [
+   "/opt/homebrew/bin",
+   "/opt/homebrew/sbin",
+   "/usr/local/bin",
+   "/System/Cryptexes/App/usr/bin",
+   "/usr/bin",
+   "/bin",
+   "/usr/sbin",
+   "/sbin",
+   "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin",
+   "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin",
+   "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin",
+   "/pkg/env/global/bin",
+   "/opt/homebrew/bin",
+   "/opt/homebrew/sbin",
+   "~/.local/bin",
+   "~/Library/pnpm",
+   "~/.local/bin"
+  ],
+  "missing_dirs": [
+   "/usr/local/bin",
+   "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin",
+   "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin",
+   "/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin",
+   "/pkg/env/global/bin"
+  ]
+ },
+ "probe_seconds": 0.31,
+ "probe_version": 1,
+ "tools": {
+  "brew_llvm_clang": {
+   "found": false
+  },
+  "ccache": {
+   "found": false
+  },
+  "clang": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/clang",
+   "version": "Apple clang version 21.0.0 (clang-2100.3.34.2)"
+  },
+  "clang++": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/clang++",
+   "version": "Apple clang version 21.0.0 (clang-2100.3.34.2)"
+  },
+  "cmake": {
+   "found": true,
+   "on_path": true,
+   "path": "/opt/homebrew/bin/cmake",
+   "version": "cmake version 4.4.2"
+  },
+  "g++": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/g++",
+   "version": "Apple clang version 21.0.0 (clang-2100.3.34.2)"
+  },
+  "gcc": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/gcc",
+   "version": "Apple clang version 21.0.0 (clang-2100.3.34.2)"
+  },
+  "git": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/git",
+   "version": "git version 2.54.0 (Apple Git-157)"
+  },
+  "macos_sdk": {
+   "found": true,
+   "version": "27.0"
+  },
+  "make": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/make",
+   "version": "GNU Make 3.81"
+  },
+  "ninja": {
+   "found": false
+  },
+  "python3": {
+   "found": true,
+   "on_path": true,
+   "path": "/opt/homebrew/bin/python3",
+   "version": "Python 3.15.2"
+  },
+  "rsync": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/rsync",
+   "version": "openrsync: protocol version 29"
+  },
+  "ssh": {
+   "found": true,
+   "on_path": true,
+   "path": "/usr/bin/ssh",
+   "version": "OpenSSH_10.5p1, LibreSSL 3.3.6"
+  },
+  "xcode_select": {
+   "found": true,
+   "path": "/Library/Developer/CommandLineTools"
+  }
+ },
+ "traps": [],
+ "user": {
+  "home": "~",
+  "name": "<user>"
+ },
+ "volumes": [
+  {
+   "free_bytes": 26545770496,
+   "free_pct": 10.8,
+   "path": "~",
+   "total_bytes": 245054767104
+  }
+ ],
+ "workspaces": [
+  {
+   "exists": true,
+   "repos": [
+    {
+     "branch": "claude/mac-handoff-probes",
+     "head": "b6433c519330",
+     "is_worktree": false,
+     "path": "~/Developer/gui_forms_workers/w4/gui_forms",
+     "remotes": {
+      "origin": "https://github.com/malkuth-software/gui_forms.git"
+     }
+    },
+    {
+     "branch": "claude/hot-paths-2026-10-31",
+     "head": "bd28289f6d79",
+     "is_worktree": true,
+     "path": "~/Developer/gui_forms_workers/w4/notes_hot_paths",
+     "remotes": {
+      "origin": "https://github.com/malkuth-software/notes.git"
+     }
+    },
+    {
+     "branch": null,
+     "head": "d0bf959d79c8",
+     "is_worktree": true,
+     "path": "~/Developer/gui_forms_workers/w4/template_harness",
+     "remotes": {
+      "origin": "https://github.com/malkuth-software/template_harness.git"
+     }
+    }
+   ],
+   "root": "~/Developer/gui_forms_workers/w4"
+  }
+ ]
+}

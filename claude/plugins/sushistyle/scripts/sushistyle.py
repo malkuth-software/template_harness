@@ -2,7 +2,7 @@
 """SushiStyle: house rules as clang AST matchers, checked on a build host.
 
 Subcommands
-  hook                 PostToolUse hook: read hook JSON on stdin, emit a light reminder.
+  hook                 PostToolUse hook: read hook JSON on stdin, add a short note to the context.
   check FILE... [--gate] [--all]
                        Check files now. --gate exits 1 on error-level findings.
                        --all reports findings already reminded about.
@@ -187,8 +187,26 @@ def run_regex_tier(rules, lines):
 
 # ---------------------------------------------------------------- clang tier
 
+def path_map_entry(entry):
+    """(local, remote) from {"remote": R, "local": L} (the FranSushi convention, shared with SushiBuild)
+    or a legacy [local, remote] pair (SushiStyle's original order); None for anything else."""
+    if isinstance(entry, dict):
+        local, remote = entry.get("local"), entry.get("remote")
+    elif isinstance(entry, (list, tuple)) and len(entry) == 2:
+        local, remote = entry[0], entry[1]
+    else:
+        return None
+    if not local or remote is None:
+        return None
+    return os.path.expanduser(str(local)), str(remote)
+
+
 def map_remote_path(local_path, path_map):
-    for local_prefix, remote_prefix in path_map:
+    for entry in path_map:
+        pair = path_map_entry(entry)
+        if pair is None:
+            continue
+        local_prefix, remote_prefix = pair
         if local_path.startswith(local_prefix):
             return remote_prefix + local_path[len(local_prefix):]
     return None
@@ -456,13 +474,13 @@ def command_hook():
         state[finding.key(path)] = int(time.time())
     save_state(project_root, state)
     relative = os.path.relpath(path, project_root) if project_root else path
-    lines = ["SushiStyle notes for %s (house style; a light reminder, not a stop):" % relative]
+    lines = ["Style findings in %s:" % relative]
     for finding in fresh[:MAX_REMINDERS]:
         lines.append("- line %d [%s] %s" % (finding.line, finding.rule["id"], finding.rule["message"]))
     if len(fresh) > MAX_REMINDERS:
         lines.append("- ...and %d more; run the style-check skill for the full list." % (len(fresh) - MAX_REMINDERS))
     lines.append("If a construct must stay (an external API name, a required signature), add "
-                 "`// sushi-allow: <rule-id> <reason>` on that line or the line above and move on.")
+                 "`// sushi-allow: <rule-id> <reason>` on that line or the line above.")
     output = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": "\n".join(lines)}}
     print(json.dumps(output))
     return 0

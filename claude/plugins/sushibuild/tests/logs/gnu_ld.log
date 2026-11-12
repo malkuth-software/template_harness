@@ -1,0 +1,8 @@
+g++ -o app main.o render.o
+/usr/bin/ld: main.o: in function `main':
+main.cpp:(.text+0x1d): undefined reference to `layout::measure(Box const&)'
+/usr/bin/ld: render.o: in function `render::draw(Scene const&)':
+render.cpp:(.text+0x42): undefined reference to `layout::measure(Box const&)'
+/usr/bin/ld: render.o:(.bss+0x0): multiple definition of `g_counter'; main.o:(.bss+0x0): first defined here
+collect2: error: ld returned 1 exit status
+make: *** [Makefile:12: app] Error 1

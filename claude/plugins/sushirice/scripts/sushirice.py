@@ -39,6 +39,7 @@ $SUSHIRICE_CONFIG replaces both; see README). Python 3.9+, standard library only
 """
 
 import fnmatch
+import importlib.util
 import json
 import os
 import re
@@ -120,7 +121,7 @@ DEFAULT_CONFIG = {
     # ---- trees census
     "trees": {
         "roots": None,                  # default: the project root
-        "max_depth": 3,
+        "max_depth": 4,                 # reaches <ws>/.build/native-<platform>/<tree>
         "max_per_source": 2,            # one Release + one sanitizer tree
         "max_worktrees_per_repo": None,
         "hook_depth": 2,
@@ -178,8 +179,34 @@ def load_config(project_root):
     return config
 
 
+_SUSHITREE = None
+
+
+def sushitree():
+    """This plugin's copy of sushitree.py, loaded by path on first use."""
+    global _SUSHITREE
+    if _SUSHITREE is None:
+        spec = importlib.util.spec_from_file_location(
+            "sushirice_sushitree", os.path.join(os.path.dirname(os.path.abspath(__file__)), "sushitree.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _SUSHITREE = module
+    return _SUSHITREE
+
+
 def base_dir(project_root):
-    return project_root or os.path.expanduser("~")
+    """The directory whose .sushi/ holds state and logs: the project root, or the home directory when
+    there is none or when the project is a shared working tree without a .sushi/ (sushitree.py)."""
+    home = os.path.expanduser("~")
+    if not project_root:
+        return home
+    if os.path.isdir(os.path.join(project_root, ".sushi")):
+        return project_root
+    try:
+        sushitree().check_sushi_creation(project_root, os.path.join(project_root, ".sushi"))
+    except sushitree().SharedTreeError:
+        return home
+    return project_root
 
 
 def state_dir(project_root, create=True):
@@ -1485,7 +1512,7 @@ def build_report(project_root, config, build_dir=None, run=None, update_ccache_s
         roots = list(tree_roots(config, project_root))
         if build_dir:
             roots.append(source_dir_for(build_dir))
-        trees = census(roots, int((config.get("trees") or {}).get("max_depth", 3)))
+        trees = census(roots, int((config.get("trees") or {}).get("max_depth", 4)))
         report["trees"] = {"count": len(trees["trees"]), "duplicates": trees["duplicates"], "shared": trees["shared"]}
         report["warnings"].extend(tree_warnings(trees, config))
     return report
@@ -1644,7 +1671,7 @@ def command_monitor(arguments):
                 if trees_every > 0 and (last_trees is None or now - last_trees >= trees_every):
                     last_trees = now
                     result = census(tree_roots(config, project_root),
-                                    int((config.get("trees") or {}).get("max_depth", 3)))
+                                    int((config.get("trees") or {}).get("max_depth", 4)))
                     current = set(tree_warnings(result, config))
                     for warning in sorted(current - last_tree_warnings):
                         emit(warning + " (see `sushirice trees`)")
@@ -1727,8 +1754,11 @@ def describe_cache(build_dir, values, types=None):
     }
 
 
-def find_build_dirs(roots, max_depth=3):
-    """Directories holding CMakeCache.txt, at most max_depth below each root. Doesn't descend into one."""
+def find_build_dirs(roots, max_depth=4):
+    """Directories holding CMakeCache.txt, at most max_depth below each root. Doesn't descend into one.
+
+    A symlinked directory is followed (build trees are often links onto another volume); every
+    directory is visited once by its real path, so a link and its target, or a link cycle, count once."""
     found = []
     seen = set()
     for root in roots:
@@ -1738,7 +1768,7 @@ def find_build_dirs(roots, max_depth=3):
         stack = [(root, 0)]
         while stack:
             directory, depth = stack.pop()
-            key = normalize_path(directory)
+            key = normalize_path(os.path.realpath(directory))
             if key in seen:
                 continue
             seen.add(key)
@@ -1755,7 +1785,7 @@ def find_build_dirs(roots, max_depth=3):
                 if name in SKIP_WALK or (name.startswith(".") and name not in (".build",)):
                     continue
                 child = os.path.join(directory, name)
-                if os.path.isdir(child) and not os.path.islink(child):
+                if os.path.isdir(child):
                     stack.append((child, depth + 1))
     return found
 
@@ -1803,7 +1833,7 @@ def tree_signature(tree):
             ",".join(tree["sanitizers"]), tree["compiler"], ";".join(tree.get("options") or []))
 
 
-def census(roots, max_depth=3):
+def census(roots, max_depth=4):
     trees = [read_build_tree(directory) for directory in find_build_dirs(roots, max_depth)]
     by_source = {}
     for tree in trees:
@@ -1902,7 +1932,7 @@ def command_trees(arguments):
             index += 2
             continue
         index += 1
-    depth = int((config.get("trees") or {}).get("max_depth", 3))
+    depth = int((config.get("trees") or {}).get("max_depth", 4))
     result = census(tree_roots(config, project_root, roots), depth)
     warnings = tree_warnings(result, config)
     if "--json" in arguments:
@@ -2241,14 +2271,10 @@ def worktree_finding(directory, arguments, cwd):
                                          ("; build trees: " + ", ".join(builds[:4])) if builds else ""))
     if len(worktrees) > 4:
         described.append("and %d more" % (len(worktrees) - 4))
-    first = worktrees[0]["path"]
-    text = ("SushiRice: `git worktree add` makes another checkout of %s, which already has %d worktree%s: %s. "
-            "A fresh tree reconfigures, relinks everything and re-runs package steps (fresh trees were about 75%% "
-            "of CMake time in the churn study). The usual shape is one worktree per seat with one Release and one "
-            "sanitizer build tree, reused: a new job is a new branch in the existing worktree "
-            "(e.g. `git -C %s switch -c <job-branch>`), so builds stay incremental." % (
-                common, len(worktrees), "" if len(worktrees) == 1 else "s", "; ".join(described),
-                shlex.quote(first)))
+    text = ("SushiRice: `git worktree add` adds another checkout of %s, which has %d worktree%s: %s. "
+            "A new tree rebuilds from scratch; reusing an existing worktree of your own keeps builds "
+            "incremental." % (
+                common, len(worktrees), "" if len(worktrees) == 1 else "s", "; ".join(described)))
     return {"key": "worktree:" + common, "kind": "trees", "text": text}
 
 
@@ -2270,13 +2296,12 @@ def configure_finding(configure, config):
             if configure["build_type"] and tree["build_type"].lower() == configure["build_type"].lower()
             and tree["sanitizers"] == configure["sanitizers"]]
     names = "; ".join(short_tree(tree) for tree in existing[:4])
-    text = ("SushiRice: this configures a NEW build tree %s for %s, which already has configured tree%s: %s. "
+    text = ("SushiRice: this configures a new build tree %s for %s, which already has configured tree%s: %s. "
             % (configure["build"], configure["source"], "" if len(existing) == 1 else "s", names))
     if same:
         text += "%s already has the same configuration. " % same[0]["build_dir"]
-    text += ("Each fresh tree reconfigures, relinks everything and re-runs package steps, and trees sharing a "
-             "package dir clobber each other; reusing an existing tree (switching branches in its worktree) keeps "
-             "builds incremental.")
+    text += ("A new tree rebuilds from scratch, and trees sharing a package dir overwrite each other; reusing "
+             "an existing tree keeps builds incremental.")
     return {"key": "configure:" + source, "kind": "trees", "text": text}
 
 
@@ -2299,10 +2324,13 @@ def command_hook():
         kinds = sorted(set(find_unwrapped_builds(command, config)))
         if kinds:
             wrapper = "python3 %s slot --" % shlex.quote(SCRIPT_PATH)
+            # Name the wrappers this machine is configured with (hook_wrappers), not a fixed list.
+            others = [name for name in config.get("hook_wrappers") or [] if name not in ("sushirice", "sushirice.py")]
+            through = "`%s <cmd>`" % wrapper + "".join(", %s" % name for name in others)
             findings.append({"key": "build:" + ",".join(kinds), "kind": "build", "text": (
-                "SushiRice: this command runs a build (%s) outside a build slot. On this machine, builds run "
-                "through `%s <cmd>`, build_slot.py, or m4ws, so parallel builds "
-                "wait for headroom instead of overloading the Mac." % (", ".join(kinds), wrapper))})
+                "SushiRice: this command runs a build (%s) outside a build slot. Builds here run through %s, "
+                "so parallel builds wait for headroom instead of overloading the machine." % (
+                    ", ".join(kinds), through))})
     if modes["trees"] != "off":
         findings.extend(tree_findings(command, cwd, config))
     if not findings:

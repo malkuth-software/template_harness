@@ -195,7 +195,7 @@ class TemplateTests(unittest.TestCase):
         self.assertEqual(registry['roles']['coder']['agent_types'], ['paint_box-coder'])
         self.assertIn('paint_box-tedium', registry['settings']['agent_spawn']['allowed_subagent_types'])
 
-    @unittest.skipUnless(SUSHICOMMS.is_file(), 'the synced sushicomms plugin is not in claude/plugins')
+    @unittest.skipUnless(SUSHICOMMS.is_file(), 'the sushicomms plugin is not in claude/plugins')
     def test_the_role_registry_validates(self) -> None:
         app: Path = self.render('app')
         completed: subprocess.CompletedProcess[str] = subprocess.run(

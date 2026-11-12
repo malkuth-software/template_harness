@@ -1,0 +1,11 @@
+src/pool.cpp: In instantiation of 'void Pool<T>::push(T&&) [with T = Widget]':
+src/pool.cpp:40:15:   required from here
+src/pool.h:22:18: error: no matching function for call to 'Widget::Widget(Widget&)'
+   22 |         items_.emplace_back(value);
+src/pool.h:22:18: note: candidate: 'Widget::Widget(Widget&&)'
+/usr/include/c++/13/bits/new_allocator.h:191:4: error: use of deleted function 'Widget::Widget(const Widget&)'
+/usr/include/c++/13/bits/alloc_traits.h:538:17:   required from 'static void std::allocator_traits<...>::construct(...)'
+/usr/include/c++/13/bits/vector.tcc:117:30:   required from 'void std::vector<_Tp, _Alloc>::emplace_back(_Args&& ...)'
+src/pool.h:22:27:   required from 'void Pool<T>::push(T&&) [with T = Widget]'
+src/pool.cpp:40:15:   required from here
+compilation terminated.

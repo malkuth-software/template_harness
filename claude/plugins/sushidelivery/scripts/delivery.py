@@ -922,7 +922,7 @@ def command_hook_permission(hook_input, idle_probe=hid_idle_seconds, transport=N
         return {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow"}}}
     if decision == "deny":
         return {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {
-            "behavior": "deny", "message": "The owner denied this from their phone (SushiDelivery)."}}}
+            "behavior": "deny", "message": "Denied through the SushiDelivery relay."}}}
     return None
 
 
@@ -966,7 +966,7 @@ def command_hook_question(hook_input, idle_probe=hid_idle_seconds, transport=Non
     return {"hookSpecificOutput": {
         "hookEventName": "PreToolUse",
         "permissionDecision": "allow",
-        "permissionDecisionReason": "Answered by the owner from their phone (SushiDelivery).",
+        "permissionDecisionReason": "Answered through the SushiDelivery relay.",
         "updatedInput": updated,
     }}
 

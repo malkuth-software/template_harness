@@ -2,6 +2,6 @@
   {
     "name": "dropbox",
     "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/sushicomms.py\" monitor --project \"${CLAUDE_PROJECT_DIR}\"",
-    "description": "SushiComms dropbox: one line when a ticket quorum is met (runs only in the orchestrator seat, SUSHI_ROLE=orchestrator)"
+    "description": "SushiComms batch monitor: one line when every handoff of a batch is in (runs only in the orchestrator seat, SUSHI_ROLE=orchestrator)"
   }
 ]

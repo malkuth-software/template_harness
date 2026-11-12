@@ -15,8 +15,8 @@ multi-agent setup:
 - Registers one `PreToolUse` hook on the `Bash` tool. It reads the command Claude is about
   to run and can **deny** it (Claude sees the reason and the command does not run), **ask**
   (you get a permission prompt with the reason), or add a short **warning** to Claude's
-  context. It never approves anything: it never returns `allow`, and it never changes
-  permission settings. Your own permission rules still apply on top.
+  context. It doesn't return `allow` or change permission settings; your own permission
+  rules still apply on top.
 - To judge `git` commands it runs read-only git queries in the repository the command
   targets: `rev-parse`, `config --get alias.*`, `ls-files`, `diff --cached --name-only`,
   `cat-file --batch`, `hash-object --stdin-paths` (without `-w`: nothing is written) and
