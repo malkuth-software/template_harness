@@ -172,3 +172,13 @@ smoke = ["{python}", "gui_forms/tools/ci_build.py", "--tests", "^gui_forms_core_
 # harness/check_const_restrict.py (E3): the recorded restrict decisions,
 # maintained with the restrict changes in the GUI.Forms checkout.
 decisions = "tools/const_restrict_decisions.json"
+
+[early_exit]
+# check_early_exit.py (docs/early_exit_check.md). first_party_dirs default to
+# [state_machines] first_party_dirs. GUI.Forms uses the standard library as
+# part of its own implementation; its event and delegate invocations call
+# handlers, so they are foreign until the declarations carry early_exit.foreign.
+foreign_paths = ["third_party"]
+standard_library = "own"
+foreign_functions_extra = ["^gui_forms::Event::emit$", "^gui_forms::Delegate::operator\\(\\)$"]
+allowance = "tools/early_exit_allowance.txt"

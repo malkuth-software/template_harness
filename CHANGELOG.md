@@ -7,6 +7,15 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Added
+- `check_early_exit.py` and the clang tool `harness/early_exit/`: the
+  early-exit integrity check shared by GUI.Forms and STXlib
+  (`docs/early_exit_check.md`), in STXlib's vocabulary (audit E, section 1):
+  foreign calls and their exit classes, the site markers Whole, Guarded and
+  NoExit, rules R1 to R10 (unannotated foreign calls, locks, guards, open
+  invariants, guard-less mutation pairs, no-unwind allocation paths,
+  thread_locals, exit, release while held, swallowed forced unwinds), each
+  unit's exception mode from its compile command, fixtures with a
+  self-test, and a shrink-only allowance. Provisional.
 - `new_app.sh`/`new_app.ps1` and `harness/new_app.py`: one command to a
   harnessed GUI.Forms app (`docs/new_app.md`). It validates the name and
   derives the names (`docs/adopting.md` §2, checked against every project
