@@ -2,6 +2,9 @@
 
 #include <gui_forms/application.hpp>
 
+#if defined(__linux__)
+#include <clocale>
+#endif
 #include <exception>
 #include <iostream>
 #include <memory>
@@ -47,6 +50,14 @@ int run(const bool close_when_ready) {
 // `{{app}}` opens the form; `{{app}} --close-when-ready` opens it and
 // closes it again at once (the smoke test).
 int main(int argc, char** argv) {
+#if defined(__linux__)
+    // The program, not the library, owns the process locale. On Linux the
+    // host opens its X input method under LC_CTYPE, so environment input
+    // methods (ibus, fcitx) and compose sequences need the environment's
+    // character type set first; without it each key still gives its own text.
+    // std-rules: allow(locale-change) the program chooses its locale: the environment's character type, for X input methods and compose
+    std::setlocale(LC_CTYPE, "");
+#endif
     bool close_when_ready = false;
     if (argc == 2 && std::string_view(argv[1]) == "--close-when-ready") {
         close_when_ready = true;
