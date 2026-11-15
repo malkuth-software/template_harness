@@ -7,6 +7,12 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Added
+- `docs/handler_methodology.md`: a proposal (not built) for two rules
+  from the 2026-11-15 GUI.Forms audit, dispatch does not throw (D1 to D3)
+  and revalidate after handlers (H1 to H3), as an extension of the
+  early-exit tool, with fixtures from the audit's findings
+  (`harness/testdata/handler_rules/`, checked by `test_handler_rules.py`),
+  the two run-time harnesses and a house style section 5 addition.
 - `check_early_exit.py` and the clang tool `harness/early_exit/`: the
   early-exit integrity check shared by GUI.Forms and STXlib
   (`docs/early_exit_check.md`), in STXlib's vocabulary (audit E, section 1):
