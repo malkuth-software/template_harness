@@ -1,0 +1,12 @@
+[3/4] Linking CXX executable app
+FAILED: app
+: && /usr/bin/clang++ -O2 CMakeFiles/app.dir/src/main.cpp.o CMakeFiles/app.dir/src/render.cpp.o -o app && :
+Undefined symbols for architecture arm64:
+  "layout::measure(Box const&)", referenced from:
+      render::draw(Scene const&) in render.cpp.o
+      _main in main.cpp.o
+  "Scene::Scene(int)", referenced from:
+      _main in main.cpp.o
+ld: symbol(s) not found for architecture arm64
+clang++: error: linker command failed with exit code 1 (use -v to see invocation)
+ninja: build stopped: subcommand failed.

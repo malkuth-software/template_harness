@@ -1,0 +1,5 @@
+src/table.cpp:21:10: error: no template named 'vector' in namespace 'std'
+   21 |     std::vector<int> rows;
+      |     ~~~~~^
+src/table.cpp:5:1: note: maybe try to include <vector>?
+1 error generated.

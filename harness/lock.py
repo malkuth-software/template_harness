@@ -21,7 +21,12 @@ checkout  makes DIR that commit, detached: clones the repository into a
           not have; afterwards it verifies that HEAD is the commit.
 bump      rewrites the lock's commit to REF's commit in the repository
           (default: main), read with git ls-remote; a full commit hash is
-          taken as given. Only the commit line changes.
+          taken as given. Only the commit line changes. When the product
+          has .claude/settings.json beside the lock, every
+          extraKnownMarketplaces entry whose source is the lock's
+          repository (a github source's repo, or a git source's URL) gets
+          the same commit as its ref, so the FranSushi plugins the harness
+          ships (claude/) move with the tools.
 
 CI checks the harness out beside the product (<workspace>/template_harness)
 with .github/actions/harness-checkout or an equivalent step; the bootstrap
@@ -30,6 +35,7 @@ uses `checkout`. --github-base replaces https://github.com (tests).
 from __future__ import annotations
 import argparse
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import re
 import shlex
@@ -44,6 +50,8 @@ COMMIT_PATTERN: re.Pattern[str] = re.compile(r'[0-9a-f]{40}')
 REPOSITORY_PATTERN: re.Pattern[str] = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
 # The lock's commit line, which bump rewrites in place.
 COMMIT_LINE: re.Pattern[str] = re.compile(r'(?m)^(commit\s*=\s*")([0-9a-f]{40})(")')
+# The product's Claude Code settings, beside the lock; bump moves its harness marketplace ref.
+SETTINGS_PATH: Path = Path('.claude') / 'settings.json'
 
 
 class LockError(Exception):
@@ -152,15 +160,61 @@ def resolve(lock: Lock, reference: str, github: str) -> str:
     raise LockError(lock.repository + ' has no branch or tag ' + reference)
 
 
+def names_repository(source: dict[str, Any], repository: str) -> bool:
+    """Whether a marketplace source is the lock's repository: a github repo, or a git URL ending in it."""
+    kind: Any = source.get('source')
+    if kind == 'github':
+        return source.get('repo') == repository
+    if kind == 'git':
+        url: Any = source.get('url')
+        if type(url) is not str:
+            return False
+        trimmed: str = url.rstrip('/').removesuffix('.git')
+        return trimmed.endswith('/' + repository) or trimmed.endswith(':' + repository)
+    return False
+
+
+def bumped_settings(path: Path, repository: str, commit: str) -> tuple[str, list[str]] | None:
+    """The settings file's new text with each marketplace of repository at commit, and the names moved;
+    None when there is no settings file or nothing to move."""
+    if not path.is_file():
+        return None
+    try:
+        document: Any = json.loads(path.read_text(encoding='utf-8'))
+    except ValueError as error:
+        raise LockError(str(path) + ' is not JSON: ' + str(error)) from error
+    marketplaces: Any = document.get('extraKnownMarketplaces') if type(document) is dict else None
+    if type(marketplaces) is not dict:
+        return None
+    moved: list[str] = []
+    name: str
+    for name in marketplaces:
+        entry: Any = marketplaces[name]
+        source: Any = entry.get('source') if type(entry) is dict else None
+        if type(source) is dict and names_repository(source, repository) and source.get('ref') != commit:
+            source['ref'] = commit
+            moved.append(name)
+    if not moved:
+        return None
+    text: str = json.dumps(document, indent=2, ensure_ascii=False) + '\n'
+    return text, moved
+
+
 def bump(path: Path, reference: str, github: str) -> str:
-    """Rewrites the lock's commit line to reference's commit; returns the commit."""
+    """Rewrites the lock's commit line, and the product's harness marketplace refs, to reference's commit;
+    returns the commit."""
     lock: Lock = load(path)
     commit: str = resolve(lock, reference, github)
     text: str = path.read_text(encoding='utf-8')
     replacement: str = COMMIT_LINE.sub(r'\g<1>' + commit + r'\g<3>', text)
     parse(replacement, str(path))
+    settings: Path = path.parent / SETTINGS_PATH
+    settings_update: tuple[str, list[str]] | None = bumped_settings(settings, lock.repository, commit)
     path.write_text(replacement, encoding='utf-8')
     print(str(path) + ': ' + lock.commit[:12] + ' -> ' + commit[:12] + ' (' + reference + ')', flush=True)
+    if settings_update is not None:
+        settings.write_text(settings_update[0], encoding='utf-8', newline='\n')
+        print(str(settings) + ': marketplace ' + ', '.join(settings_update[1]) + ' ref -> ' + commit[:12], flush=True)
     return commit
 
 

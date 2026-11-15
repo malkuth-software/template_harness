@@ -1,0 +1,7 @@
+Copyright {{year}} {{licensor}}. All rights reserved.
+
+This software and its source code are proprietary and confidential. No licence
+to use, copy, modify, distribute or sublicense it is granted except by written
+agreement with the copyright holder.
+
+Third-party components keep their own licences; see THIRD_PARTY_NOTICES.md.

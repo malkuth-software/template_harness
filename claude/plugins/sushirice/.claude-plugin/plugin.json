@@ -1,0 +1,18 @@
+{
+  "name": "sushirice",
+  "version": "0.1.0",
+  "description": "Build slots and machine protection: builds wait for a free slot and live headroom (load, memory pressure, compiler count), and a watchdog inside each wrapped build pauses that build's newest compiler jobs under pressure; reuse analysis and a build-tree census flag needless rebuilds and duplicate trees.",
+  "author": {
+    "name": "Malkuth Software"
+  },
+  "homepage": "https://malkuthsoft.com",
+  "license": "MIT",
+  "keywords": [
+    "build",
+    "ninja",
+    "cmake",
+    "ccache",
+    "memory-pressure",
+    "throttle"
+  ]
+}

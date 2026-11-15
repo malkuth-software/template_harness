@@ -1,0 +1,82 @@
+# {{title}}'s project file (harness/project.py reads it), written by
+# harness/new_app.py from templates/harness/. The names follow
+# docs/adopting.md §2; test_project_names_{{app}}.py spells them out.
+#
+# {{title}} sits beside the harness in the sibling layout
+# (<workspace>/{{app}}, <workspace>/template_harness) and builds against the
+# GUI.Forms source SDK pinned in {{app}}/gui_forms.lock, with the Windows
+# toolchain GUI.Forms publishes; every other name is {{title}}'s own.
+
+schema = 1
+
+[project]
+name = "{{app}}"
+repository = "{{repository}}"
+source_dir = "{{app}}"
+# .build/native-<platform>/{{build_name}}/ (-sanitize).
+build_name = "{{build_name}}"
+# {{env_prefix}}_LLVM_RUNTIME, {{env_prefix}}_PLATFORM, ...
+env_prefix = "{{env_prefix}}"
+
+[ci]
+# {{artifact_prefix}}validated-, {{artifact_prefix}}inputs-, {{artifact_prefix}}tree-, ...
+artifact_prefix = "{{artifact_prefix}}"
+# {{cache_asset_prefix}}<platform>.tar.gz in the shared build-<commit> releases.
+cache_asset_prefix = "{{cache_asset_prefix}}"
+native_workflow = ".github/workflows/ci.yml"
+# "native (<runner>, <platform>, <shell>) / ..." from the harness-native.yml calls.
+native_job = "native"
+
+[toolchain]
+# The Windows CLANG64 toolchain GUI.Forms publishes and builds its SDK with.
+repository = "malkuth-software/gui_forms"
+asset_prefix = "gui-forms-toolchain-"
+
+[tests]
+name_prefixes = []
+
+# consumer: building GUI.Forms from its source SDK and building and starting
+# the app on Ubuntu 24.04 (the example app's set).
+[linux_packages.consumer]
+packages = [
+    "cmake", "ninja-build", "ccache", "clang-22", "generate-ninja", "pkg-config",
+    "libx11-dev", "libxext-dev", "libxrandr-dev", "libxcursor-dev", "libxfixes-dev", "libxi-dev",
+    "libatk1.0-dev", "libatk-bridge2.0-dev",
+    "xvfb", "xauth",
+]
+
+[state_machines]
+first_party_dirs = ["src", "tests"]
+vocabulary_headers = []
+areas = [
+    ["src/", "{{app}}"],
+    ["tests/", "tests"],
+]
+# A harness bump can change any verdict, so it checks the whole tree.
+full_tree_triggers = ["harness.lock"]
+
+[build]
+configure_variables = []
+
+[cache_manifest]
+profile = "{{title}} against the pinned GUI.Forms SDK"
+
+[cache_manifest.native_options]
+build_type = "Release"
+cxx_standard = 20
+
+# The integration workspace's clone is <workspace>/{{app}}; verify runs on
+# the build host from the workspace root (docs/workflow.md §4 lists what it
+# must cover; extend it as the app grows).
+[checkpoint]
+tree = "{{app}}"
+verify = ["python3", "{{app}}/ci_build.py", "--jobs", "4", "--allow-network-inputs"]
+
+# harness/bootstrap.py: the notes clone with the {{app}} side branch as the
+# worktree notes-{{app}}, the in-house projects repository, and the smoke
+# build, run from the workspace root on the build host.
+[bootstrap]
+notes_repository = "{{notes_repository}}"
+notes_branch = "{{app}}"
+projects_repository = "{{projects_repository}}"
+smoke = ["{python}", "{{app}}/ci_build.py", "--jobs", "4", "--allow-network-inputs"]

@@ -1,0 +1,21 @@
+{
+  "description": "SushiWrap: host-reset deadline reminders (PreToolUse, once per 5-minute bucket under 30 min) and boot-based deadline renewal at session start.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {"type": "command", "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT}/scripts/sushiwrap.py\" hook", "timeout": 5}
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/sushiwrap.py\" session-start", "timeout": 30}
+        ]
+      }
+    ]
+  }
+}

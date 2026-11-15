@@ -1,0 +1,23 @@
+{
+  "name": "sushidelivery",
+  "version": "0.1.0",
+  "description": "Urgency-tagged, phone-readable decision reports for Claude Code, plus an optional, off-by-default relay of permission prompts and multiple-choice questions to your own Telegram bot or ntfy topic. Prefer Remote Control and the official channel plugins first.",
+  "author": {"name": "Malkuth Software"},
+  "homepage": "https://malkuthsoft.com",
+  "license": "MIT",
+  "keywords": ["notifications", "approvals", "telegram", "ntfy", "mobile", "decision-report"],
+  "userConfig": {
+    "telegram_bot_token": {
+      "type": "string",
+      "title": "Telegram bot token (optional)",
+      "description": "Token of a bot you created yourself with BotFather. Leave empty unless you use the Telegram transport. Stored in secure storage, never in files.",
+      "sensitive": true
+    },
+    "ntfy_token": {
+      "type": "string",
+      "title": "ntfy access token (optional)",
+      "description": "Access token for a protected ntfy server or topic. Leave empty for an open topic or if you don't use ntfy.",
+      "sensitive": true
+    }
+  }
+}

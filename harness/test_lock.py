@@ -2,10 +2,12 @@
 from __future__ import annotations
 import contextlib
 import io
+import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+from typing import Any
 import unittest
 from unittest import mock
 
@@ -138,6 +140,50 @@ class LockTests(unittest.TestCase):
         status, output, errors = self.run_lock('bump', '--to', 'absent')
         self.assertEqual(status, 1)
         self.assertIn('no branch or tag absent', errors)
+
+    def test_bump_moves_the_harness_marketplace_ref_in_the_claude_settings(self) -> None:
+        settings: Path = self.lock_path.parent / '.claude' / 'settings.json'
+        settings.parent.mkdir()
+        document: dict[str, object] = {
+            'extraKnownMarketplaces': {
+                'fransushi': {'source': {'source': 'github', 'repo': REPOSITORY, 'ref': self.commits[0],
+                                         'path': 'claude/.claude-plugin/marketplace.json'}},
+                'mirror': {'source': {'source': 'git', 'url': 'https://example.invalid/' + REPOSITORY + '.git',
+                                      'ref': 'main'}},
+                'other': {'source': {'source': 'github', 'repo': 'owner/other', 'ref': 'v9'}}},
+            'enabledPlugins': {'wasabi@fransushi': True}}
+        settings.write_text(json.dumps(document, indent=2) + '\n', encoding='utf-8')
+        status: int
+        output: str
+        errors: str
+        status, output, errors = self.run_lock('bump')
+        self.assertEqual(status, 0, errors)
+        self.assertIn('marketplace fransushi, mirror ref -> ' + self.commits[1][:12], output)
+        moved: dict[str, Any] = json.loads(settings.read_text(encoding='utf-8'))
+        marketplaces: dict[str, Any] = moved['extraKnownMarketplaces']
+        self.assertEqual(marketplaces['fransushi']['source']['ref'], self.commits[1])
+        self.assertEqual(marketplaces['fransushi']['source']['path'], 'claude/.claude-plugin/marketplace.json')
+        self.assertEqual(marketplaces['mirror']['source']['ref'], self.commits[1])
+        self.assertEqual(marketplaces['other']['source']['ref'], 'v9')
+        self.assertEqual(moved['enabledPlugins'], {'wasabi@fransushi': True})
+        self.assertEqual(lock.load(self.lock_path).commit, self.commits[1])
+        # Already there: the settings file is left byte for byte.
+        before: str = settings.read_text(encoding='utf-8')
+        status, output, errors = self.run_lock('bump')
+        self.assertEqual(status, 0, errors)
+        self.assertNotIn('marketplace', output)
+        self.assertEqual(settings.read_text(encoding='utf-8'), before)
+
+    def test_bump_refuses_unreadable_settings_before_writing_the_lock(self) -> None:
+        settings: Path = self.lock_path.parent / '.claude' / 'settings.json'
+        settings.parent.mkdir()
+        settings.write_text('{not json', encoding='utf-8')
+        status: int
+        errors: str
+        status, _, errors = self.run_lock('bump')
+        self.assertEqual(status, 1)
+        self.assertIn('is not JSON', errors)
+        self.assertEqual(lock.load(self.lock_path).commit, self.commits[0])
 
     def test_checkout_inside_a_root_layout_product_that_ignores_it(self) -> None:
         # A product at the workspace root: the harness goes inside its checkout.

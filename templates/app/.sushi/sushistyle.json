@@ -1,0 +1,6 @@
+{
+  "rule_packs": ["../template_harness/claude/rules/house.json"],
+  "remote": {
+    "include_dirs": ["src", "tests"]
+  }
+}

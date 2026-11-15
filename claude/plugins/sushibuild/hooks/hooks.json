@@ -1,0 +1,13 @@
+{
+  "description": "SushiBuild enforcement: the sushi-fixer agent may read and edit only the locked file and has no shell; the sushi-build triage agent writes only its state, builds only through sushibuild.py run, and starts only the fixer. Calls from anyone else pass untouched.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Read|Bash|Agent|Task",
+        "hooks": [
+          {"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/sushibuild.py\" hook", "timeout": 10}
+        ]
+      }
+    ]
+  }
+}

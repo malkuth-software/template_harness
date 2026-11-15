@@ -1,0 +1,4 @@
+  Creating library C:/src/gui_forms/build/Release/gui.lib
+main.obj : error LNK2019: unresolved external symbol "public: int __cdecl Layout::measure(class Box const &)" (?measure@Layout@@QEAAHAEBVBox@@@Z) referenced in function main [C:\src\gui_forms\build\app.vcxproj]
+render.obj : error LNK2001: unresolved external symbol "public: int __cdecl Layout::measure(class Box const &)" (?measure@Layout@@QEAAHAEBVBox@@@Z) [C:\src\gui_forms\build\app.vcxproj]
+C:\src\gui_forms\build\Release\app.exe : fatal error LNK1120: 1 unresolved externals [C:\src\gui_forms\build\app.vcxproj]

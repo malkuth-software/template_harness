@@ -1,0 +1,5 @@
+src/a.cpp:3:5: error: use of undeclared identifier 'old_api'
+src/b.cpp:7:5: error: use of undeclared identifier 'old_api'
+src/c.cpp:9:5: error: use of undeclared identifier 'old_api'
+src/d.cpp:11:5: error: use of undeclared identifier 'old_api'
+4 errors generated.

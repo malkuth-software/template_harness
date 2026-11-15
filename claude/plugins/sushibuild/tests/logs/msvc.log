@@ -1,0 +1,5 @@
+  Building Custom Rule C:/src/gui_forms/CMakeLists.txt
+  form_layout.cpp
+C:\src\gui_forms\src\form_layout.cpp(88,17): error C2065: 'heigth': undeclared identifier [C:\src\gui_forms\build\gui.vcxproj]
+C:\src\gui_forms\src\form_layout.cpp(91): error C2143: syntax error: missing ';' before '}' [C:\src\gui_forms\build\gui.vcxproj]
+C:\src\gui_forms\src\form_layout.cpp(12,10): warning C4100: 'flags': unreferenced formal parameter [C:\src\gui_forms\build\gui.vcxproj]

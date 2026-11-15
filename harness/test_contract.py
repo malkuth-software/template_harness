@@ -41,6 +41,14 @@ CONTRACT_FILES: tuple[str, ...] = (
     'harness/lock.py',
     '.github/actions/harness-checkout/action.yml',
     '.github/actions/harness-checkout/read_lock.sh',
+    'new_app.sh',
+    'new_app.ps1',
+    'harness/new_app.py',
+    'templates/app/harness.lock',
+    'templates/app/.claude/settings.json',
+    'claude/.claude-plugin/marketplace.json',
+    'claude/README.md',
+    'claude/rules/house.json',
 )
 CHANGE_RULE: str = ('products use this (docs/contract.md); a change needs a Breaking changes '
                     'entry in CHANGELOG.md')

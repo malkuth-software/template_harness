@@ -1,0 +1,6 @@
+{
+  "build_cwd": "..",
+  "build_timeout_s": 1800,
+  "fixer_agent_types": ["sushi-fixer"],
+  "build_agent_types": ["sushi-build"]
+}

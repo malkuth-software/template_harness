@@ -1,0 +1,6 @@
+ld.lld: error: undefined symbol: layout::measure(Box const&)
+>>> referenced by main.cpp:9 (src/main.cpp:9)
+>>>               main.o:(main)
+>>> referenced by render.cpp:20 (src/render.cpp:20)
+>>>               render.o:(render::draw(Scene const&))
+clang++: error: linker command failed with exit code 1 (use -v to see invocation)

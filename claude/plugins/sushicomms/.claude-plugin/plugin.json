@@ -1,0 +1,9 @@
+{
+  "name": "sushicomms",
+  "version": "0.1.0",
+  "description": "Typed handoff and question tickets between workers: a role registry the coordinator edits, validated ticket files, a monitor that prints one line when every handoff of a batch is in, and reminders when a command breaks a role rule.",
+  "author": {"name": "Malkuth Software"},
+  "homepage": "https://malkuthsoft.com",
+  "license": "MIT",
+  "keywords": ["orchestration", "roles", "tickets", "multi-agent", "handoff", "integration-queue"]
+}

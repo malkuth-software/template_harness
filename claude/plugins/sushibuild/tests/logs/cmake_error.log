@@ -1,0 +1,4 @@
+CMake Error at CMakeLists.txt:14 (add_executable):
+  Cannot find source file:
+    src/missing.cpp
+-- Configuring incomplete, errors occurred!

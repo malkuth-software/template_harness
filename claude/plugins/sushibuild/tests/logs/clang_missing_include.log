@@ -1,0 +1,8 @@
+In file included from src/widget.cpp:3:
+src/widget.h:14:10: fatal error: 'layout_box.h' file not found
+   14 | #include "layout_box.h"
+      |          ^~~~~~~~~~~~~~
+1 error generated.
+make[2]: *** [CMakeFiles/gui.dir/src/widget.cpp.o] Error 1
+make[1]: *** [CMakeFiles/gui.dir/all] Error 2
+make: *** [all] Error 2

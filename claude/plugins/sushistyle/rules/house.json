@@ -1,0 +1,188 @@
+{
+  "pack": "house",
+  "description": "Example house rules from the GUI.Forms HOUSE_STYLE (spelling, failure, callbacks). Each rule has a fail and a pass fixture.",
+  "rules": [
+    {
+      "id": "HS-auto",
+      "severity": "error",
+      "section": "11",
+      "tier": "clang",
+      "matcher": "varDecl(unless(isImplicit()), anyOf(hasType(autoType()), hasType(references(qualType(autoType()))), hasType(pointsTo(qualType(autoType())))), unless(decompositionDecl()))",
+      "message": "spell the type instead of `auto`.",
+      "fixtures": {
+        "fail": "fixtures/HS-auto.fail.cpp",
+        "pass": "fixtures/HS-auto.pass.cpp"
+      }
+    },
+    {
+      "id": "HS-trailing-return",
+      "severity": "error",
+      "section": "11",
+      "tier": "clang",
+      "matcher": "functionDecl(hasTrailingReturn())",
+      "message": "write the return type in front; no trailing return types.",
+      "fixtures": {
+        "fail": "fixtures/HS-trailing-return.fail.cpp",
+        "pass": "fixtures/HS-trailing-return.pass.cpp"
+      }
+    },
+    {
+      "id": "HS-lambda",
+      "severity": "error",
+      "section": "9",
+      "tier": "clang",
+      "matcher": "lambdaExpr()",
+      "message": "name executable behavior: use a named function, functor, visitor, or listener instead of a lambda.",
+      "fixtures": {
+        "fail": "fixtures/HS-lambda.fail.cpp",
+        "pass": "fixtures/HS-lambda.pass.cpp"
+      }
+    },
+    {
+      "id": "HS-switch-default",
+      "severity": "error",
+      "section": "2",
+      "tier": "clang",
+      "matcher": "switchStmt(unless(forEachSwitchCase(defaultStmt())), unless(hasCondition(ignoringImpCasts(expr(hasType(hasCanonicalType(enumType())))))))",
+      "message": "every switch has a default; only a switch over an enum that names every enumerator may omit it (its fallback follows the switch).",
+      "fixtures": {
+        "fail": "fixtures/HS-switch-default.fail.cpp",
+        "pass": "fixtures/HS-switch-default.pass.cpp"
+      }
+    },
+    {
+      "id": "HS-arrow",
+      "severity": "error",
+      "section": "11",
+      "tier": "clang",
+      "matcher": "memberExpr(isArrow(), unless(hasObjectExpression(ignoringImpCasts(cxxThisExpr()))))",
+      "message": "write `(*p).m` rather than `p->m`.",
+      "fixtures": {
+        "fail": "fixtures/HS-arrow.fail.cpp",
+        "pass": "fixtures/HS-arrow.pass.cpp"
+      }
+    },
+    {
+      "id": "HS-structured-binding",
+      "severity": "error",
+      "section": "11",
+      "tier": "clang",
+      "matcher": "decompositionDecl()",
+      "message": "no structured bindings; name the record and read its fields.",
+      "fixtures": {
+        "fail": "fixtures/HS-structured-binding.fail.cpp",
+        "pass": "fixtures/HS-structured-binding.pass.cpp"
+      }
+    },
+    {
+      "id": "HS-std-any",
+      "severity": "error",
+      "section": "11",
+      "tier": "clang",
+      "matcher": "declaratorDecl(hasType(hasUnqualifiedDesugaredType(recordType(hasDeclaration(cxxRecordDecl(hasName(\"::std::any\")))))))",
+      "message": "no `std::any`; give the alternatives a `std::variant` behind named factories and queries.",
+      "fixtures": {
+        "fail": "fixtures/HS-std-any.fail.cpp",
+        "pass": "fixtures/HS-std-any.pass.cpp"
+      }
+    },
+    {
+      "id": "HS-defaulted-comparison",
+      "severity": "error",
+      "section": "11",
+      "tier": "clang",
+      "matcher": "functionDecl(isDefaulted(), unless(isImplicit()), anyOf(hasOverloadedOperatorName(\"==\"), hasOverloadedOperatorName(\"!=\"), hasOverloadedOperatorName(\"<=>\")))",
+      "message": "write comparisons out; no defaulted comparison operators.",
+      "fixtures": {
+        "fail": "fixtures/HS-defaulted-comparison.fail.cpp",
+        "pass": "fixtures/HS-defaulted-comparison.pass.cpp"
+      }
+    },
+    {
+      "id": "HS-ranges",
+      "severity": "error",
+      "section": "11",
+      "tier": "regex",
+      "regex": "std::(ranges|views)::",
+      "message": "no ranges/views pipelines; write the loop or use a named standard algorithm.",
+      "fixtures": {
+        "fail": "fixtures/HS-ranges.fail.cpp",
+        "pass": "fixtures/HS-ranges.pass.cpp"
+      }
+    },
+    {
+      "id": "HS-vague-name",
+      "severity": "reminder",
+      "section": "10",
+      "tier": "clang",
+      "matcher": "functionDecl(unless(isImplicit()), matchesName(\"(^|::)(process|handle|helper|manage|do_stuff|util)[A-Za-z0-9_]*$\"))",
+      "message": "names match mechanism; say what this function does (fine to keep if an external API requires the name).",
+      "fixtures": {
+        "fail": "fixtures/HS-vague-name.fail.cpp",
+        "pass": "fixtures/HS-vague-name.pass.cpp"
+      }
+    },
+    {
+      "id": "HS-uninit-local",
+      "severity": "error",
+      "section": "3",
+      "tier": "clang",
+      "matcher": "varDecl(hasLocalStorage(), unless(parmVarDecl()), unless(isImplicit()), unless(hasParent(cxxCatchStmt())), unless(isExceptionVariable()), unless(hasInitializer(anything())), unless(decompositionDecl()))",
+      "message": "initialize each variable explicitly.",
+      "fixtures": {
+        "fail": "fixtures/HS-uninit-local.fail.cpp",
+        "pass": "fixtures/HS-uninit-local.pass.cpp"
+      }
+    },
+    {
+      "id": "HS-coroutine",
+      "severity": "error",
+      "section": "11",
+      "tier": "clang",
+      "matcher": "coroutineBodyStmt()",
+      "message": "no coroutines; name the asynchronous work, completion and cancellation explicitly.",
+      "fixtures": {
+        "fail": "fixtures/HS-coroutine.fail.cpp",
+        "pass": "fixtures/HS-coroutine.pass.cpp"
+      }
+    },
+    {
+      "id": "HS-objc-block",
+      "severity": "error",
+      "section": "9",
+      "tier": "clang",
+      "matcher": "blockExpr()",
+      "message": "no Objective-C blocks; use a named method or a delegate.",
+      "fixtures": {
+        "fail": "fixtures/HS-objc-block.fail.mm",
+        "pass": "fixtures/HS-objc-block.pass.mm"
+      }
+    },
+    {
+      "id": "HS-decltype-expression",
+      "severity": "reminder",
+      "section": "11",
+      "tier": "clang",
+      "matcher": "expr(hasParent(typeLoc(loc(decltypeType()))), unless(anyOf(expr(isTypeDependent()), declRefExpr(), memberExpr(hasObjectExpression(ignoringImpCasts(cxxThisExpr()))), unaryOperator(hasOperatorName(\"&\"), hasUnaryOperand(declRefExpr())))), unless(hasAncestor(cxxRecordDecl(matchesName(\"[Tt]raits?$\")))))",
+      "message": "`decltype` here computes a type from an expression; name a declaration instead (`decltype(member)`, `decltype(&function)`), or move the computation into a named private trait.",
+      "fixtures": {
+        "fail": "fixtures/HS-decltype-expression.fail.cpp",
+        "pass": "fixtures/HS-decltype-expression.pass.cpp"
+      },
+      "enabled": true
+    },
+    {
+      "id": "HS-switch-enum-coverage",
+      "severity": "error",
+      "section": "2",
+      "tier": "clang-diag",
+      "diag_flag": "-Wswitch",
+      "diag_regex": "enumeration values? .* not handled in switch",
+      "message": "a switch over an enum without `default` must name every enumerator (then reach its fallback after the switch).",
+      "fixtures": {
+        "fail": "fixtures/HS-switch-enum-coverage.fail.cpp",
+        "pass": "fixtures/HS-switch-enum-coverage.pass.cpp"
+      }
+    }
+  ]
+}

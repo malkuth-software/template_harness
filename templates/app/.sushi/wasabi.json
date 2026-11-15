@@ -1,0 +1,5 @@
+{
+  "fetch": {
+    "allow_hosts": ["github.com/{{owner}}/"]
+  }
+}
