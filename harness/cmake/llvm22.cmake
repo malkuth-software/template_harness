@@ -27,7 +27,23 @@ if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
     set(_harness_cxx "-stdlib=libc++ -nostdinc++ -isystem \"${_harness_runtime}/include/c++/v1\"")
     set(CMAKE_CXX_FLAGS_INIT "${_harness_cxx}")
     set(CMAKE_OBJCXX_FLAGS_INIT "${_harness_cxx}")
-    set(_harness_link "-L\"${_harness_runtime}/lib\" -Wl,-rpath,\"${_harness_runtime}/lib\" -lunwind")
+    # One module per program: when the runtime tree carries the static
+    # archives (build_macos_runtimes.py builds them, hermetic), libc++,
+    # libc++abi and libunwind are linked statically, as on Linux and Windows,
+    # and a program depends only on system libraries. A tree with dylibs only
+    # is linked through them and the rpath. HARNESS_STATIC_CXX_RUNTIME says
+    # which, for checks that refuse a shared C++ runtime.
+    if(EXISTS "${_harness_runtime}/lib/libc++.a" AND EXISTS "${_harness_runtime}/lib/libc++abi.a"
+       AND EXISTS "${_harness_runtime}/lib/libunwind.a")
+        set(_harness_link "-nostdlib++")
+        set(CMAKE_CXX_STANDARD_LIBRARIES_INIT
+            "\"${_harness_runtime}/lib/libc++.a\" \"${_harness_runtime}/lib/libc++abi.a\" \"${_harness_runtime}/lib/libunwind.a\"")
+        set(CMAKE_OBJCXX_STANDARD_LIBRARIES_INIT "${CMAKE_CXX_STANDARD_LIBRARIES_INIT}")
+        set(HARNESS_STATIC_CXX_RUNTIME ON CACHE BOOL "The C++ runtime is linked statically (harness/cmake/llvm22.cmake)" FORCE)
+    else()
+        set(_harness_link "-L\"${_harness_runtime}/lib\" -Wl,-rpath,\"${_harness_runtime}/lib\" -lunwind")
+        set(HARNESS_STATIC_CXX_RUNTIME OFF CACHE BOOL "The C++ runtime is linked statically (harness/cmake/llvm22.cmake)" FORCE)
+    endif()
     set(CMAKE_EXE_LINKER_FLAGS_INIT "${_harness_link}")
     set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_harness_link}")
     set(CMAKE_MODULE_LINKER_FLAGS_INIT "${_harness_link}")

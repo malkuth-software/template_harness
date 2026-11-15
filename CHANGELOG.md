@@ -7,6 +7,17 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Changed
+- macOS links its C++ runtime statically, as Linux and Windows do (one
+  module per program, owner decision 2026-11-15).
+  `harness/build_macos_runtimes.py` builds hermetic static archives of
+  libc++, libc++abi and libunwind beside the dylibs. Hermetic means hidden
+  visibility, so a shared library that links them exports none of their
+  symbols. `harness/macos_runtime_manifest.py` requires and records the
+  archives, so a cached runtime tree without them is rebuilt: the cache key
+  hashes both scripts. When the archives are present, `harness/cmake/llvm22.cmake`
+  links them with `-nostdlib++`, and a program then depends only on system
+  libraries. `HARNESS_STATIC_CXX_RUNTIME` reports which runtime was linked.
+  A tree with dylibs only still links them through the rpath.
 - `claude/` is now where the FranSushi plugins are developed: each plugin
   keeps its tests in `claude/plugins/<name>/tests/`, and
   `harness/test_fransushi.py` runs them with the harness suite. The

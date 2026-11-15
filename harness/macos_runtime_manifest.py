@@ -9,6 +9,9 @@ import shutil
 from typing import Any
 
 VERSION: str = '22.1.8'
+# The static archives the payload must carry beside the dylibs, for programs
+# that link their C++ runtime statically (build_macos_runtimes.py).
+STATIC_ARCHIVES: tuple[str, ...] = ('libc++.a', 'libc++abi.a', 'libunwind.a')
 SOURCE_SHA256: str = '922f1817a0df7b1489272d18134ee0087a8b068828f87ac63b9861b1a9965888'
 
 
@@ -20,6 +23,12 @@ def payload_hashes(prefix: Path) -> dict[str, str]:
             result['lib/' + library.name] = hashlib.sha256(library.read_bytes()).hexdigest()
     if len(result) != 3:
         raise RuntimeError('Expected exactly three LLVM runtime libraries')
+    name: str
+    for name in STATIC_ARCHIVES:
+        archive: Path = prefix / 'lib' / name
+        if not archive.is_file() or archive.is_symlink():
+            raise RuntimeError('Static LLVM runtime archive is missing: lib/' + name)
+        result['lib/' + name] = hashlib.sha256(archive.read_bytes()).hexdigest()
     link: Path
     for link in sorted((prefix / 'lib').glob('*.dylib')):
         if link.is_symlink():
