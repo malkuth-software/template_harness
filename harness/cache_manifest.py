@@ -56,6 +56,10 @@ def main() -> None:
         runtime: Path = Path(os.environ[product.variable('LLVM_RUNTIME')])
         manifest['runtime'] = json.loads((runtime / 'runtime-manifest.json').read_text(encoding='utf-8'))
         manifest['runtime_layout'] = '.build/toolchain/llvm-22.1.8-macos14'
+    elif sys.argv[1].startswith('linux-') and product.variable('LLVM_RUNTIME') in os.environ:
+        linux_runtime: Path = Path(os.environ[product.variable('LLVM_RUNTIME')])
+        manifest['runtime'] = json.loads((linux_runtime / 'runtime-manifest.json').read_text(encoding='utf-8'))
+        manifest['runtime_layout'] = '.build/toolchain/' + linux_runtime.name
     if sys.argv[1] == 'windows-x64':
         # The packaged MSYS2 tree must contain the compiler that filled this cache.
         toolchain: dict[str, object] = json.loads(

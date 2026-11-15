@@ -223,6 +223,11 @@ def restore_toolchain(product: project.Project, platform: str, dry_run: bool) ->
               + project.PROJECT_VARIABLE + '=' + shlex.quote(str(product.path)) + ' sh '
               + shlex.quote(str(harness / 'install_linux_ci_packages.sh')) + ' ' + profile
               + ' <apt archive directory>', flush=True)
+        print('Then build the static C++ runtime with that compiler: python3 '
+              + shlex.quote(str(harness / 'build_linux_runtimes.py'))
+              + ' --work <scratch> --prefix <workspace>/.build/toolchain/<python3 '
+              + shlex.quote(str(harness / 'linux_runtime_manifest.py')) + ' --directory-name>; then set '
+              + product.variable('LLVM_RUNTIME') + ' to that prefix', flush=True)
         return
     runtime: Path = product.workspace_root() / MACOS_RUNTIME
     if (runtime / 'runtime-manifest.json').is_file():

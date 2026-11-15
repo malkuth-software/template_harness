@@ -27,9 +27,11 @@ You need:
 The harness provides:
 
 - **The toolchain:** `windows_toolchain.py` restores the Windows toolchain,
-  `build_macos_runtimes.py` builds the macOS 14 runtimes, and
+  `build_macos_runtimes.py` builds the macOS 14 runtimes,
   `install_linux_ci_packages.sh` installs the Ubuntu packages and
-  apt.llvm.org's clang-22. `compiler_identity.py` verifies the compiler,
+  apt.llvm.org's clang-22 (the bootstrap compiler), and
+  `build_linux_runtimes.py` builds the static position-independent C++
+  runtime every Linux build links. `compiler_identity.py` verifies the compiler,
   and `cmake/llvm22.cmake` is the CMake toolchain file.
 - **Caches and reuse:** `ci_cache.py`, `ci_reuse.py`, `ci_promote.py`,
   `ci_sanitizer_seed.py`, `ci_tree_receipt.py`, `publish_cache.py`,
@@ -268,7 +270,7 @@ There are two ways to run the harness in CI.
 
 - `harness-native.yml`: one host's build per call, with inputs `runner`,
   `platform`, `shell`, `product_path`, `project` and `build_command`.
-  Optional inputs are `linux_profile`, `linux_display`, `macos_runtimes`,
+  Optional inputs are `linux_profile`, `linux_display`, `linux_runtimes`, `macos_runtimes`,
   `install_cache_paths` and `install_cache_key_files`. It restores the
   toolchain, the macOS runtimes, the Linux packages and the ccache
   directory. It then runs your build command from the workspace root and
@@ -315,6 +317,9 @@ never a shim or an old path:
   `hashFiles('template_harness/harness/install_linux_ci_packages.sh', 'template_harness/projects/<name>.toml')`.
 - The macOS runtimes key:
   `hashFiles('template_harness/harness/build_macos_runtimes.py', 'template_harness/harness/macos_runtime_manifest.py')`.
+- The Linux runtimes key: the directory name, the compiler identity and
+  `hashFiles` of `build_linux_runtimes.py`, `linux_runtime_manifest.py` and
+  `macos_runtime_manifest.py` (which holds the pinned version).
 
 `hashFiles` hashes content, not paths. Because the moved files were
 byte-identical, GUI.Forms' runtime key did not change. The Linux key did

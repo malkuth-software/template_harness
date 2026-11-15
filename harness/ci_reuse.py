@@ -245,6 +245,11 @@ def restore_archive(identity: dict[str, Any], receipt_path: Path | None = None) 
     if identity['platform'] == 'macos-arm64':
         from macos_runtime_manifest import verify
         verify(Path(os.environ[project.current().variable('LLVM_RUNTIME')]))
+    # On Linux the runtime is not in the cache archive (its own Actions cache
+    # restores it); a reused cache must still have been built against it.
+    elif identity['platform'].startswith('linux-') and project.current().variable('LLVM_RUNTIME') in os.environ:
+        import linux_runtime_manifest
+        linux_runtime_manifest.verify(Path(os.environ[project.current().variable('LLVM_RUNTIME')]))
 
 
 def main() -> None:

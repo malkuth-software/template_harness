@@ -7,6 +7,19 @@ and new form. Provisional rows there may change without an entry.
 ## Unreleased
 
 ### Changed
+- Linux links the harness's own C++ runtime, on every distribution.
+  `harness/build_linux_runtimes.py` builds libc++, libc++abi and libunwind
+  from the pinned LLVM 22.1.8 as position-independent, hermetic static
+  archives for the host's C library (glibc or musl) and architecture, into
+  `.build/toolchain/llvm-22.1.8-linux-<arch>-<libc>`. A shared library can
+  therefore carry the runtime: a distribution's archives need not be
+  position independent (Alpine's libc++abi.a is not). On Linux
+  `harness/cmake/llvm22.cmake` now requires `<env_prefix>_LLVM_RUNTIME` and
+  the archives, and refuses to configure without them; the distribution's
+  packages are only the bootstrap compiler. `harness/linux_runtime_manifest.py`
+  records and verifies the payload. `harness-native.yml` gains the
+  `linux_runtimes` input (default on) and caches the runtime, keyed on both
+  scripts and the compiler identity.
 - macOS links its C++ runtime statically, as Linux and Windows do (one
   module per program, owner decision 2026-11-15).
   `harness/build_macos_runtimes.py` builds hermetic static archives of
