@@ -15,7 +15,9 @@ and new form. Provisional rows there may change without an entry.
   invariants, guard-less mutation pairs, no-unwind allocation paths,
   thread_locals, exit, release while held, swallowed forced unwinds), each
   unit's exception mode from its compile command, fixtures with a
-  self-test, and a shrink-only allowance. Provisional.
+  self-test, and a shrink-only allowance. Settings in `[early_exit]`,
+  including `letting_go_resets` (R9's reset exemption) and the allocator
+  allowlist. Class cancel counts as none in Windows units. Provisional.
 - `new_app.sh`/`new_app.ps1` and `harness/new_app.py`: one command to a
   harnessed GUI.Forms app (`docs/new_app.md`). It validates the name and
   derives the names (`docs/adopting.md` §2, checked against every project

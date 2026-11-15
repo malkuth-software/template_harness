@@ -93,6 +93,9 @@ ALLOCATOR_ALLOWLIST: tuple[str, ...] = (
 
 RELEASE_FUNCTIONS: tuple[str, ...] = ('free', 'std::free', 'release', 'mi_free')
 
+# Classes whose reset() clears the owner before it releases (R9's exemption).
+LETTING_GO_RESETS: tuple[str, ...] = ('std::unique_ptr', 'std::shared_ptr', 'std::weak_ptr')
+
 FOREIGN_FUNCTIONS: tuple[str, ...] = (
     'std::function::operator\\(\\)', 'std::move_only_function::operator\\(\\)', 'std::invoke',
 )
@@ -115,6 +118,7 @@ class Settings:
     cancellation_points: tuple[str, ...]
     allocator_allowlist: tuple[str, ...]
     release_functions: tuple[str, ...]
+    letting_go_resets: tuple[str, ...]
     allowance: str
 
 
@@ -156,6 +160,7 @@ def read_settings(document: dict[str, Any]) -> Settings:
         cancellation_points=listed('cancellation_points', exact(CANCELLATION_POINTS)),
         allocator_allowlist=listed('allocator_allowlist', exact(ALLOCATOR_ALLOWLIST)),
         release_functions=listed('release_functions', exact(RELEASE_FUNCTIONS)),
+        letting_go_resets=listed('letting_go_resets', exact(LETTING_GO_RESETS)),
         allowance=allowance)
     if not settings.first_party_dirs:
         raise ValueError('[early_exit] first_party_dirs (or [state_machines] first_party_dirs) is required')
@@ -180,6 +185,7 @@ def tool_settings(settings: Settings, root: Path) -> dict[str, Any]:
         'cancellation_points': list(settings.cancellation_points),
         'allocator_allowlist': list(settings.allocator_allowlist),
         'release_functions': list(settings.release_functions),
+        'letting_go_resets': list(settings.letting_go_resets),
     }
     return document
 
@@ -391,7 +397,10 @@ def self_test(tool: Path) -> int:
     failures: int = 0
     with tempfile.TemporaryDirectory(prefix='early-exit-self-test-') as scratch:
         config: Path = Path(scratch) / 'settings.json'
-        fixture_settings: Settings = read_settings({'early_exit': {'first_party_dirs': ['.']}})
+        # The fixtures' project lists one type of its own as letting go
+        # (r9_release.cpp's fixture::Owned).
+        fixture_settings: Settings = read_settings(
+            {'early_exit': {'first_party_dirs': ['.'], 'letting_go_resets_extra': ['^fixture::Owned$']}})
         config.write_text(json.dumps(tool_settings(fixture_settings, FIXTURES)), encoding='utf-8')
         fixture: Path
         for fixture in sorted(FIXTURES.glob('*.cpp')):

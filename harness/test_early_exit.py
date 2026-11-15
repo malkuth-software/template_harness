@@ -34,6 +34,7 @@ class SettingsTests(unittest.TestCase):
         self.assertIn('^memcpy$', settings.no_exit_functions)
         self.assertIn('^mi_.*$', settings.allocator_allowlist)
         self.assertEqual(settings.allowance, 'tools/early_exit_allowance.txt')
+        self.assertEqual(settings.letting_go_resets, ('^std::unique_ptr$', '^std::shared_ptr$', '^std::weak_ptr$'))
 
     def test_extra_lists_append(self) -> None:
         settings: early_exit.Settings = early_exit.read_settings(
@@ -42,6 +43,10 @@ class SettingsTests(unittest.TestCase):
         self.assertIn('^std::invoke$', settings.foreign_functions)
         self.assertEqual(settings.foreign_functions[-1], '^ns::Event::emit$')
         self.assertTrue(settings.standard_library_foreign)
+        listed: early_exit.Settings = early_exit.read_settings(
+            {'early_exit': {'first_party_dirs': ['src'], 'letting_go_resets_extra': ['^stxlib::Unique$']}})
+        self.assertEqual(listed.letting_go_resets[-1], '^stxlib::Unique$')
+        self.assertIn('^std::weak_ptr$', listed.letting_go_resets)
 
     def test_refuses_bad_values(self) -> None:
         with self.assertRaises(ValueError):
@@ -66,6 +71,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(document['first_party_roots'], [Path(os.path.abspath(root / 'src')).as_posix()])
         self.assertTrue(document['foreign_paths'][0].endswith('/third_party'))
         self.assertFalse(document['standard_library_foreign'])
+        self.assertIn('^std::unique_ptr$', document['letting_go_resets'])
 
 
 class EntryTests(unittest.TestCase):
@@ -118,6 +124,12 @@ class FixtureTests(unittest.TestCase):
         flags, expected = early_exit.expectations(text)
         self.assertEqual(flags, ['-fno-exceptions'])
         self.assertEqual(expected, {(2, 'R1', 'finding'), (2, 'R2', 'finding'), (3, 'R7', 'report')})
+
+    def test_windows_fixture_targets_windows(self) -> None:
+        flags: list[str]
+        expected: set
+        flags, expected = early_exit.expectations((early_exit.FIXTURES / 'r2_windows.cpp').read_text(encoding='utf-8'))
+        self.assertIn('--target=x86_64-pc-windows-gnu', flags)
 
     def test_every_rule_has_a_fixture(self) -> None:
         rules: set[str] = set()

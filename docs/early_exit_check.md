@@ -54,8 +54,13 @@ declaration of the entity, or from its template pattern.
 **Extension:** `early_exit.own` is also read on a class, where it covers
 all the class's virtual methods, and on a virtual method. In both cases a
 virtual call that reaches only our own overrides is not foreign. GUI.Forms
-needs this for virtual dispatch inside its own class hierarchies. STXlib
-may adopt it or leave it unused.
+needs this for virtual dispatch inside its own class hierarchies.
+
+STXlib adopted all four of GUI.Forms' extensions (audit E, section 1.8):
+- `own` on classes and virtual methods;
+- the save-and-restore pair (R5);
+- `at_quick_exit` (R8);
+- the per-project reset exemption (R9).
 
 ### Site markers
 
@@ -113,6 +118,9 @@ The exit class of a foreign call:
     may-occur entries glibc implements that the defaults name; extend it in
     the project file.
   - Inside a live `no_cancel` object, cancel becomes none.
+  - In a unit built for Windows, cancel is none, since Windows has no
+    `pthread_cancel`. The target comes from the unit's compile command
+    (clang's target triple).
 - **terminate:** an indirect or dependent call whose function type is
   `noexcept`.
 - **any:** every other foreign call.
@@ -145,7 +153,7 @@ run.
 | R6 | In a function marked `early_exit.no_unwind`, a finding for each of the following:<br>- a declaration that is not `noexcept`;<br>- a `throw`, a `setjmp`/`longjmp` (also `_setjmp`, `sigsetjmp`, `siglongjmp`), a throwing `operator new`, or a call to `std::get_new_handler` or `std::set_new_handler`;<br>- a direct call to a project function that is neither marked `no_unwind` nor `noexcept`;<br>- a direct foreign call not in `allocator_allowlist`;<br>- an indirect or dependent call not through an `own` alias whose function type is `noexcept`. |
 | R7 | A `thread_local`, `_Thread_local` or `__thread` variable whose type is not trivially destructible. Report-only: one with dynamic initialization (not `constinit`, not constant-initialized). |
 | R8 | A call to `exit` or `quick_exit` (global or `std`). **Extension:** `at_quick_exit` too, as GUI.Forms' owner named it. Report-only: `_Exit`, `_exit`, `ExitProcess` and `TerminateProcess`. |
-| R9 | **Release while held** (rule 1 as reworded). A release (`free(p)` and the project's `release_functions`, `delete p`, `std::destroy_at(p)`, an explicit destructor call, or `x.reset()` with no arguments) of non-local state (a member, a global or `thread_local`, anything through a pointer) is a finding when the owner was not let go of before it in the same function. Letting go is one of:<br>- an assignment of a null or constant mark to the owner;<br>- `std::exchange(owner, ...)`;<br>- a move of the owner into a local.<br>A local the function took the resource into needs nothing. **Where the check differs:** `reset()` on `std::unique_ptr` and `std::shared_ptr` is not reported, since the standard has them replace the pointer before deleting the old object. |
+| R9 | **Release while held** (rule 1 as reworded). A release (`free(p)` and the project's `release_functions`, `delete p`, `std::destroy_at(p)`, an explicit destructor call, or `x.reset()` with no arguments) of non-local state (a member, a global or `thread_local`, anything through a pointer) is a finding when the owner was not let go of before it in the same function. Letting go is one of:<br>- an assignment of a null or constant mark to the owner;<br>- `std::exchange(owner, ...)`;<br>- a move of the owner into a local.<br>A local the function took the resource into needs nothing. `reset()` is exempt on the classes the project lists in `letting_go_resets`, whose reset clears the owner before releasing. The default list is `std::unique_ptr`, `std::shared_ptr` and `std::weak_ptr`. STXlib adds `stxlib::Unique`, `Shared`, `Weak` and `UniqueHandle`. Releases reached from an atexit handler, a static destructor or the fail-fast path are not traced. |
 | R10 | In a unit with exceptions, a `catch (...)` handler that neither contains `throw;` nor begins (its first call in source order) with a call to an `early_exit.forced_unwind` function. |
 
 **Liveness** is scope-based and syntactic, as STXlib defines it: an object
@@ -198,7 +206,13 @@ python3 -B harness/check_early_exit.py --self-test
   - `first_party_dirs`, `foreign_paths` and `standard_library`;
   - `foreign_functions`, `no_exit_functions`, `cancellation_points`,
     `allocator_allowlist` and `release_functions`, regular expressions over
-    qualified names;
+    qualified names, and `letting_go_resets`, over class names. Each list
+    has a default in `check_early_exit.py`, and a `<name>_extra` list
+    appends to it.
+  - The allocator allowlist is a project setting. STXlib appends
+    `pthread_setcancelstate`, `pthread_key_create`, `pthread_setspecific`
+    and `GetModuleHandleExW` (its thread block's hook, armed from the
+    no-unwind path).
   - `allowance`, the allowance file's path in the product checkout.
 - **The allowance is shrink-only.** Each line is
   `<rule> <path>::<function> <count>`. A run fails on a finding beyond its
@@ -212,10 +226,10 @@ python3 -B harness/check_early_exit.py --self-test
   - Each line that should be reported carries `// expect: Rn`, with more
     than one rule separated by commas.
   - A missing finding, or one that was not expected, fails the self-test.
-- **STXlib's census.** STXlib's census already runs the pinned clang per
-  unit with the tree's flags. It can run this driver over the same compile
-  database instead of passing JSON ASTs, since the tool reads each unit
-  itself, with the unit's own exception mode.
+- **STXlib's census** calls this driver over the same compile database
+  (`check_early_exit.py --build-dir <tree>`) instead of passing JSON ASTs.
+  The tool reads each unit itself, with that unit's own exception mode and
+  target.
 
 ## 4. What it cannot prove (stays for review)
 
@@ -243,5 +257,5 @@ python3 -B harness/check_early_exit.py --self-test
   classified.
 - **R9 on paths the check cannot see.** A release reached from an atexit
   handler, a static destructor or the fail-fast path is not traced.
-- **Temporary files** created and renamed or unlinked later (R5's last
-  pair, P5) are not recognised.
+- **Temporary files** created and later renamed or unlinked (P5) are
+  review-only. The check does not recognise them.

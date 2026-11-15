@@ -16,9 +16,10 @@
 //
 //   {"first_party_roots": [...], "foreign_paths": [...], "standard_library_foreign": false,
 //    "foreign_functions": [...], "no_exit_functions": [...], "cancellation_points": [...],
-//    "allocator_allowlist": [...], "release_functions": [...]}
+//    "allocator_allowlist": [...], "release_functions": [...], "letting_go_resets": [...]}
 //
-// the last five being regular expressions over qualified names. Exit
+// the last six being regular expressions over qualified names (the last
+// over class names: types whose reset() lets go before it releases). Exit
 // status: 0 when every unit was read (entries or not), 1 when a unit failed
 // to parse or the settings are unusable.
 //
@@ -46,6 +47,7 @@
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/SourceManager.h"
+#include "clang/Basic/TargetInfo.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendAction.h"
 #include "clang/Lex/Lexer.h"
@@ -59,6 +61,7 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -110,6 +113,8 @@ struct Settings final {
     Patterns cancellation_points{};
     Patterns allocator_allowlist{};
     Patterns release_functions{};
+    // Classes whose reset() clears the owner before releasing (R9).
+    Patterns letting_go_resets{};
 };
 
 // Appends each string of `object[key]` to `out`; false when the member is
@@ -180,7 +185,8 @@ bool read_settings(llvm::StringRef path, Settings& settings) {
                           read_patterns(*object, "no_exit_functions", read.no_exit_functions) &&
                           read_patterns(*object, "cancellation_points", read.cancellation_points) &&
                           read_patterns(*object, "allocator_allowlist", read.allocator_allowlist) &&
-                          read_patterns(*object, "release_functions", read.release_functions);
+                          read_patterns(*object, "release_functions", read.release_functions) &&
+                          read_patterns(*object, "letting_go_resets", read.letting_go_resets);
     if (!patterns) return false;
     settings = std::move(read);
     return true;
@@ -796,8 +802,11 @@ bool pair_side(llvm::StringRef name, std::string& family, bool& opens) {
 // recursion follows statement nesting, which the parser bounds.
 class BodyWalker final {
 public:
-    BodyWalker(const Sources& sources, const Settings& settings, bool exceptions, BodyFacts& facts) noexcept
-        : sources_(sources), settings_(settings), exceptions_(exceptions), facts_(facts) {}
+    // `cancellable`: whether the unit's target has POSIX cancellation;
+    // Windows has no pthread_cancel, so class cancel counts as none there.
+    BodyWalker(const Sources& sources, const Settings& settings, bool exceptions, bool cancellable,
+               BodyFacts& facts) noexcept
+        : sources_(sources), settings_(settings), exceptions_(exceptions), cancellable_(cancellable), facts_(facts) {}
 
     void walk_body(const clang::Stmt& body) {
         scopes_.emplace_back();
@@ -1123,7 +1132,8 @@ private:
         const LiveState live = live_state();
         ForeignCall foreign{};
         foreign.reach = reach;
-        foreign.exit_class = exit_class == ExitClass::cancel && live.no_cancel ? ExitClass::none : exit_class;
+        const bool cancel_disabled = live.no_cancel || !cancellable_;
+        foreign.exit_class = exit_class == ExitClass::cancel && cancel_disabled ? ExitClass::none : exit_class;
         foreign.begin = sources_.offset_of(call.getBeginLoc());
         foreign.end = sources_.offset_of(call.getEndLoc());
         foreign.location = call.getBeginLoc();
@@ -1296,7 +1306,9 @@ private:
             }
             const clang::CXXRecordDecl* owner = (*member_call).getRecordDecl();
             const std::string owner_name = owner != nullptr ? record_name(*owner) : std::string();
-            const bool replaces_first = owner_name == "std::unique_ptr" || owner_name == "std::shared_ptr";
+            // The project's letting_go_resets clear the owner before they
+            // release (std::unique_ptr, std::shared_ptr, std::weak_ptr).
+            const bool replaces_first = matches_any(settings_.letting_go_resets, owner_name);
             const clang::IdentifierInfo* identifier = function.getIdentifier();
             const bool reset = identifier != nullptr && (*identifier).getName() == "reset";
             if (reset && call.getNumArgs() == 0U && !replaces_first) {
@@ -1371,6 +1383,7 @@ private:
     const Sources& sources_;
     const Settings& settings_;
     const bool exceptions_;
+    const bool cancellable_;
     BodyFacts& facts_;
     std::vector<std::vector<LiveObject>> scopes_{};
     std::optional<std::size_t> current_marker_{};
@@ -1380,14 +1393,16 @@ private:
 
 class FunctionChecker final {
 public:
-    FunctionChecker(const Sources& sources, const Settings& settings, bool exceptions, EntrySet& entries) noexcept
-        : sources_(sources), settings_(settings), exceptions_(exceptions), entries_(entries) {}
+    FunctionChecker(const Sources& sources, const Settings& settings, bool exceptions, bool cancellable,
+                    EntrySet& entries) noexcept
+        : sources_(sources), settings_(settings), exceptions_(exceptions), cancellable_(cancellable),
+          entries_(entries) {}
 
     void check_definition(const clang::FunctionDecl& function) {
         const clang::Stmt* body = function.getBody();
         if (body == nullptr) return;
         BodyFacts facts{};
-        BodyWalker walker(sources_, settings_, exceptions_, facts);
+        BodyWalker walker(sources_, settings_, exceptions_, cancellable_, facts);
         walker.walk_body(*body);
         const std::string name = qualified_name(function);
         const bool whole_body = function_marked(function, mark_whole);
@@ -1643,6 +1658,7 @@ private:
     const Sources& sources_;
     const Settings& settings_;
     const bool exceptions_;
+    const bool cancellable_;
     EntrySet& entries_;
 };
 
@@ -1652,8 +1668,12 @@ class Visitor final : public clang::RecursiveASTVisitor<Visitor> {
 public:
     Visitor(const clang::ASTContext& context, const Settings& settings, EntrySet& entries) noexcept
         : settings_(settings), sources_(context.getSourceManager(), context.getLangOpts()),
-          checker_(sources_, settings, context.getLangOpts().CXXExceptions, entries) {}
+          checker_(sources_, settings, context.getLangOpts().CXXExceptions,
+                   !context.getTargetInfo().getTriple().isOSWindows(), entries) {}
 
+    // The unit's exception mode and target come from its compile command
+    // (clang's language options and target triple).
+    //
     // Templates are read through their instantiations, whose calls are
     // resolved; dependent patterns are skipped.
     bool shouldVisitTemplateInstantiations() const { return true; }
