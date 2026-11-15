@@ -25,6 +25,29 @@ set_target_properties(greeter_tests PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 add_test(NAME greeter_tests COMMAND greeter_tests)
 set_tests_properties(greeter_tests PROPERTIES TIMEOUT 30)
 
+# A composite control and a form that places it. controls/greeting-card.control
+# is a control written as a document; gui_forms_add_control generates its
+# class, GreetingCard. forms/welcome.form names it like any control and fills
+# its slot, and gui_forms_add_form compiles it with the card listed in
+# COMPOSITES. gui_forms_add_form_schema writes the form schema a designer reads
+# (every type the form may name, the card's slot and properties included).
+# Composite controls arrived with GUI.Forms cp34: an SDK without them skips
+# this block.
+if(COMMAND gui_forms_add_form_schema AND TARGET GUIForms::form_compiler)
+    set({{app}}_composites
+        "controls/greeting-card.control,{{namespace}}::GreetingCard,greeting_card_control.hpp")
+    add_executable(welcome_tests tests/welcome_tests.cpp)
+    target_compile_features(welcome_tests PRIVATE cxx_std_20)
+    target_link_libraries(welcome_tests PRIVATE GUIForms::Controls)
+    set_target_properties(welcome_tests PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
+    gui_forms_add_control(welcome_tests controls/greeting-card.control CLASS GreetingCard NAMESPACE {{namespace}})
+    gui_forms_add_form(welcome_tests forms/welcome.form CLASS WelcomePanel NAMESPACE {{namespace}} DERIVED
+        COMPOSITES ${{{app}}_composites})
+    gui_forms_add_form_schema(welcome_tests OUTPUT {{app}}_form_schema.json COMPOSITES ${{{app}}_composites})
+    add_test(NAME welcome_tests COMMAND welcome_tests)
+    set_tests_properties(welcome_tests PROPERTIES TIMEOUT 30)
+endif()
+
 if(TARGET GUIForms::Application)
     add_executable({{app}} src/greeter.cpp src/main.cpp)
     target_compile_features({{app}} PRIVATE cxx_std_20)

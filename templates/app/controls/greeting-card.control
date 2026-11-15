@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- greeting-card.control: a composite control, a card with a title over
+     content a form supplies. gui_forms_add_control generates its class
+     (GreetingCard) at build time; forms/welcome.form places one and fills
+     its slot. Its own children (the title label) stay private to it. -->
+<control xmlns="urn:gui-forms:control:1" name="greeting-card" version="1.0"
+         base="user-control" family="card">
+
+  <property name="title" kind="text" default="" category="Appearance" localizable="yes"/>
+
+  <part name="face" role="face" shape="rounded-rectangle" corner-radius="6" box="inset(region, 0)"/>
+  <part name="edge" role="edge" shape="rounded-rectangle" corner-radius="6" box="inset(region, 0)"/>
+
+  <children>
+    <label id="@title" dock="top" text="bind(self.title, one_way)" classes="heading"/>
+    <slot id="@content" dock="fill" padding="12"/>
+  </children>
+
+  <!-- The card is no stop; the content a form puts in it is. -->
+  <focus target="none"/>
+
+  <semantics role="group" name="property(accessible-name) or @title.text" children="exposed"/>
+</control>

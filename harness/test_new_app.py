@@ -37,6 +37,7 @@ APP_FILES: tuple[str, ...] = (
     'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', '.gitignore', '.gitattributes', 'CLAUDE.md', 'AGENTS.md', 'harness.lock',
     'CMakeLists.txt', 'ci_build.py', 'fetch_sdk.py', 'test_fetch_sdk.py', 'gui_forms.lock',
     'src/greeter.cpp', 'src/greeter.hpp', 'src/main.cpp', 'tests/greeter_tests.cpp',
+    'controls/greeting-card.control', 'forms/welcome.form', 'tests/welcome_tests.cpp',
     '.claude/settings.json', '.claude/agents/paint_box-coder.md', '.claude/agents/paint_box-integrator.md',
     '.claude/agents/paint_box-tedium.md', '.github/workflows/ci.yml',
     '.sushi/sushistyle.json', '.sushi/sushirice.json', '.sushi/sushibuild.json', '.sushi/sushicomms.json',

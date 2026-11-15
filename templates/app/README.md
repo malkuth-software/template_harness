@@ -39,6 +39,7 @@ python3 -B -m unittest discover -s {{app}} -p "test_*.py"
 | Path | What |
 |---|---|
 | `src/`, `tests/` | the app's form, its entry point and the form's test |
+| `controls/`, `forms/` | a composite control written as a document (`greeting-card.control`) and a form that places it and fills its slot; built when the SDK has composite controls |
 | `CMakeLists.txt`, `ci_build.py`, `fetch_sdk.py`, `gui_forms.lock` | the build against the pinned GUI.Forms SDK |
 | `harness.lock` | the harness pin; the plugins load from the sibling `../template_harness/claude` at this pin |
 | `.github/workflows/ci.yml` | CI through the harness's reusable workflows at the same commit |

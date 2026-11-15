@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A form that places the greeting card (controls/greeting-card.control):
+     the label below is the form's and goes into the card's slot. Compiled by
+     gui_forms_add_form with the card listed in COMPOSITES. -->
+<user-control xmlns="urn:gui-forms:form:1" id="welcome.root">
+  <greeting-card id="welcome.card" title="Welcome" bounds="12 12 396 140">
+    <label id="welcome.message" text="Names you greet appear in the list." bounds="0 0 360 22"/>
+  </greeting-card>
+</user-control>
