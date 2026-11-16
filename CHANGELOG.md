@@ -6,6 +6,16 @@ and new form. Provisional rows there may change without an entry.
 
 ## Unreleased
 
+### Fixed
+- FranSushi plugin tests on Linux. sushirice's live watchdog tests found
+  their fake compilers by the full path in `ps -o comm=`, which Linux gives
+  as a 15-character basename, so `test_sigterm_to_wrapper_releases_paused_jobs`
+  saw "nothing was paused" and the tests' "nothing left" checks passed
+  without looking. They now confirm a basename match from
+  `/proc/<pid>/cmdline`. sushiwrap's `anonymize` replaced the user name
+  inside a host name that contains it (GitHub's runner on runnervm...),
+  leaving `<user>vm...`; it now replaces the longer name first.
+
 ### Changed
 - Linux links the harness's own C++ runtime, on every distribution.
   `harness/build_linux_runtimes.py` builds libc++, libc++abi and libunwind
