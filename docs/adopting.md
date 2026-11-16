@@ -37,8 +37,9 @@ The harness provides:
 - **Build helpers:** `ci_build_steps.py` (`configure_tree`,
   `sanitizer_options`), `change_selection.py` and `native_tests.py`.
 - **Checkers:** `check_house_style.py`, `check_lifetime_rules.py`,
-  `check_state_machines.py`, `check_loop_branches.py`, `check_const_restrict.py` and
-  `check_copies.py`.
+  `check_state_machines.py`, `check_loop_branches.py`, `check_const_restrict.py`,
+  `check_copies.py` and `check_object_surface.py` (a component's host surface
+  from its objects; `docs/object_surface_check.md`).
 - **The AST reader:** `clang_ast.py` reads a translation unit from its
   compile command into one tree model, for the checkers and codemods that
   need more than tokens. It reads through the pinned LLVM's libclang

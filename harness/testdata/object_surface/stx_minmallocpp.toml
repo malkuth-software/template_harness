@@ -1,0 +1,90 @@
+# The object surface of STXlib's allocator, stx_minmallocpp: its first adopter.
+# STXlib keeps the live copy in tools/object_surface/stx_minmallocpp.toml; this
+# one is the harness's test fixture and worked example (docs/object_surface_check.md).
+
+[component]
+name = "stx_minmallocpp"
+
+[objects]
+# CMake keeps a target's objects in <build>/CMakeFiles/<target>.dir.
+targets = ["stxlib_stx_minmallocpp_checked"]
+
+[families.posix]
+must_see = "mmap"
+allowed = [
+  { symbol = "mmap", reason = "reserves and commits address space (os.hpp)" },
+  { symbol = "mprotect", reason = "commits and decommits within a reservation (os.hpp)" },
+  { symbol = "munmap", reason = "releases a reservation (os.hpp)" },
+  { symbol = "sched_yield", reason = "backs off a contended spin (os.hpp)" },
+  { symbol = "sysconf", reason = "reads the page size once (os.hpp)" },
+  { symbol = "pthread_key_create", reason = "registers the thread-exit hook that returns a heap (os.hpp)" },
+  { symbol = "pthread_setspecific", reason = "arms the thread-exit hook (os.hpp)" },
+  { symbol = "pthread_getspecific", reason = "reads the thread-exit hook (os.hpp)" },
+  { symbol = "abort", reason = "the one exit on a broken invariant (os.hpp)" },
+]
+
+[families.windows]
+must_see = "VirtualAlloc"
+allowed = [
+  { symbol = "VirtualAlloc", reason = "reserves and commits address space (os.hpp)" },
+  { symbol = "VirtualFree", reason = "decommits and releases (os.hpp)" },
+  { symbol = "GetSystemInfo", reason = "reads the page and allocation granularity once (os.hpp)" },
+  { symbol = "SwitchToThread", reason = "backs off a contended spin (os.hpp)" },
+  { symbol = "abort", reason = "the one exit on a broken invariant (os.hpp)" },
+  { symbol = "tls_used", reason = "the C runtime's TLS directory, named so that the thread-exit callback is kept (os.hpp)" },
+  { symbol = "GetModuleHandleW", reason = "looks up ntdll's RtlDllShutdownInProgress once at process attach (os.hpp)" },
+  { symbol = "GetProcAddress", reason = "looks up ntdll's RtlDllShutdownInProgress once at process attach (os.hpp)" },
+]
+
+[families.web]
+# Emscripten: no mmap, mprotect or munmap. The wasm globals are the WebAssembly tool
+# conventions' ABI (DynamicLinking.md, read 2026-11-15), not calls.
+must_see = "emscripten_builtin_memalign"
+allowed = [
+  { symbol = "emscripten_builtin_memalign", reason = "the address space (minmallocpp_os_emscripten.cpp)" },
+  { symbol = "emscripten_builtin_free", reason = "returns address space (minmallocpp_os_emscripten.cpp)" },
+  { symbol = "sched_yield", reason = "backs off a contended spin (os.hpp)" },
+  { symbol = "sysconf", reason = "reads the page size once (os.hpp)" },
+  { symbol = "pthread_key_create", reason = "registers the thread-exit hook (os.hpp)" },
+  { symbol = "pthread_setspecific", reason = "arms the thread-exit hook (os.hpp)" },
+  { symbol = "pthread_getspecific", reason = "reads the thread-exit hook (os.hpp)" },
+  { symbol = "abort", reason = "the one exit on a broken invariant (os.hpp)" },
+  { symbol = "memory_base", reason = "wasm ABI global: the module's data base" },
+  { symbol = "table_base", reason = "wasm ABI global: the module's table base" },
+  { symbol = "stack_pointer", reason = "wasm ABI global: the shadow stack" },
+  { symbol = "tls_base", reason = "wasm ABI global: the thread-local storage base" },
+  { symbol = "indirect_function_table", reason = "wasm ABI table for indirect calls" },
+]
+
+[toolchain]
+# Calls a compiler emits on its own, on every family.
+allowed = [
+  { symbol = "memset", reason = "the compiler lowers zeroing loops and large stores to it" },
+  { symbol = "memcpy", reason = "the compiler lowers aggregate copies to it" },
+  { symbol = "memmove", reason = "the compiler lowers overlapping copies to it" },
+  { symbol = "bzero", reason = "Apple's compiler lowers zeroing to it" },
+  { symbol = "tls_get_addr", reason = "ELF dynamic thread-local access" },
+  { symbol = "tlv_bootstrap", reason = "Mach-O thread-local variable descriptors" },
+  { symbol = "emutls_get_address", reason = "emulated thread-locals (MinGW, Android)" },
+  { pattern = "emutls_v.*", reason = "emulated thread-local control blocks" },
+  { symbol = "tls_index", reason = "PE thread-local slot index" },
+  { symbol = "stack_chk_fail", reason = "stack protector failure exit" },
+  { symbol = "stack_chk_guard", reason = "stack protector canary" },
+  { symbol = "chkstk_ms", reason = "MinGW stack probe for large frames" },
+  { symbol = "GLOBAL_OFFSET_TABLE_", reason = "ELF position-independent code base" },
+]
+
+[sanitized]
+# Only with --sanitized: the instrumentation's runtime entries.
+allowed = [
+  { pattern = "asan_*", reason = "AddressSanitizer runtime" },
+  { pattern = "lsan_*", reason = "LeakSanitizer runtime" },
+  { pattern = "msan_*", reason = "MemorySanitizer runtime" },
+  { pattern = "tsan_*", reason = "ThreadSanitizer runtime" },
+  { pattern = "ubsan_*", reason = "UndefinedBehaviorSanitizer runtime" },
+  { pattern = "sanitizer_*", reason = "the sanitizers' common runtime" },
+  { symbol = "cxa_atexit", reason = "the instrumented globals register their teardown" },
+  { symbol = "dso_handle", reason = "the instrumented globals name their module" },
+  { symbol = "start_asan_globals", reason = "AddressSanitizer's globals section start" },
+  { symbol = "stop_asan_globals", reason = "AddressSanitizer's globals section end" },
+]

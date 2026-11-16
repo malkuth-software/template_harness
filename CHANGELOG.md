@@ -16,6 +16,14 @@ and new form. Provisional rows there may change without an entry.
   provenance.
 
 ### Added
+- `harness/check_object_surface.py` (provisional): proves from a component's
+  objects (`nm -P`) that its only leaves are the host calls listed for the
+  family, toolchain helpers and, with `--sanitized`, sanitizer entries; a
+  TOML file per component with a reason per entry, a must-see leaf per
+  family, stable output and exit codes, and a shrink-only allowance
+  (`docs/object_surface_check.md`). Generalised from STXlib's
+  `tools/check_stx_minmallocpp_surface.py`, whose tests it carries over;
+  STXlib's allocator is the first adopter.
 - `new_app.sh`/`new_app.ps1` and `harness/new_app.py`: one command to a
   harnessed GUI.Forms app (`docs/new_app.md`). It validates the name and
   derives the names (`docs/adopting.md` §2, checked against every project
