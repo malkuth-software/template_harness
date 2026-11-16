@@ -252,7 +252,11 @@ class ReuseTests(unittest.TestCase):
             receipt: dict[str, Any] = fixture_identity()
             receipt.update(archive_sha256=hashlib.sha256(archive.read_bytes()).hexdigest())
             ci_reuse.write_json(state / 'reused.json', receipt)
-            with patch.object(ci_reuse, 'ROOT', root), patch.object(ci_reuse, 'STATE', state):
+            # The fixture is a Linux cache; the job's own runtime (on a macOS
+            # runner, the macOS one) must not be checked as a Linux runtime.
+            with patch.object(ci_reuse, 'ROOT', root), patch.object(ci_reuse, 'STATE', state), \
+                    patch.dict(os.environ):
+                os.environ.pop(project.current().variable('LLVM_RUNTIME'), None)
                 ci_reuse.restore_archive(fixture_identity())
                 self.assertEqual(json.loads((root / 'cache-manifest.json').read_text()), manifest)
                 archive.write_bytes(archive.read_bytes() + b'corrupt')
