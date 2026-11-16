@@ -169,5 +169,24 @@ class SeedRestoreTests(unittest.TestCase):
                 ci_promote.restore_seed()
 
 
+    def test_a_seed_whose_runtime_check_fails_is_skipped_not_fatal(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state: Path = Path(directory)
+            ci_reuse.write_json(state / 'inputs.json', {'platform': 'macos-arm64'})
+            with patch.object(ci_reuse, 'STATE', state), \
+                    patch.object(ci_reuse, 'restore_archive',
+                                 side_effect=RuntimeError('Runtime integrity/compiler/SDK mismatch')):
+                ci_promote.restore_seed()
+
+    def test_a_seed_is_restored_without_its_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state: Path = Path(directory)
+            ci_reuse.write_json(state / 'inputs.json', {'platform': 'macos-arm64'})
+            with patch.object(ci_reuse, 'STATE', state), \
+                    patch.object(ci_reuse, 'restore_archive') as restore:
+                ci_promote.restore_seed()
+            restore.assert_called_once_with({'platform': 'macos-arm64'}, state / 'seed.json', keep_runtime=True)
+
+
 if __name__ == '__main__':
     unittest.main()
