@@ -556,5 +556,47 @@ int b(E e) {
             names: set[str] = hunt.vocabulary_enums(root)
         self.assertEqual(names, {"PartRole"})
 
+# A stand-in front end: it fails for a source named broken (as clang does for a
+# missing precompiled header) and otherwise reports one switch warning there.
+FAKE_FRONT_END: str = """import sys
+source = sys.argv[1]
+if "broken" in source:
+    sys.stderr.write("fatal error: PCH file 'cmake_pch.hxx.pch' not found\\n")
+    raise SystemExit(1)
+print(source + ":1:1: warning: switch missing default case [-Wswitch-default]")
+"""
+
+
+def no_generated_headers(build_dir: Path) -> None:
+    """The fixture tree has no ninja and no generated headers."""
+    return None
+
+
+class FrontEndFailureTests(unittest.TestCase):
+    def test_a_unit_whose_front_end_fails_is_reported_not_dropped(self) -> None:
+        directory: str
+        with tempfile.TemporaryDirectory() as directory:
+            root: Path = Path(directory)
+            (root / "src").mkdir()
+            (root / "fake_front_end.py").write_text(FAKE_FRONT_END, encoding="utf-8")
+            switching: str = "int f(int k) { switch (k) { case 1: return 1; } return 0; }\n"
+            entries: list[dict] = []
+            name: str
+            for name in ("a", "broken"):
+                (root / "src" / (name + ".cpp")).write_text(switching, encoding="utf-8")
+                entries.append({"directory": str(root), "file": "src/" + name + ".cpp",
+                                "command": sys.executable + " " + str(root / "fake_front_end.py") + " src/" + name
+                                + ".cpp -c -o " + name + ".o"})
+            saved: object = hunt.generate_headers
+            hunt.generate_headers = no_generated_headers
+            try:
+                run: hunt.CompilerRun = hunt.compiler_diagnostics(root, root, 2, entries, None)
+            finally:
+                hunt.generate_headers = saved
+        self.assertEqual((run.units, len(run.diagnostics), len(run.failures)), (2, 1, 1))
+        self.assertIn("src/broken.cpp: the front end exited 1", run.failures[0])
+        self.assertIn("PCH file", run.failures[0])
+
+
 if __name__ == "__main__":
     unittest.main()

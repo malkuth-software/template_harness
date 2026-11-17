@@ -66,6 +66,11 @@ Two scopes:
                               checks the full tree. Changed paths come from
                               change_selection.py.
 
+A unit whose front end fails (a non-zero exit: a missing precompiled header,
+a missing generated header, an error) yields no diagnostics, so it would pass
+unchecked: the run lists each such unit with its first errors, and --gate
+fails on it.
+
 --gate fails the run (exit status 1) on any F1 or F2 in its scope; C1 to C3
 never fail it. --list-changed prints the changed C and C++ files ("every" when
 a full-tree trigger changed, nothing when none) and exits, so a CI job can skip
@@ -96,6 +101,8 @@ VOCABULARY_HEADERS: tuple[str, ...] = project.current().vocabulary_headers
 AREAS: tuple[tuple[str, str], ...] = tuple((entry.prefix, entry.area)
                                            for entry in project.current().state_machine_areas)
 CHECKER_FILES: tuple[str, ...] = project.current().full_tree_triggers
+# The most error lines a failed unit's report quotes.
+FAILURE_LINES: int = 5
 # (path, record) -> the reason a person reviewed that record's C3 status shape and kept it.
 REVIEWED_SHAPES: dict[tuple[str, str], str] = {(shape.path, shape.record): shape.reason
                                                for shape in project.current().reviewed_shapes}
@@ -921,12 +928,20 @@ def syntax_command(command: str) -> list[str]:
 class Unit:
     directory: str
     command: tuple[str, ...]
+    source: str = ""        # the absolute path of the unit's source; "" in fixtures without one
 
 
-def run_unit(unit: Unit) -> str:
+@dataclass(frozen=True)
+class UnitResult:
+    returncode: int
+    output: str             # stdout then stderr
+
+
+def run_unit(unit: Unit) -> UnitResult:
     completed: subprocess.CompletedProcess[str] = subprocess.run(
         list(unit.command), cwd=unit.directory, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    return completed.stdout + completed.stderr
+    result: UnitResult = UnitResult(completed.returncode, completed.stdout + completed.stderr)
+    return result
 
 
 def normalized(path: str, directory: str) -> Path:
@@ -1030,7 +1045,7 @@ def select_units(entries: list[dict], root: Path, scope: Scope | None = None) ->
             continue
         wanted: bool = SWITCH.search(masked(text)) is not None or bool(names & switch_headers)
         if wanted:
-            units.append(Unit(entry["directory"], tuple(syntax_command(entry["command"]))))
+            units.append(Unit(entry["directory"], tuple(syntax_command(entry["command"])), str(source)))
     return units
 
 
@@ -1078,19 +1093,46 @@ def compile_database(build_dir: Path) -> list[dict]:
     return entries
 
 
+def failure_report(unit: Unit, root: Path, result: UnitResult) -> str:
+    """One failed unit: its source, its exit status and its first error lines."""
+    name: str = first_party(Path(unit.source), root) or unit.source or " ".join(unit.command[-8:])
+    errors: list[str] = []
+    line: str
+    for line in result.output.splitlines():
+        if "error:" in line:
+            errors.append("    " + line.strip())
+        if len(errors) == FAILURE_LINES:
+            break
+    if not errors:
+        errors.append("    (no error line; the last output was: " + result.output.strip()[-200:] + ")")
+    report: str = f"{name}: the front end exited {result.returncode}, so the unit was not checked\n" + "\n".join(errors)
+    return report
+
+
+@dataclass(frozen=True)
+class CompilerRun:
+    diagnostics: list[Diagnostic]
+    units: int                  # the units in scope
+    failures: list[str]         # one failure_report per unit whose front end failed
+
+
 def compiler_diagnostics(build_dir: Path, root: Path, jobs: int, entries: list[dict],
-                         scope: Scope | None) -> tuple[list[Diagnostic], int]:
+                         scope: Scope | None) -> CompilerRun:
     units: list[Unit] = select_units(entries, root, scope)
     if units:
         generate_headers(build_dir)
     outputs: list[str] = []
+    failures: list[str] = []
     with ThreadPoolExecutor(max_workers=jobs) as pool:
-        output: str
-        for output in pool.map(run_unit, units):
-            outputs.append(output)
+        unit: Unit
+        result: UnitResult
+        for unit, result in zip(units, pool.map(run_unit, units)):
+            outputs.append(result.output)
+            if result.returncode != 0:
+                failures.append(failure_report(unit, root, result))
     diagnostics: list[Diagnostic] = []
     unique: set[tuple[str, int, int, str]] = set()
-    unit: Unit
+    output: str
     for unit, output in zip(units, outputs):
         diagnostic: Diagnostic
         for diagnostic in parse_diagnostics(output):
@@ -1103,7 +1145,8 @@ def compiler_diagnostics(build_dir: Path, root: Path, jobs: int, entries: list[d
             unique.add(key)
             diagnostics.append(Diagnostic(relative, diagnostic.line, diagnostic.column, diagnostic.flag,
                                           diagnostic.message))
-    return diagnostics, len(units)
+    run: CompilerRun = CompilerRun(diagnostics, len(units), failures)
+    return run
 
 
 # --- assembly -------------------------------------------------------------------
@@ -1306,7 +1349,8 @@ def main() -> int:
                         help="check only the code changed since this git revision (see the module notes)")
     parser.add_argument("--list-changed", action="store_true",
                         help="print the changed C and C++ files (or 'every') and exit; needs --changed-from")
-    parser.add_argument("--gate", action="store_true", help="exit with status 1 on any F1 or F2 in the scope")
+    parser.add_argument("--gate", action="store_true",
+                        help="exit with status 1 on any F1 or F2 in the scope, or any unit whose front end fails")
     args: argparse.Namespace = parser.parse_args()
     project.current().require_state_machines()
     root: Path = Path(args.root)
@@ -1327,11 +1371,13 @@ def main() -> int:
     scope: Scope | None = None if changed is None else changed_scope(root, changed)
     findings: list[Finding] = []
     units: int = 0
+    failures: list[str] = []
     if args.build_dir:
         entries: list[dict] = compile_database(Path(args.build_dir))
-        diagnostics: list[Diagnostic]
-        diagnostics, units = compiler_diagnostics(Path(args.build_dir), root, max(1, args.jobs), entries, scope)
-        findings.extend(compiler_findings(diagnostics, root, vocabulary_enums(root)))
+        run: CompilerRun = compiler_diagnostics(Path(args.build_dir), root, max(1, args.jobs), entries, scope)
+        units = run.units
+        failures = run.failures
+        findings.extend(compiler_findings(run.diagnostics, root, vocabulary_enums(root)))
         if changed is not None:
             uncovered: list[str] = uncompiled_sources(changed, compiled_sources(entries, root))
             if uncovered:
@@ -1344,6 +1390,11 @@ def main() -> int:
     for path in files:
         findings.extend(source_candidates(path, (root / path).read_text(encoding="utf-8", errors="replace"), enums))
     sys.stdout.write(render(findings, units, len(files)))
+    if failures:
+        print(f"{len(failures)} units failed in the front end and were not checked:")
+        report: str
+        for report in failures:
+            print(report)
     if args.json_path:
         records: list[dict[str, object]] = []
         finding: Finding
@@ -1353,9 +1404,12 @@ def main() -> int:
         Path(args.json_path).write_text(json.dumps(records, indent=1) + "\n", encoding="utf-8")
     if args.gate:
         failing: int = gate_failures(findings)
+        if failures:
+            print(f"state-machine gate: {len(failures)} units failed to compile, so their switches are unchecked")
         if failing:
             print(f"state-machine gate: {failing} F1/F2 findings (house style section 2); fix them to the "
                   "compliant form or give the default its reason")
+        if failures or failing:
             return 1
         print("state-machine gate: no F1/F2 findings")
     return 0
