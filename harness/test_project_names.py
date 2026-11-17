@@ -132,9 +132,10 @@ class ReferenceProjectTests(unittest.TestCase):
             ('include/', 'core'), ('tests/', 'tests'), ('file_manager_demoboard/', 'demoboard'),
             ('stx_vorbis/', 'stx_vorbis'), ('stx_zlib/', 'stx_zlib'), ('stx_png/', 'stx_png'),
             ('stx_conv/', 'stx_conv'), ('fuzz/', 'fuzz'), ('examples/', 'examples'), ('tools/', 'tools')))
+        # The gate's workflow and harness.lock left the triggers (974093d): the workflow's
+        # flags reach the unit cache's key, and a pin bump widens only when the checker changed.
         self.assertEqual(check_state_machines.CHECKER_FILES, (
-            'tools/check_state_machines.py', 'tools/check_house_style.py', '.github/workflows/state-machines.yml',
-            'harness.lock', 'tools/harness_link.py'))
+            'tools/check_state_machines.py', 'tools/check_house_style.py', 'tools/harness_link.py'))
 
 
 if __name__ == '__main__':
