@@ -40,8 +40,18 @@ class Finding:
 
 CONTAINERS: re.Pattern[str] = re.compile(
     r"^(?:std\s*::\s*)?(vector|deque|list|array|map|unordered_map|multimap|set|unordered_set|basic_string|string)\b")
+# A function head returning a pointer or reference. The return type starts
+# only where no letter or underscore precedes it, and its identifier is
+# possessive. Neither changes a match (test_lifetime_rules compares the
+# unanchored, backtracking form OLD_HEAD there): nothing after the identifier
+# can start with \w or ':', so giving characters back never helps; and a
+# start just after a letter or underscore matches exactly when the start one
+# character earlier does, which finditer tries first. (A digit or ':' may
+# precede a start: "::ns::T&" starts at the n.) Without them finditer
+# tried every character of every identifier and backtracked over its rest,
+# quadratic in identifier length.
 HEAD: re.Pattern[str] = re.compile(
-    r"(?P<ret>(?:\bconst\s+)?[A-Za-z_][\w:]*(?:\s*<[^;{}()]*>)?(?:\s+const)?\s*[*&])\s*"
+    r"(?P<ret>(?<![A-Za-z_])(?:\bconst\s+)?[A-Za-z_][\w:]*+(?:\s*<[^;{}()]*>)?(?:\s+const)?\s*[*&])\s*"
     r"(?P<name>[A-Za-z_]\w*)\s*\((?P<params>[^;{}()]*)\)\s*(?:const\s*)?(?:noexcept\s*)?"
     r"(?P<end>\{|=\s*delete|;)")
 LOOKUP: re.Pattern[str] = re.compile(r"\b(?:GetProcAddress|dlsym)\s*\(")
@@ -78,6 +88,12 @@ def collect(paths: list[str]) -> list[Path]:
 def masked_source(path: Path) -> str:
     source: str = path.read_text(encoding="utf-8-sig")
     result: str = LEXEMES.sub(mask_literal, source)
+    return result
+
+
+def function_heads(text: str) -> list[re.Match[str]]:
+    """Every HEAD match of a masked text, found once and shared by both borrow passes."""
+    result: list[re.Match[str]] = list(HEAD.finditer(text))
     return result
 
 
@@ -163,10 +179,11 @@ def borrowed_parameter(return_type: str, parameter: str) -> str:
     return ""
 
 
-def deleted_overloads(text: str) -> set[str]:
+def deleted_overloads(text: str, heads: list[re.Match[str]] | None = None) -> set[str]:
+    """heads: function_heads(text), when the caller has them already."""
     deleted: set[str] = set()
     match: re.Match[str]
-    for match in HEAD.finditer(text):
+    for match in (function_heads(text) if heads is None else heads):
         if match.group("end").startswith("=") and "&&" in match.group("params"):
             deleted.add(match.group("name"))
     return deleted
@@ -180,15 +197,18 @@ def included_names(source: str) -> set[str]:
     return names
 
 
-def check_borrows(path: Path, text: str, inherited: set[str] | None = None) -> list[Finding]:
-    """inherited: deleted overloads declared in headers the file includes."""
+def check_borrows(path: Path, text: str, inherited: set[str] | None = None,
+                  heads: list[re.Match[str]] | None = None) -> list[Finding]:
+    """inherited: deleted overloads declared in headers the file includes; heads:
+    function_heads(text), when the caller has them already."""
     findings: list[Finding] = []
-    deleted: set[str] = deleted_overloads(text)
+    found: list[re.Match[str]] = function_heads(text) if heads is None else heads
+    deleted: set[str] = deleted_overloads(text, found)
     if inherited is not None:
         deleted |= inherited
     match: re.Match[str]
     reported: set[str] = set()
-    for match in HEAD.finditer(text):
+    for match in found:
         name: str = match.group("name")
         if match.group("end").startswith("=") or name in reported or name in ("operator",):
             continue
@@ -292,24 +312,32 @@ def check_foreign_types(path: Path, text: str, helpers: set[str]) -> list[Findin
 
 
 def inspect_paths(paths: list[Path]) -> list[Finding]:
+    # Each file is read once and scanned for function heads once: the include
+    # names come from the raw text (masking blanks the quoted names), the rest
+    # from the masked text.
     texts: dict[Path, str] = {}
+    includes: dict[Path, set[str]] = {}
+    heads: dict[Path, list[re.Match[str]]] = {}
     path: Path
     for path in paths:
-        texts[path] = masked_source(path)
+        source: str = path.read_text(encoding="utf-8-sig")
+        includes[path] = included_names(source)
+        texts[path] = LEXEMES.sub(mask_literal, source)
+        heads[path] = function_heads(texts[path])
     helpers: set[str] = lookup_helpers(texts)
     # A definition's deleted overload may sit in a header it includes (by
     # quoted include, matched on the file name).
     deleted_by_header: dict[str, set[str]] = {}
     for path in paths:
         if path.suffix in (".hpp", ".hh", ".h", ".inc"):
-            deleted_by_header.setdefault(path.name, set()).update(deleted_overloads(texts[path]))
+            deleted_by_header.setdefault(path.name, set()).update(deleted_overloads(texts[path], heads[path]))
     findings: list[Finding] = []
     for path in paths:
         inherited: set[str] = set()
         name: str
-        for name in included_names(path.read_text(encoding="utf-8-sig")):
+        for name in includes[path]:
             inherited |= deleted_by_header.get(name, set())
-        findings.extend(check_borrows(path, texts[path], inherited))
+        findings.extend(check_borrows(path, texts[path], inherited, heads[path]))
         findings.extend(check_foreign_types(path, texts[path], helpers))
     return findings
 
