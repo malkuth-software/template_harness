@@ -291,6 +291,13 @@ int b(E e) {
         kept: list[str] = hunt.syntax_command("clang++ name=value -c src/b.cpp")
         self.assertEqual(kept[:2], ["clang++", "name=value"])
 
+    def test_syntax_command_keeps_a_string_define_whole(self) -> None:
+        # CMake writes a string define with escaped quotes; the front end
+        # must see both quotes, or the macro expands to an unterminated
+        # string and the unit fails ("expected expression").
+        arguments: list[str] = hunt.syntax_command('clang++ -DDIR=\\"/tmp/fonts\\" -c src/a.cpp')
+        self.assertIn('-DDIR="/tmp/fonts"', arguments)
+
     def test_a_covered_switch_with_a_fallback_after_it_is_noted(self) -> None:
         source: str = """const char* name(Side side) {
     switch (side) {

@@ -937,7 +937,11 @@ def syntax_command(command: str) -> list[str]:
     in_launcher: bool = False
     argument: str
     for argument in arguments:
-        argument = argument.strip('"')
+        # A Windows (non-POSIX) split keeps a quoted word's quotes; drop them
+        # only from a word that is wholly quoted, so a string define such as
+        # -DDIR="/path" keeps both of its quotes.
+        if len(argument) >= 2 and argument.startswith('"') and argument.endswith('"'):
+            argument = argument[1:-1]
         if skip:
             skip = False
             continue
