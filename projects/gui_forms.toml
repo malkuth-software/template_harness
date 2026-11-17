@@ -104,12 +104,13 @@ areas = [
 # A change to one of these can change any verdict: a changed-code run checks
 # the full tree. GUI.Forms' tools/check_*.py are forwarding shims to this
 # harness, so a change to the checkers reaches GUI.Forms as a harness.lock
-# bump (tools/harness_link.py is how the shims reach it).
+# bump (tools/harness_link.py is how the shims reach it); check_state_machines
+# widens on such a bump only when the checker's own files differ between the
+# two pins. The gate's workflow is not listed: its configure flags reach the
+# unit cache's key through the compile commands.
 full_tree_triggers = [
     "tools/check_state_machines.py",
     "tools/check_house_style.py",
-    ".github/workflows/state-machines.yml",
-    "harness.lock",
     "tools/harness_link.py",
 ]
 # C3 records reviewed and kept, each [path, record, reason].

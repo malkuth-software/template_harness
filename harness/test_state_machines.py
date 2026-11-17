@@ -504,8 +504,10 @@ int b(E e) {
             (root / "src" / "gone.cpp").unlink()
             git(root, "commit", "-q", "-am", "code")
             self.assertEqual(hunt.changed_sources(root, "base"), ["src/a.cpp"])
+            # The gate's workflow is not a trigger: its flags reach the unit cache's key
+            # through the compile commands.
             (root / ".github/workflows/state-machines.yml").write_text("# tuned gate\n", encoding="utf-8")
-            self.assertIsNone(hunt.changed_sources(root, "base"))
+            self.assertEqual(hunt.changed_sources(root, "base"), ["src/a.cpp"])
             # A change to the checker can change any verdict: the whole tree.
             (root / "tools" / "check_state_machines.py").write_text("# tuned checker\n", encoding="utf-8")
             self.assertIsNone(hunt.changed_sources(root, "base"))
@@ -536,7 +538,8 @@ int b(E e) {
                                      hunt.Finding("a", 3, "F2", "core", ""), hunt.Finding("a", 4, "OK", "core", "")]
         self.assertEqual(hunt.gate_failures(found), 2)
         self.assertIn("tools/check_state_machines.py", hunt.CHECKER_FILES)
-        self.assertIn(".github/workflows/state-machines.yml", hunt.CHECKER_FILES)
+        self.assertNotIn(".github/workflows/state-machines.yml", hunt.CHECKER_FILES)
+        self.assertNotIn("harness.lock", hunt.CHECKER_FILES)
 
     def test_areas_follow_ownership(self) -> None:
         self.assertEqual(hunt.area_of("src/controls/ribbon/ribbon.cpp"), "controls")
@@ -556,6 +559,160 @@ int b(E e) {
             names: set[str] = hunt.vocabulary_enums(root)
         self.assertEqual(names, {"PartRole"})
 
+def lock_text(commit: str) -> str:
+    result: str = '[harness]\nrepository = "owner/template_harness"\ncommit = "' + commit + '"\n'
+    return result
+
+
+def head_of(root: Path) -> str:
+    completed: subprocess.CompletedProcess[str] = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], check=True, capture_output=True, text=True, encoding="utf-8")
+    return completed.stdout.strip()
+
+
+class HarnessPinTests(unittest.TestCase):
+    def test_a_pin_bump_widens_the_scope_only_when_the_checker_changed(self) -> None:
+        directory: str
+        with tempfile.TemporaryDirectory() as directory:
+            harness: Path = Path(directory) / "harness_checkout"
+            product: Path = Path(directory) / "product"
+            (harness / "harness").mkdir(parents=True)
+            product.mkdir()
+            git(harness, "init", "-q", "-b", "main")
+            (harness / "harness" / "check_state_machines.py").write_text("# checker 1\n", encoding="utf-8")
+            (harness / "harness" / "unrelated.py").write_text("# tool 1\n", encoding="utf-8")
+            git(harness, "add", "-A")
+            git(harness, "commit", "-q", "-m", "first")
+            first: str = head_of(harness)
+            (harness / "harness" / "unrelated.py").write_text("# tool 2\n", encoding="utf-8")
+            git(harness, "commit", "-q", "-am", "unrelated")
+            unrelated: str = head_of(harness)
+            (harness / "harness" / "check_state_machines.py").write_text("# checker 2\n", encoding="utf-8")
+            git(harness, "commit", "-q", "-am", "checker")
+            checker: str = head_of(harness)
+            git(product, "init", "-q", "-b", "main")
+            (product / "harness.lock").write_text(lock_text(first), encoding="utf-8")
+            git(product, "add", "-A")
+            git(product, "commit", "-q", "-m", "base")
+            git(product, "tag", "base")
+            saved: Path = hunt.HARNESS_ROOT
+            hunt.HARNESS_ROOT = harness
+            try:
+                (product / "harness.lock").write_text(lock_text(unrelated), encoding="utf-8")
+                self.assertFalse(hunt.checker_changed_between_pins(product, "base"))
+                self.assertEqual(hunt.changed_sources(product, "base"), [])
+                (product / "harness.lock").write_text(lock_text(checker), encoding="utf-8")
+                self.assertTrue(hunt.checker_changed_between_pins(product, "base"))
+                self.assertIsNone(hunt.changed_sources(product, "base"))
+                # A pin the harness clone cannot show (and cannot fetch: no origin) counts as a change.
+                (product / "harness.lock").write_text(lock_text("0" * 40), encoding="utf-8")
+                self.assertTrue(hunt.checker_changed_between_pins(product, "base"))
+                # So does a lock that cannot be read.
+                (product / "harness.lock").write_text("not a lock\n", encoding="utf-8")
+                self.assertTrue(hunt.checker_changed_between_pins(product, "base"))
+            finally:
+                hunt.HARNESS_ROOT = saved
+
+
+# A stand-in front end that also logs each source it is given: it fails for a source named
+# broken (as clang does for a missing precompiled header), and otherwise reports one
+# switch warning in that source.
+LOGGING_FRONT_END: str = """import sys
+from pathlib import Path
+log = Path(sys.argv[1])
+source = sys.argv[2]
+with log.open("a", encoding="utf-8") as stream:
+    stream.write(source + "\\n")
+if "broken" in source:
+    sys.stderr.write("fatal error: PCH file 'cmake_pch.hxx.pch' not found\\n")
+    raise SystemExit(1)
+print(source + ":1:1: warning: switch missing default case [-Wswitch-default]")
+"""
+
+
+def no_generated_headers(build_dir: Path) -> list[Path]:
+    """The fixture tree has no ninja and no generated headers."""
+    return []
+
+
+class UnitCacheTests(unittest.TestCase):
+    def run_tree(self, root: Path, names: list[str], cache: Path) -> hunt.CompilerRun:
+        entries: list[dict] = []
+        name: str
+        for name in names:
+            entries.append({"directory": str(root), "file": "src/" + name + ".cpp",
+                            "command": sys.executable + " " + str(root / "fake_front_end.py") + " "
+                            + str(root / "log.txt") + " src/" + name + ".cpp -c -o " + name + ".o"})
+        build: Path = root / "out"
+        build.mkdir(exist_ok=True)
+        run: hunt.CompilerRun = hunt.compiler_diagnostics(build, root, 1, entries, None, cache, "salt")
+        return run
+
+    def log_lines(self, root: Path) -> list[str]:
+        log: Path = root / "log.txt"
+        lines: list[str] = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+        log.unlink(missing_ok=True)
+        return lines
+
+    def test_only_units_whose_inputs_changed_run_again(self) -> None:
+        directory: str
+        with tempfile.TemporaryDirectory() as directory:
+            root: Path = Path(directory)
+            (root / "src").mkdir()
+            (root / "include").mkdir()
+            (root / "fake_front_end.py").write_text(LOGGING_FRONT_END, encoding="utf-8")
+            (root / "include" / "kind.hpp").write_text("enum class Kind { a, b };\n", encoding="utf-8")
+            (root / "include" / "uses_kind.hpp").write_text('#include "kind.hpp"\n', encoding="utf-8")
+            (root / "include" / "other.hpp").write_text("int other();\n", encoding="utf-8")
+            switching: str = "int f(int k) { switch (k) { case 1: return 1; } return 0; }\n"
+            (root / "src" / "a.cpp").write_text('#include "uses_kind.hpp"\n' + switching, encoding="utf-8")
+            (root / "src" / "b.cpp").write_text('#include "other.hpp"\n' + switching, encoding="utf-8")
+            cache: Path = root / "cache" / "units.json"
+            saved: object = hunt.generate_headers
+            hunt.generate_headers = no_generated_headers
+            try:
+                cold: hunt.CompilerRun = self.run_tree(root, ["a", "b"], cache)
+                self.assertEqual((cold.units, cold.reused, len(cold.diagnostics)), (2, 0, 2))
+                self.assertEqual(sorted(self.log_lines(root)), ["src/a.cpp", "src/b.cpp"])
+                warm: hunt.CompilerRun = self.run_tree(root, ["a", "b"], cache)
+                self.assertEqual((warm.reused, len(warm.diagnostics)), (2, 2))
+                self.assertEqual(self.log_lines(root), [])
+                # A header reached through another header changes: only its includer runs.
+                (root / "include" / "kind.hpp").write_text("enum class Kind { a, b, c };\n", encoding="utf-8")
+                changed: hunt.CompilerRun = self.run_tree(root, ["a", "b"], cache)
+                self.assertEqual((changed.reused, len(changed.diagnostics)), (1, 2))
+                self.assertEqual(self.log_lines(root), ["src/a.cpp"])
+                # A unit whose front end fails is reported, never stored, and runs again.
+                (root / "src" / "broken.cpp").write_text(switching, encoding="utf-8")
+                failed: hunt.CompilerRun = self.run_tree(root, ["a", "b", "broken"], cache)
+                self.assertEqual(len(failed.failures), 1)
+                self.assertIn("src/broken.cpp: the front end exited 1", failed.failures[0])
+                self.assertIn("PCH file", failed.failures[0])
+                self.assertEqual(self.log_lines(root), ["src/broken.cpp"])
+                again: hunt.CompilerRun = self.run_tree(root, ["a", "b", "broken"], cache)
+                self.assertEqual((again.reused, len(again.failures)), (2, 1))
+                self.assertEqual(self.log_lines(root), ["src/broken.cpp"])
+                # The store keeps this run's units only.
+                stored: dict[str, str] = hunt.load_cache(cache)
+                self.assertEqual(len(stored), 2)
+            finally:
+                hunt.generate_headers = saved
+
+    def test_a_store_of_another_version_or_shape_is_empty(self) -> None:
+        directory: str
+        with tempfile.TemporaryDirectory() as directory:
+            cache: Path = Path(directory) / "units.json"
+            self.assertEqual(hunt.load_cache(cache), {})
+            cache.write_text('{"version": 0, "entries": {"k": "v"}}', encoding="utf-8")
+            self.assertEqual(hunt.load_cache(cache), {})
+            cache.write_text("not json", encoding="utf-8")
+            self.assertEqual(hunt.load_cache(cache), {})
+            hunt.save_cache(cache, {"k": "v"})
+            self.assertEqual(hunt.load_cache(cache), {"k": "v"})
+        self.assertEqual(hunt.diagnostic_lines("noise\na.cpp:1:2: warning: w [-Wswitch]\nfatal error: x\n"),
+                         "a.cpp:1:2: warning: w [-Wswitch]")
+
+
 # A stand-in front end: it fails for a source named broken (as clang does for a
 # missing precompiled header) and otherwise reports one switch warning there.
 FAKE_FRONT_END: str = """import sys
@@ -565,11 +722,6 @@ if "broken" in source:
     raise SystemExit(1)
 print(source + ":1:1: warning: switch missing default case [-Wswitch-default]")
 """
-
-
-def no_generated_headers(build_dir: Path) -> None:
-    """The fixture tree has no ninja and no generated headers."""
-    return None
 
 
 class FrontEndFailureTests(unittest.TestCase):

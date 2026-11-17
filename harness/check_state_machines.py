@@ -66,6 +66,25 @@ Two scopes:
                               checks the full tree. Changed paths come from
                               change_selection.py.
 
+A harness.lock change (the product's pin of this harness, lock.py) widens a
+changed-code run to the full tree only when one of CHECKER_SOURCES (this
+checker, the parts of the harness it imports, and the project file) differs
+between the commit the merge base pins and the commit the checkout pins; a
+pin missing from a shallow harness clone is fetched, and a comparison that
+cannot be made counts as a change.
+
+--cache FILE keeps each translation unit's raw diagnostics between runs, in a
+JSON store read before the units run and rewritten after them with the
+entries of this run's units only. An entry is keyed on the SHA-256 of the
+unit's front-end command and directory, its source's bytes, the bytes of
+every header it reaches by name (every header file in the checkout, outside
+the excluded directories, and in the build tree, including the generated
+headers), this checker's bytes and --cache-salt (the CI job passes the
+compiler identity and the pins of the packages a unit reads from outside the
+checkout). Only the misses run; the findings are always computed again from
+every unit's diagnostics, so a failing unit fails every run. A unit whose
+front end fails is never stored.
+
 A unit whose front end fails (a non-zero exit: a missing precompiled header,
 a missing generated header, an error) yields no diagnostics, so it would pass
 unchecked: the run lists each such unit with its first errors, and --gate
@@ -80,6 +99,7 @@ configuring a tree.
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -87,8 +107,10 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 
 import change_selection
+import lock as harness_lock
 import project
 from check_house_style import EXCLUDED, EXTENSIONS, LEXEMES, mask_literal
 
@@ -101,6 +123,14 @@ VOCABULARY_HEADERS: tuple[str, ...] = project.current().vocabulary_headers
 AREAS: tuple[tuple[str, str], ...] = tuple((entry.prefix, entry.area)
                                            for entry in project.current().state_machine_areas)
 CHECKER_FILES: tuple[str, ...] = project.current().full_tree_triggers
+# The template_harness checkout holding this checker, and the harness files
+# whose difference between two harness.lock pins can change a verdict (the
+# project file is added when it lies in this checkout).
+HARNESS_ROOT: Path = Path(__file__).resolve().parent.parent
+CHECKER_SOURCES: tuple[str, ...] = ("harness/check_state_machines.py", "harness/check_house_style.py",
+                                    "harness/change_selection.py", "harness/project.py")
+# The unit cache's format; a store of another version is ignored.
+CACHE_VERSION: int = 1
 # The most error lines a failed unit's report quotes.
 FAILURE_LINES: int = 5
 # (path, record) -> the reason a person reviewed that record's C3 status shape and kept it.
@@ -1060,9 +1090,10 @@ def compiled_sources(entries: list[dict], root: Path) -> set[str]:
     return sources
 
 
-def generate_headers(build_dir: Path) -> None:
+def generate_headers(build_dir: Path) -> list[Path]:
     """Builds the tree's generated headers (custom-command outputs such as the font
-    substitution records), which a syntax-only run reads but never builds."""
+    substitution records), which a syntax-only run reads but never builds, and
+    returns their paths."""
     listing: str = subprocess.check_output(["ninja", "-C", str(build_dir), "-t", "targets", "all"], text=True,
                                            encoding="utf-8", errors="replace")
     outputs: list[str] = []
@@ -1073,7 +1104,7 @@ def generate_headers(build_dir: Path) -> None:
             if not Path(parts[0]).is_absolute():
                 outputs.append(parts[0])
     if not outputs:
-        return
+        return []
     # ninja reports a failed edge on stdout, so a failure prints both streams
     # before it stops the gate; a passing build stays quiet.
     built: subprocess.CompletedProcess[str] = subprocess.run(
@@ -1084,6 +1115,11 @@ def generate_headers(build_dir: Path) -> None:
         sys.stderr.write(built.stdout)
         sys.stderr.write(built.stderr)
         raise subprocess.CalledProcessError(built.returncode, built.args, built.stdout, built.stderr)
+    generated: list[Path] = []
+    output: str
+    for output in outputs:
+        generated.append(build_dir / output)
+    return generated
 
 
 def compile_database(build_dir: Path) -> list[dict]:
@@ -1091,6 +1127,124 @@ def compile_database(build_dir: Path) -> list[dict]:
                                           encoding="utf-8", errors="replace")
     entries: list[dict] = json.loads(compdb)
     return entries
+
+
+@dataclass
+class HeaderIndex:
+    """Every header a unit can reach by name: the header files under the checkout (outside
+    the excluded directories) and everything under the build tree (generated headers, the
+    installed packages, fetched dependencies). Each header's includes and digest
+    are read once, when a unit first reaches it."""
+    paths: dict[str, list[Path]]                # file name -> every header with that name
+    includes: dict[Path, frozenset[str]]        # header -> the file names it includes
+    digests: dict[Path, str]                    # header -> SHA-256 of its bytes
+
+
+def excluded_path(path: Path, root: Path) -> bool:
+    part: str
+    for part in path.relative_to(root).parts[:-1]:
+        if part in EXCLUDED or part == "_deps":
+            return True
+    return False
+
+
+def header_index(root: Path, build_dir: Path) -> HeaderIndex:
+    index: HeaderIndex = HeaderIndex({}, {}, {})
+    top: Path
+    for top in (root, build_dir):
+        if not top.is_dir():
+            continue
+        candidate: Path
+        for candidate in sorted(top.rglob("*")):
+            if candidate.suffix not in HEADER_SUFFIXES or not candidate.is_file():
+                continue
+            if top == root and excluded_path(candidate, root):
+                continue
+            index.paths.setdefault(candidate.name, []).append(candidate)
+    return index
+
+
+def file_digest(path: Path) -> str:
+    result: str = hashlib.sha256(path.read_bytes()).hexdigest()
+    return result
+
+
+def header_includes(index: HeaderIndex, header: Path) -> frozenset[str]:
+    if header not in index.includes:
+        index.includes[header] = frozenset(included_names(header.read_text(encoding="utf-8", errors="replace")))
+    return index.includes[header]
+
+
+def reached_headers(index: HeaderIndex, names: set[str]) -> list[Path]:
+    """Every indexed header whose name the unit includes, directly or through other indexed
+    headers, in a stable order."""
+    reached: set[str] = set()
+    pending: list[str] = sorted(names)
+    while pending:
+        name: str = pending.pop()
+        if name in reached or name not in index.paths:
+            continue
+        reached.add(name)
+        header: Path
+        for header in index.paths[name]:
+            pending.extend(sorted(header_includes(index, header) - reached))
+    headers: list[Path] = []
+    name: str
+    for name in sorted(reached):
+        headers.extend(index.paths[name])
+    return headers
+
+
+def unit_key(unit: Unit, index: HeaderIndex, salt: str, checker: str) -> str:
+    """The cache key of a unit with a source (see the module notes)."""
+    source: Path = Path(unit.source)
+    parts: list[str] = [f"v{CACHE_VERSION}", salt, checker, unit.directory, "\0".join(unit.command),
+                        unit.source, file_digest(source)]
+    header: Path
+    for header in reached_headers(index, included_names(source.read_text(encoding="utf-8", errors="replace"))):
+        if header not in index.digests:
+            index.digests[header] = file_digest(header)
+        parts.append(str(header) + "=" + index.digests[header])
+    result: str = hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+    return result
+
+
+def load_cache(path: Path) -> dict[str, str]:
+    """The stored diagnostics by key; empty when the store is missing, unreadable or of
+    another version."""
+    try:
+        document: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if type(document) is not dict or document.get("version") != CACHE_VERSION:
+        return {}
+    entries: object = document.get("entries")
+    if type(entries) is not dict:
+        return {}
+    stored: dict[str, str] = {}
+    key: object
+    value: object
+    for key, value in entries.items():
+        if type(key) is str and type(value) is str:
+            stored[key] = value
+    return stored
+
+
+def save_cache(path: Path, entries: dict[str, str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    document: dict[str, object] = {"version": CACHE_VERSION, "entries": entries}
+    path.write_text(json.dumps(document, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def diagnostic_lines(output: str) -> str:
+    """The lines of a unit's output that parse_diagnostics reads: what the cache stores."""
+    kept: list[str] = []
+    line: str
+    for line in output.splitlines():
+        if DIAGNOSTIC.match(line.strip()) is not None:
+            kept.append(line.strip())
+    result: str = "\n".join(kept)
+    return result
 
 
 def failure_report(unit: Unit, root: Path, result: UnitResult) -> str:
@@ -1113,25 +1267,57 @@ def failure_report(unit: Unit, root: Path, result: UnitResult) -> str:
 class CompilerRun:
     diagnostics: list[Diagnostic]
     units: int                  # the units in scope
+    reused: int                 # of them, the ones whose diagnostics came from the cache
     failures: list[str]         # one failure_report per unit whose front end failed
 
 
 def compiler_diagnostics(build_dir: Path, root: Path, jobs: int, entries: list[dict],
-                         scope: Scope | None) -> CompilerRun:
+                         scope: Scope | None, cache: Path | None = None, salt: str = "") -> CompilerRun:
     units: list[Unit] = select_units(entries, root, scope)
     if units:
-        generate_headers(build_dir)
-    outputs: list[str] = []
+        started: float = time.monotonic()
+        generated: list[Path] = generate_headers(build_dir)
+        print(f"generated headers: {len(generated)} built in {time.monotonic() - started:.1f} s")
+    stored: dict[str, str] = {}
+    keys: list[str] = []
+    if cache is not None and units:
+        stored = load_cache(cache)
+        index: HeaderIndex = header_index(root, build_dir)
+        checker: str = file_digest(Path(__file__))
+        unit: Unit
+        for unit in units:
+            keys.append(unit_key(unit, index, salt, checker) if unit.source else "")
+    outputs: list[str] = [""] * len(units)
+    misses: list[int] = []
+    position: int
+    for position in range(len(units)):
+        if keys and keys[position] and keys[position] in stored:
+            outputs[position] = stored[keys[position]]
+        else:
+            misses.append(position)
+    kept: dict[str, str] = {}
     failures: list[str] = []
     with ThreadPoolExecutor(max_workers=jobs) as pool:
-        unit: Unit
+        missed: list[Unit] = []
+        for position in misses:
+            missed.append(units[position])
         result: UnitResult
-        for unit, result in zip(units, pool.map(run_unit, units)):
-            outputs.append(result.output)
+        for position, result in zip(misses, pool.map(run_unit, missed)):
+            outputs[position] = result.output
             if result.returncode != 0:
-                failures.append(failure_report(unit, root, result))
+                failures.append(failure_report(units[position], root, result))
+            elif keys and keys[position]:
+                stored[keys[position]] = diagnostic_lines(result.output)
+    if cache is not None and units:
+        # This run's units only, so the store never grows past one tree; a failed unit
+        # was a miss and never entered `stored`.
+        for position in range(len(units)):
+            if keys[position] and keys[position] in stored:
+                kept[keys[position]] = stored[keys[position]]
+        save_cache(cache, kept)
     diagnostics: list[Diagnostic] = []
     unique: set[tuple[str, int, int, str]] = set()
+    unit: Unit
     output: str
     for unit, output in zip(units, outputs):
         diagnostic: Diagnostic
@@ -1145,7 +1331,7 @@ def compiler_diagnostics(build_dir: Path, root: Path, jobs: int, entries: list[d
             unique.add(key)
             diagnostics.append(Diagnostic(relative, diagnostic.line, diagnostic.column, diagnostic.flag,
                                           diagnostic.message))
-    run: CompilerRun = CompilerRun(diagnostics, len(units), failures)
+    run: CompilerRun = CompilerRun(diagnostics, len(units), len(units) - len(misses), failures)
     return run
 
 
@@ -1305,6 +1491,64 @@ def render(findings: list[Finding], units: int, files: int) -> str:
     return "\n".join(lines) + "\n"
 
 
+def git_text(directory: Path, *arguments: str) -> str | None:
+    """A git command's stripped stdout in directory, or None when it fails."""
+    completed: subprocess.CompletedProcess[str] = subprocess.run(
+        ["git", "-C", str(directory), *arguments], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if completed.returncode != 0:
+        return None
+    result: str = completed.stdout.strip()
+    return result
+
+
+def lock_commit(text: str | None, where: str) -> str:
+    """The harness commit a lock's text pins, or "" when there is no readable lock."""
+    if text is None:
+        return ""
+    try:
+        pinned: harness_lock.Lock = harness_lock.parse(text, where)
+    except harness_lock.LockError:
+        return ""
+    return pinned.commit
+
+
+def checker_sources() -> list[str]:
+    paths: list[str] = list(CHECKER_SOURCES)
+    try:
+        relative: str = Path(project.current().path).resolve().relative_to(HARNESS_ROOT).as_posix()
+    except ValueError:
+        relative = ""
+    if relative:
+        paths.append(relative)
+    return paths
+
+
+def checker_changed_between_pins(root: Path, base: str) -> bool:
+    """Whether the harness.lock pin moved since base's merge base to a commit whose checker
+    sources differ (see the module notes); True whenever that cannot be shown false."""
+    start: str = git_text(root, "merge-base", base, "HEAD") or base
+    old: str = lock_commit(git_text(root, "show", start + ":" + harness_lock.LOCK_NAME),
+                           start + ":" + harness_lock.LOCK_NAME)
+    lock_path: Path = root / harness_lock.LOCK_NAME
+    new: str = ""
+    if lock_path.is_file():
+        new = lock_commit(lock_path.read_text(encoding="utf-8"), str(lock_path))
+    if not old or not new:
+        return True
+    if old == new:
+        return False
+    commit: str
+    for commit in (old, new):
+        if not harness_lock.has_commit(HARNESS_ROOT, commit):
+            # CI's harness checkout is shallow: fetch the other pin alone.
+            git_text(HARNESS_ROOT, "fetch", "-q", "--depth", "1", "origin", commit)
+    compared: subprocess.CompletedProcess[str] = subprocess.run(
+        ["git", "-C", str(HARNESS_ROOT), "diff", "--quiet", old, new, "--", *checker_sources()],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    result: bool = compared.returncode != 0
+    return result
+
+
 def changed_sources(root: Path, base: str) -> list[str] | None:
     """The first-party C and C++ files changed since base that still exist, or None when
     a full-tree trigger changed (every file is then in scope)."""
@@ -1313,6 +1557,8 @@ def changed_sources(root: Path, base: str) -> list[str] | None:
     path: str
     for path in paths:
         if path in CHECKER_FILES:
+            return None
+        if path == harness_lock.LOCK_NAME and checker_changed_between_pins(root, base):
             return None
         if first_party(root / path, root) and (root / path).is_file():
             sources.append(path)
@@ -1351,6 +1597,9 @@ def main() -> int:
                         help="print the changed C and C++ files (or 'every') and exit; needs --changed-from")
     parser.add_argument("--gate", action="store_true",
                         help="exit with status 1 on any F1 or F2 in the scope, or any unit whose front end fails")
+    parser.add_argument("--cache", default="", help="a JSON store of each unit's diagnostics (see the module notes)")
+    parser.add_argument("--cache-salt", default="",
+                        help="the compiler identity and pins a unit reads from outside the checkout, for the cache key")
     args: argparse.Namespace = parser.parse_args()
     project.current().require_state_machines()
     root: Path = Path(args.root)
@@ -1374,9 +1623,13 @@ def main() -> int:
     failures: list[str] = []
     if args.build_dir:
         entries: list[dict] = compile_database(Path(args.build_dir))
-        run: CompilerRun = compiler_diagnostics(Path(args.build_dir), root, max(1, args.jobs), entries, scope)
+        cache: Path | None = Path(args.cache) if args.cache else None
+        run: CompilerRun = compiler_diagnostics(Path(args.build_dir), root, max(1, args.jobs), entries, scope,
+                                                cache, args.cache_salt)
         units = run.units
         failures = run.failures
+        if cache is not None:
+            print(f"unit cache: {run.reused} of {run.units} units reused, {run.units - run.reused} run")
         findings.extend(compiler_findings(run.diagnostics, root, vocabulary_enums(root)))
         if changed is not None:
             uncovered: list[str] = uncompiled_sources(changed, compiled_sources(entries, root))
