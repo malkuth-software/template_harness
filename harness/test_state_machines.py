@@ -765,5 +765,69 @@ class FrontEndFailureTests(unittest.TestCase):
         self.assertIn("PCH file", run.failures[0])
 
 
+# A stand-in front end for units meant not to compile: it refuses a source whose
+# name has "refused" and accepts every other, without a switch warning.
+REFUSING_FRONT_END: str = """import sys
+source = sys.argv[1]
+if "refused" in source:
+    sys.stderr.write(source + ":1:1: error: effect code may not use a 'while' loop\\n")
+    raise SystemExit(1)
+"""
+
+
+class ExpectedCompileFailureTests(unittest.TestCase):
+    def run_cases(self, names: list[str], cache: bool) -> hunt.CompilerRun:
+        directory: str
+        with tempfile.TemporaryDirectory() as directory:
+            root: Path = Path(directory)
+            (root / "tests" / "effect_pass").mkdir(parents=True)
+            (root / "front_end.py").write_text(REFUSING_FRONT_END, encoding="utf-8")
+            entries: list[dict] = []
+            name: str
+            for name in names:
+                # No switch: an expected failure runs anyway.
+                (root / "tests" / "effect_pass" / (name + ".cpp")).write_text("int f();\n", encoding="utf-8")
+                entries.append({"directory": str(root), "file": "tests/effect_pass/" + name + ".cpp",
+                                "command": sys.executable + " " + str(root / "front_end.py")
+                                + " tests/effect_pass/" + name + ".cpp -c -o " + name + ".o"})
+            store: Path | None = root / "units.json" if cache else None
+            saved: object = hunt.generate_headers
+            saved_expected: tuple[tuple[str, str], ...] = hunt.EXPECTED_FAILURES
+            hunt.generate_headers = no_generated_headers
+            hunt.EXPECTED_FAILURES = (("tests/effect_pass/refused_*.cpp", "the effect pass refuses it"),
+                                      ("tests/effect_pass/stale.cpp", "it used to be refused"))
+            try:
+                run: hunt.CompilerRun = hunt.compiler_diagnostics(root, root, 2, entries, None, store, "salt")
+                if store is not None:
+                    self.assertEqual(hunt.load_cache(store), {})
+            finally:
+                hunt.generate_headers = saved
+                hunt.EXPECTED_FAILURES = saved_expected
+        return run
+
+    def test_a_listed_unit_that_fails_is_counted_not_reported(self) -> None:
+        run: hunt.CompilerRun = self.run_cases(["refused_while", "refused_new"], True)
+        self.assertEqual((run.units, run.reused, run.expected_failures), (2, 0, 2))
+        self.assertEqual((run.failures, run.compiled_unexpectedly, run.diagnostics), ([], [], []))
+
+    def test_a_listed_unit_that_compiles_is_reported(self) -> None:
+        run: hunt.CompilerRun = self.run_cases(["refused_while", "stale", "plain"], False)
+        # plain has no switch and is not listed, so it is not a unit at all.
+        self.assertEqual((run.units, run.expected_failures, run.failures), (2, 1, []))
+        self.assertEqual(len(run.compiled_unexpectedly), 1)
+        self.assertIn("tests/effect_pass/stale.cpp: compiled", run.compiled_unexpectedly[0])
+        self.assertIn("tests/effect_pass/stale.cpp: it used to be refused", run.compiled_unexpectedly[0])
+
+    def test_the_glob_matches_the_checkout_relative_path(self) -> None:
+        saved_expected: tuple[tuple[str, str], ...] = hunt.EXPECTED_FAILURES
+        hunt.EXPECTED_FAILURES = (("tests/*/refused.cpp", "why"),)
+        try:
+            self.assertEqual(hunt.expected_failure("tests/effect_pass/refused.cpp"), "tests/*/refused.cpp: why")
+            self.assertEqual(hunt.expected_failure("tests/a/b/refused.cpp"), "tests/*/refused.cpp: why")
+            self.assertEqual(hunt.expected_failure("src/refused.cpp"), "")
+        finally:
+            hunt.EXPECTED_FAILURES = saved_expected
+
+
 if __name__ == "__main__":
     unittest.main()

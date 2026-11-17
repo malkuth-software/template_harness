@@ -113,6 +113,31 @@ full_tree_triggers = [
     "tools/check_house_style.py",
     "tools/harness_link.py",
 ]
+# Units meant not to compile, each [glob, reason]: the gate runs them without
+# analysing them and fails when one compiles. The tests/effect_pass reject
+# cases exist only with GUI_FORMS_EFFECTS_VERIFIED (the M4's verified tree and
+# Linux CI), compiled with the effect-pass Clang plugin, which refuses each one
+# by design (cmake/check_effect_pass.cmake checks the refusal). passes,
+# signal_passes and unverified compile, so they are not listed.
+expected_compile_failures = [
+    ["tests/effect_pass/while_loop.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/unbounded_for.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/loop_variable_written.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/not_equal_past_limit.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/not_equal_below_limit.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/recursion.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/virtual_call.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/function_pointer.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/allocation.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/global_write.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/cmath_call.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/opaque_call.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/pointer_state.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/oversized_state.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/over_budget.cpp", "effect pass refusal case (// expect: reject)"],
+    ["tests/effect_pass/signal_over_budget.cpp", "signal program refusal case (// expect: reject)"],
+    ["tests/effect_pass/signal_cmath_call.cpp", "signal program refusal case (// expect: reject)"],
+]
 # C3 records reviewed and kept, each [path, record, reason].
 reviewed_shapes = [
     ["include/gui_forms/typography/types/typography_types.hpp", "ResolvedTextLayout",

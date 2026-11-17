@@ -92,6 +92,16 @@ a missing generated header, an error) yields no diagnostics, so it would pass
 unchecked: the run lists each such unit with its first errors, and --gate
 fails on it.
 
+Some units are meant not to compile: a test that a bad program is refused at
+compile time (GUI.Forms' tests/effect_pass cases, built with its Clang plugin).
+The project lists them in state_machines.expected_compile_failures, each a
+[glob, reason] pair; the glob is matched with fnmatch against the unit's
+checkout-relative POSIX path ("*" also crosses "/"). Such a unit in scope runs
+whether or not it reaches a switch, never enters the cache, and is not
+analysed: its failure is counted, not reported. One that compiles is listed
+with the entry that names it and fails --gate, so the list cannot go stale
+silently; remove the entry, or restore the refusal.
+
 --gate fails the run (exit status 1) on any F1 or F2 in its scope; C1 to C3
 never fail it. --list-changed prints the changed C and C++ files ("every" when
 a full-tree trigger changed, nothing when none) and exits, so a CI job can skip
@@ -101,6 +111,7 @@ configuring a tree.
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+import fnmatch
 import hashlib
 import json
 import os
@@ -140,6 +151,9 @@ FAILURE_LINES: int = 5
 # (path, record) -> the reason a person reviewed that record's C3 status shape and kept it.
 REVIEWED_SHAPES: dict[tuple[str, str], str] = {(shape.path, shape.record): shape.reason
                                                for shape in project.current().reviewed_shapes}
+# [glob, reason] pairs naming the units meant not to compile (see the module notes).
+EXPECTED_FAILURES: tuple[tuple[str, str], ...] = tuple((entry.pattern, entry.reason)
+                                                       for entry in project.current().expected_compile_failures)
 GATE_RULES: tuple[str, ...] = ("F1", "F2")
 HEADER_SUFFIXES: tuple[str, ...] = (".hpp", ".hh", ".h", ".inc")
 INCLUDE: re.Pattern[str] = re.compile(r'#\s*include\s*[<"]([^>"]+)[>"]')
@@ -967,6 +981,18 @@ class Unit:
     directory: str
     command: tuple[str, ...]
     source: str = ""        # the absolute path of the unit's source; "" in fixtures without one
+    expected: str = ""      # "<glob>: <reason>" when the project lists it as meant not to compile
+
+
+def expected_failure(relative: str) -> str:
+    """The first EXPECTED_FAILURES entry naming this checkout-relative path, as
+    "<glob>: <reason>", or ""."""
+    entry: tuple[str, str]
+    for entry in EXPECTED_FAILURES:
+        if fnmatch.fnmatchcase(relative, entry[0]):
+            result: str = entry[0] + ": " + entry[1]
+            return result
+    return ""
 
 
 @dataclass(frozen=True)
@@ -1081,9 +1107,11 @@ def select_units(entries: list[dict], root: Path, scope: Scope | None = None) ->
         names: set[str] = included_names(text)
         if scope is not None and relative not in scope.changed and not names & scope.reached_headers:
             continue
-        wanted: bool = SWITCH.search(masked(text)) is not None or bool(names & switch_headers)
+        # A unit meant not to compile runs even without a switch, to show it still fails.
+        expected: str = expected_failure(relative)
+        wanted: bool = SWITCH.search(masked(text)) is not None or bool(names & switch_headers) or bool(expected)
         if wanted:
-            units.append(Unit(entry["directory"], tuple(syntax_command(entry["command"])), str(source)))
+            units.append(Unit(entry["directory"], tuple(syntax_command(entry["command"])), str(source), expected))
     return units
 
 
@@ -1277,6 +1305,8 @@ class CompilerRun:
     units: int                  # the units in scope
     reused: int                 # of them, the ones whose diagnostics came from the cache
     failures: list[str]         # one failure_report per unit whose front end failed
+    expected_failures: int      # units meant not to compile that failed, as listed
+    compiled_unexpectedly: list[str]  # one report per unit meant not to compile that compiled
 
 
 def compiler_diagnostics(build_dir: Path, root: Path, jobs: int, entries: list[dict],
@@ -1296,7 +1326,8 @@ def compiler_diagnostics(build_dir: Path, root: Path, jobs: int, entries: list[d
         checker: str = file_digest(Path(__file__))
         unit: Unit
         for unit in units:
-            keys.append(unit_key(unit, index, salt, checker) if unit.source else "")
+            # A unit meant not to compile is never stored or reused: it runs every time.
+            keys.append(unit_key(unit, index, salt, checker) if unit.source and not unit.expected else "")
     outputs: list[str] = [""] * len(units)
     misses: list[int] = []
     position: int
@@ -1307,6 +1338,8 @@ def compiler_diagnostics(build_dir: Path, root: Path, jobs: int, entries: list[d
             misses.append(position)
     kept: dict[str, str] = {}
     failures: list[str] = []
+    expected_failures: int = 0
+    compiled_unexpectedly: list[str] = []
     with ThreadPoolExecutor(max_workers=jobs) as pool:
         missed: list[Unit] = []
         for position in misses:
@@ -1314,7 +1347,15 @@ def compiler_diagnostics(build_dir: Path, root: Path, jobs: int, entries: list[d
         result: UnitResult
         for position, result in zip(misses, pool.map(run_unit, missed)):
             outputs[position] = result.output
-            if result.returncode != 0:
+            if units[position].expected:
+                # Not analysed either way: its diagnostics are dropped below.
+                if result.returncode != 0:
+                    expected_failures += 1
+                else:
+                    name: str = first_party(Path(units[position].source), root) or units[position].source
+                    compiled_unexpectedly.append(f"{name}: compiled, but the project lists it as meant not "
+                                                 f"to compile ({units[position].expected})")
+            elif result.returncode != 0:
                 failures.append(failure_report(units[position], root, result))
             elif keys and keys[position]:
                 stored[keys[position]] = diagnostic_lines(result.output)
@@ -1337,6 +1378,8 @@ def compiler_diagnostics(build_dir: Path, root: Path, jobs: int, entries: list[d
     unit: Unit
     output: str
     for unit, output in zip(units, outputs):
+        if unit.expected:
+            continue
         diagnostic: Diagnostic
         for diagnostic in parse_diagnostics(output):
             relative: str = first_party(normalized(diagnostic.path, unit.directory), root)
@@ -1348,7 +1391,8 @@ def compiler_diagnostics(build_dir: Path, root: Path, jobs: int, entries: list[d
             unique.add(key)
             diagnostics.append(Diagnostic(relative, diagnostic.line, diagnostic.column, diagnostic.flag,
                                           diagnostic.message))
-    run: CompilerRun = CompilerRun(diagnostics, len(units), len(units) - len(misses), failures)
+    run: CompilerRun = CompilerRun(diagnostics, len(units), len(units) - len(misses), failures, expected_failures,
+                                   compiled_unexpectedly)
     return run
 
 
@@ -1613,7 +1657,8 @@ def main() -> int:
     parser.add_argument("--list-changed", action="store_true",
                         help="print the changed C and C++ files (or 'every') and exit; needs --changed-from")
     parser.add_argument("--gate", action="store_true",
-                        help="exit with status 1 on any F1 or F2 in the scope, or any unit whose front end fails")
+                        help="exit with status 1 on any F1 or F2 in the scope, any unit whose front end fails, "
+                        "or any unit meant not to compile that compiles")
     parser.add_argument("--cache", default="", help="a JSON store of each unit's diagnostics (see the module notes)")
     parser.add_argument("--cache-salt", default="",
                         help="the compiler identity and pins a unit reads from outside the checkout, for the cache key")
@@ -1638,6 +1683,7 @@ def main() -> int:
     findings: list[Finding] = []
     units: int = 0
     failures: list[str] = []
+    compiled_unexpectedly: list[str] = []
     if args.build_dir:
         entries: list[dict] = compile_database(Path(args.build_dir))
         cache: Path | None = Path(args.cache) if args.cache else None
@@ -1645,6 +1691,9 @@ def main() -> int:
                                                 cache, args.cache_salt)
         units = run.units
         failures = run.failures
+        compiled_unexpectedly = run.compiled_unexpectedly
+        if run.expected_failures:
+            print(f"{run.expected_failures} units failed to compile as the project expects, and were not checked")
         if cache is not None:
             print(f"unit cache: {run.reused} of {run.units} units reused, {run.units - run.reused} run")
         findings.extend(compiler_findings(run.diagnostics, root, vocabulary_enums(root)))
@@ -1665,6 +1714,11 @@ def main() -> int:
         report: str
         for report in failures:
             print(report)
+    if compiled_unexpectedly:
+        print(f"{len(compiled_unexpectedly)} units compiled although the project lists them as meant not to:")
+        unexpected: str
+        for unexpected in compiled_unexpectedly:
+            print("    " + unexpected)
     if args.json_path:
         records: list[dict[str, object]] = []
         finding: Finding
@@ -1676,10 +1730,13 @@ def main() -> int:
         failing: int = gate_failures(findings)
         if failures:
             print(f"state-machine gate: {len(failures)} units failed to compile, so their switches are unchecked")
+        if compiled_unexpectedly:
+            print(f"state-machine gate: {len(compiled_unexpectedly)} units meant not to compile compiled; remove "
+                  "their state_machines.expected_compile_failures entries or restore the refusal")
         if failing:
             print(f"state-machine gate: {failing} F1/F2 findings (house style section 2); fix them to the "
                   "compliant form or give the default its reason")
-        if failures or failing:
+        if failures or compiled_unexpectedly or failing:
             return 1
         print("state-machine gate: no F1/F2 findings")
     return 0

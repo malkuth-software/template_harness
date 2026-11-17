@@ -72,6 +72,14 @@ class ReviewedShape:
 
 
 @dataclass(frozen=True)
+class ExpectedCompileFailure:
+    """Translation units meant not to compile (a test that a bad program is refused at
+    compile time), by a glob over the checkout-relative POSIX path, with the reason."""
+    pattern: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class CheckpointTable:
     """[checkpoint], for checkpoint/checkpoint.py (its docstring explains each field)."""
     # The integration tree, relative to the workspace root or absolute.
@@ -147,6 +155,10 @@ class Project:
     # C3 records reviewed and kept as they are (state_machines.reviewed_shapes,
     # optional): the candidate is listed with its reason instead of raised.
     reviewed_shapes: tuple[ReviewedShape, ...]
+    # Units meant not to compile (state_machines.expected_compile_failures,
+    # optional): check_state_machines.py runs them but does not analyse them,
+    # and --gate fails when one compiles.
+    expected_compile_failures: tuple[ExpectedCompileFailure, ...]
     # check_loop_branches.py: the decisions file, a path in the product
     # checkout ([loop_branches] decisions, optional; "" when none).
     loop_branch_decisions: str
@@ -365,6 +377,25 @@ def reviewed_shapes(value: Any) -> tuple[ReviewedShape, ...]:
         shapes.append(ReviewedShape(triple[0], triple[1], triple[2]))
     result: tuple[ReviewedShape, ...] = tuple(shapes)
     return result
+def expected_compile_failures(value: Any) -> tuple[ExpectedCompileFailure, ...]:
+    """state_machines.expected_compile_failures: [glob, reason] pairs, each part non-empty."""
+    message: str = 'state_machines.expected_compile_failures must be a list of [glob, reason] pairs'
+    if type(value) is not list:
+        raise ValueError(message)
+    failures: list[ExpectedCompileFailure] = []
+    pair: Any
+    for pair in value:
+        if type(pair) is not list or len(pair) != 2:
+            raise ValueError(message)
+        part: Any
+        for part in pair:
+            if type(part) is not str or not part.strip():
+                raise ValueError(message)
+        failures.append(ExpectedCompileFailure(pair[0], pair[1]))
+    result: tuple[ExpectedCompileFailure, ...] = tuple(failures)
+    return result
+
+
 def loop_branch_decisions(value: Any) -> str:
     """[loop_branches] decisions: a relative path in the product checkout, or "" without the table."""
     result: str = decisions_path(value, 'loop_branches')
@@ -508,6 +539,7 @@ def parse(document: dict[str, Any], path: Path) -> Project:
         state_machine_areas=state_machine_areas(machines.get('areas')),
         full_tree_triggers=text_list(machines, 'full_tree_triggers', 'state_machines'),
         reviewed_shapes=reviewed_shapes(machines.get('reviewed_shapes', [])),
+        expected_compile_failures=expected_compile_failures(machines.get('expected_compile_failures', [])),
         loop_branch_decisions=loop_branch_decisions(document.get('loop_branches')),
         const_restrict_decisions=decisions_path(document.get('const_restrict'), 'const_restrict'),
         copies_decisions=decisions_path(document.get('copies'), 'copies'),

@@ -50,6 +50,15 @@ and new form. Provisional rows there may change without an entry.
   provenance.
 
 ### Added
+- `[state_machines] expected_compile_failures` in the project file: `[glob,
+  reason]` pairs naming translation units meant not to compile, such as
+  GUI.Forms' `tests/effect_pass` refusal cases built with its effect-pass
+  Clang plugin. Since a unit whose front end fails now fails
+  `check_state_machines.py --gate`, those units failed it by design.
+  A listed unit in scope runs even without a switch, is never cached, and
+  is not analysed; its failure is counted. One that compiles is listed with
+  its entry and fails `--gate`, so the list cannot go stale silently.
+  `projects/gui_forms.toml` lists the 17 reject cases.
 - `new_app.sh`/`new_app.ps1` and `harness/new_app.py`: one command to a
   harnessed GUI.Forms app (`docs/new_app.md`). It validates the name and
   derives the names (`docs/adopting.md` §2, checked against every project

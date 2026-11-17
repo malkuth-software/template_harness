@@ -95,6 +95,20 @@ class ProjectFileTests(unittest.TestCase):
             'full_tree_triggers = []', 'full_tree_triggers = []\nreviewed_shapes = [["src/a.hpp", "Record", "why"]]'))
         self.assertEqual(loaded.reviewed_shapes, (project.ReviewedShape('src/a.hpp', 'Record', 'why'),))
 
+    def test_expected_compile_failures_are_optional_pairs_with_reasons(self) -> None:
+        self.assertEqual(parsed(MINIMAL).expected_compile_failures, ())
+        loaded: project.Project = parsed(MINIMAL.replace(
+            'full_tree_triggers = []',
+            'full_tree_triggers = []\nexpected_compile_failures = [["tests/bad_*.cpp", "refused by design"]]'))
+        self.assertEqual(loaded.expected_compile_failures,
+                         (project.ExpectedCompileFailure('tests/bad_*.cpp', 'refused by design'),))
+        bad: str
+        for bad in ('[["tests/bad.cpp"]]', '[["tests/bad.cpp", ""]]', '[["tests/bad.cpp", " "]]', '"tests/bad.cpp"',
+                    '[["", "why"]]', '[["tests/bad.cpp", 3]]'):
+            with self.assertRaisesRegex(ValueError, 'expected_compile_failures'):
+                parsed(MINIMAL.replace('full_tree_triggers = []',
+                                       'full_tree_triggers = []\nexpected_compile_failures = ' + bad))
+
     def test_derived_names(self) -> None:
         loaded: project.Project = parsed(MINIMAL)
         self.assertEqual(loaded.variable('PLATFORM'), 'EXAMPLE_PLATFORM')
