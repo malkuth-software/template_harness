@@ -692,9 +692,17 @@ class UnitCacheTests(unittest.TestCase):
                 again: hunt.CompilerRun = self.run_tree(root, ["a", "b", "broken"], cache)
                 self.assertEqual((again.reused, len(again.failures)), (2, 1))
                 self.assertEqual(self.log_lines(root), ["src/broken.cpp"])
-                # The store keeps this run's units only.
+                # The store keeps this run's units and, under its bound, the earlier entry of
+                # a.cpp from before its header changed.
                 stored: dict[str, str] = hunt.load_cache(cache)
-                self.assertEqual(len(stored), 2)
+                self.assertEqual(len(stored), 3)
+                saved_bound: int = hunt.CACHE_ENTRIES_PER_UNIT
+                hunt.CACHE_ENTRIES_PER_UNIT = 1
+                try:
+                    self.run_tree(root, ["a", "b"], cache)
+                finally:
+                    hunt.CACHE_ENTRIES_PER_UNIT = saved_bound
+                self.assertEqual(len(hunt.load_cache(cache)), 2)
             finally:
                 hunt.generate_headers = saved
 

@@ -74,8 +74,10 @@ pin missing from a shallow harness clone is fetched, and a comparison that
 cannot be made counts as a change.
 
 --cache FILE keeps each translation unit's raw diagnostics between runs, in a
-JSON store read before the units run and rewritten after them with the
-entries of this run's units only. An entry is keyed on the SHA-256 of the
+JSON store read before the units run and rewritten after them: this run's
+units first, then earlier entries up to CACHE_ENTRIES_PER_UNIT times the
+compile database's size, so a changed-code run keeps what earlier runs
+stored and the store stays bounded. An entry is keyed on the SHA-256 of the
 unit's front-end command and directory, its source's bytes, the bytes of
 every header it reaches by name (every header file in the checkout, outside
 the excluded directories, and in the build tree, including the generated
@@ -129,8 +131,10 @@ CHECKER_FILES: tuple[str, ...] = project.current().full_tree_triggers
 HARNESS_ROOT: Path = Path(__file__).resolve().parent.parent
 CHECKER_SOURCES: tuple[str, ...] = ("harness/check_state_machines.py", "harness/check_house_style.py",
                                     "harness/change_selection.py", "harness/project.py")
-# The unit cache's format; a store of another version is ignored.
+# The unit cache's format; a store of another version is ignored. A store keeps
+# at most this many entries per compile-database entry (this run's units first).
 CACHE_VERSION: int = 1
+CACHE_ENTRIES_PER_UNIT: int = 3
 # The most error lines a failed unit's report quotes.
 FAILURE_LINES: int = 5
 # (path, record) -> the reason a person reviewed that record's C3 status shape and kept it.
@@ -1279,9 +1283,11 @@ def compiler_diagnostics(build_dir: Path, root: Path, jobs: int, entries: list[d
         generated: list[Path] = generate_headers(build_dir)
         print(f"generated headers: {len(generated)} built in {time.monotonic() - started:.1f} s")
     stored: dict[str, str] = {}
+    earlier: list[str] = []
     keys: list[str] = []
     if cache is not None and units:
         stored = load_cache(cache)
+        earlier = list(stored)
         index: HeaderIndex = header_index(root, build_dir)
         checker: str = file_digest(Path(__file__))
         unit: Unit
@@ -1309,11 +1315,18 @@ def compiler_diagnostics(build_dir: Path, root: Path, jobs: int, entries: list[d
             elif keys and keys[position]:
                 stored[keys[position]] = diagnostic_lines(result.output)
     if cache is not None and units:
-        # This run's units only, so the store never grows past one tree; a failed unit
-        # was a miss and never entered `stored`.
+        # This run's units first (a failed unit was a miss and never entered `stored`),
+        # then earlier entries while the store is under its bound.
         for position in range(len(units)):
             if keys[position] and keys[position] in stored:
                 kept[keys[position]] = stored[keys[position]]
+        bound: int = CACHE_ENTRIES_PER_UNIT * max(len(entries), len(units))
+        old: str
+        for old in earlier:
+            if len(kept) >= bound:
+                break
+            if old not in kept:
+                kept[old] = stored[old]
         save_cache(cache, kept)
     diagnostics: list[Diagnostic] = []
     unique: set[tuple[str, int, int, str]] = set()
