@@ -52,7 +52,18 @@ blocks = "tests/ic/blocks"                    # <id>.blocks.json per component
 obligations = "proofs/ic"                     # <id>.obligations.json per component
 generator = "tools/ic_declarations.py"        # how generated text names its generator
 column_limit = 120                            # width of the header contract lines
+# Optional (IC2, IC4); a project without them generates what it did before.
+engine = { path = "tests/ic/generated", namespace = "stxlib_ic::generated", include = "ic/engine/ic_engine.hpp", codes = "stxlib::HostCode", include_roots = ["include", "src", "tests"] }
+gate = "proofs/ic/GATE.md"                    # the gate results file, written from the declarations
+gate_run = "tests/ic/results/gate_run.json"   # an engine run's integrity counts, read when present
+deductions = "proofs/ic/deductions.json"      # a deducer's results, merged while their hashes match
 ```
+
+`engine` makes the generator write the engine's blocks (section 7): one
+`<id>.blocks.inc` per declaration with an `[engine]` table and a
+`components.inc` that lists them. `gate` names the gate results file
+(section 8); `gate_run` and `deductions` are inputs to it and to the
+obligations.
 
 A component's `<id>` is its declaration's file name without `.ic.toml`.
 
@@ -104,12 +115,32 @@ requires = [
 fails = [{ failure = "io_failure", when = "the host refuses the read", leaves = "unchanged" }]
 returns = { type = "usize" }          # or owns = "caller", state = "...", borrows = "self", until = [...], revokes = "..."
 transfers = [{ what = "address", from = "caller", to = "allocator" }]
+refusal_order = ["outside", "read_offset"]  # optional: which refusal wins when several apply
+engine = { ranges = { offset = "[0, 65536]" } }  # optional: how the engine drives it (section 7)
+
+[engine]                              # optional: the engine's view of the component (section 7)
+object = "stxlib::File"
 
 [[obligation]]                        # hand-stated obligations (the deduction layer's)
 id = "page_protocol"
 statement = "..."
 method = "..."
 premises = ["..."]
+missing = "..."                       # optional: the premise a deduction lacks
+
+[[obligation]]                        # a lemma: proved from its givens (section 8)
+id = "page_count_take"
+statement = "..."
+given = ["sum + live == capacity", "word != 0", "..."]
+shows = "sum_after + live_after == capacity"
+sources = ["src/state/heap.hpp: page.live = page.live + 1;"]   # `path: text` each step reads
+
+[[obligation]]                        # structural: no refused path forms a pointer from these names
+id = "refusal_reads_nothing"
+statement = "..."
+untouched = ["address", "value"]
+paths = ["src/state/allocator.cpp: release_common: Release::refused"]   # `path: function: refusal`
+metadata = ["slice_heads"]            # accessors whose pointers lie elsewhere (a premise)
 ```
 
 **Keys.** `keys.manifest` (default `namespace::component`) is the type's
@@ -139,6 +170,17 @@ IC3 adds the missing queries).
 
 `leaves` says what a refusal or failure leaves behind: `unchanged` (the
 default), `partial` or `unspecified`.
+
+**Refusal order.** When several of a call's refusals apply at once (the
+object is in a state outside `in` and a clause fails, or two clauses fail),
+`refusal_order` says which one the call reports: it lists every refusal of
+the call exactly once, the winner first, each by its clause's `check` and
+the typestate refusal as `outside`. A call with fewer than two refusals
+has nothing to order; an order that names an unknown refusal, names one
+twice or leaves one out is an error. Without it the order is undeclared,
+as before. The contract lines add `When several refusals apply: a, then
+b.`, each legal block carries the order, and the obligations add a
+`refusal-order` obligation.
 
 **Threads.** `any`, `owner` (whichever one thread holds the object at a
 time), `ui` or `dispatcher`.
@@ -207,7 +249,8 @@ must do.
 
 **Proof obligations.** Per component: each clause as an entry-check
 obligation (and, where a refusal leaves the object unchanged, a second
-one), each transition and each typestate refusal, then the hand-stated
+one; and where it computes, a predicate-exact one), each transition, each
+typestate refusal and each refusal order, then the hand-stated
 obligations. Each starts at `level` `none` and `status` `open`, with `tool`
 null and no premises, in the record shape of STXlib's verification
 programme (section 6: level, tool, premises, source hash); the file records
@@ -226,3 +269,41 @@ STXlib's notes), reused, not copied.
 
 STXlib is the first adopter: its allocator, containers and files
 (`tools/ic/project.toml` there).
+
+## 7. The engine's blocks (IC2)
+
+With `engine` in the project file, each declaration with an `[engine]`
+table gets generated C++ blocks for the block engine (STXlib's
+`tests/ic/engine`): a legal block per call, a misuse block per clause and
+per bounded variable, and an outside block per refused state. A testcase
+is a sequence of blocks; after each one the engine compares the declared
+terms, the state and the invariants with its model.
+
+The `[engine]` table: `object` (the C++ type), `includes`, `make` (how a
+slot's object is made), `observe` (term -> C++ expression), `state_query`
+and `state_answers`, `slots`, `codes`, `invariants`, `teardown`,
+`requirement_guard`, `skip` (why the component is not driven), `condition`
+(an `#if` around it) and `[[engine.compound]]` blocks (several calls as one
+step). A call's `engine` table: `invoke`, `draws`, `values`, `pointers`,
+`ranges`, `ensures` (`term = expression`, `old.` for the value before),
+`expect`, `into`, `empties`, `needs`, `state_by`, `skip`, `result_type`,
+`refused_when`, `failed_when` and `assume`. A call without `invoke` is
+called with its declared parameters, so they must be the C++ signature's
+names; the gate file lists every call the engine does not drive, with why.
+
+## 8. The gate file and deductions (IC4)
+
+`gate` is written from the declarations: per component, its calls, blocks,
+states and obligations, the deduced and open obligations, and the columns
+an engine run fills from `gate_run` (cases, states and edges reached,
+defects found and fixed, legal false positives), "not run" until one has.
+
+A deducer (STXlib's `tools/ic_deduce.py`) writes `deductions`: each
+discharged obligation with its method, premises, steps and the SHA-256 of
+the declaration and of every source it read. The generator merges a
+deduction into its obligation (level `deduced`, status `discharged`) only
+while those hashes match, so a changed source reopens it. A lemma
+(`given`, `shows`, `sources`) is proved from its givens; a structural
+obligation (`untouched`, `paths`, `metadata`) is read from the functions it
+names; `missing` records what a deduction lacks when it stays open.
+

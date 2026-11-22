@@ -26,7 +26,17 @@ Properties:
       the two lines, so two tables may hold a slot of one name;
   C8  a parameter may not take the name of a term or a constant (the
       predicate would read the wrong one), and `**` in a declarations glob
-      matches nested directories.
+      matches nested directories;
+  C9  a declared pointer-to-const parameter keeps one const;
+  C10 a call's refusal_order says which refusal wins when several apply: the
+      contract line, the legal blocks and a refusal-order obligation carry
+      it; an order that names an unknown refusal, names one twice or leaves
+      one out is refused, and a declaration without it is unchanged;
+  C11 the additive format of schema 1 parses: a hand-stated obligation as a
+      lemma (given, shows, sources) or as a structural obligation
+      (untouched, paths, metadata, missing), each carried into the
+      obligations file; a lemma that is also structural, or untouched
+      without paths, is refused.
 """
 from __future__ import annotations
 
@@ -243,6 +253,25 @@ class DeclarationTests(unittest.TestCase):
         self.refused('parameters = { index = "usize" }', 'parameters = { count = "usize" }',
                      "parameter 'count' has the name of a term or constant")
 
+    def test_c10_refusal_order_refused(self) -> None:
+        call: str = 'parameters = { index = "usize" }'
+        self.refused(call, call + '\nrefusal_order = ["outside", "size"]', "refusal_order names 'size'")
+        self.refused(call, call + '\nrefusal_order = ["at", "at"]', 'refusal_order names a refusal twice')
+        self.refused(call, call + '\nrefusal_order = ["at"]', 'it leaves out outside')
+
+    def test_c11_obligation_forms_refused(self) -> None:
+        lemma: str = ('\n[[obligation]]\nid = "both"\nstatement = "s"\ngiven = ["a >= 0"]\nshows = "a >= 0"\n'
+                      'untouched = ["address"]\npaths = ["src/counter.cpp: f: false"]\n')
+        self.workspace.write('include/counter.ic.toml', DECLARATION + lemma)
+        status, output = self.workspace.run('check')
+        self.assertEqual(status, 2, output)
+        self.assertIn('a lemma (given, shows) or structural', output)
+        alone: str = '\n[[obligation]]\nid = "alone"\nstatement = "s"\nuntouched = ["address"]\n'
+        self.workspace.write('include/counter.ic.toml', DECLARATION + alone)
+        status, output = self.workspace.run('check')
+        self.assertEqual(status, 2, output)
+        self.assertIn('untouched and paths go together', output)
+
     def test_c2_states_needed(self) -> None:
         self.refused('states = ["open", "closed"]\ninitial = "open"\n'
                      'state_query = { call = "is_open", observes = { open = "true", closed = "false" } }\n', '',
@@ -343,6 +372,41 @@ class OutputTests(unittest.TestCase):
         self.assertEqual(ic.class_end(lines, 0), 3)
         self.assertEqual(ic.class_end(lines, 4), 7)
         self.assertEqual(ic.matching_line(lines, 'gf_status (GF_CALL* create)(', 'probe', 4, ic.class_end(lines, 4)), 5)
+
+    def test_c10_refusal_order_carried(self) -> None:
+        self.workspace.run('generate')
+        plain_header: str = self.workspace.read('include/counter.hpp')
+        self.assertNotIn('When several refusals apply', plain_header)
+        call: str = 'parameters = { index = "usize" }'
+        self.workspace.write('include/counter.ic.toml',
+                             DECLARATION.replace(call, call + '\nrefusal_order = ["at", "outside"]', 1))
+        status, output = self.workspace.run('generate')
+        self.assertEqual(status, 0, output)
+        self.assertIn('When several refusals apply: at, then the state refusal.',
+                      contract_of(self.workspace.read('include/counter.hpp')))
+        blocks: dict[str, object] = json.loads(self.workspace.read('blocks/counter.blocks.json'))
+        orders = [block.get('refusal_order') for block in blocks['blocks'] if block['call'] == 'at'
+                  and block['mode'] == 'legal']
+        self.assertEqual(orders, [['at', 'outside']])
+        obligations: dict[str, object] = json.loads(self.workspace.read('obligations/counter.obligations.json'))
+        kinds = {item['id']: item['kind'] for item in obligations['obligations']}
+        self.assertEqual(kinds.get('demo.counter.at.order'), 'refusal-order')
+        self.assertEqual(self.workspace.run('check')[0], 0)
+
+    def test_c11_obligation_forms_carried(self) -> None:
+        stated: str = ('\n[[obligation]]\nid = "lemma"\nstatement = "s"\ngiven = ["a >= 1"]\nshows = "a >= 0"\n'
+                       'sources = ["src/counter.cpp: bool a"]\n'
+                       '\n[[obligation]]\nid = "structural"\nstatement = "s"\nuntouched = ["address"]\n'
+                       'paths = ["src/counter.cpp: release: false"]\nmetadata = ["slots"]\n'
+                       'missing = "the slots are not the block"\n')
+        self.workspace.write('include/counter.ic.toml', DECLARATION + stated)
+        status, output = self.workspace.run('generate')
+        self.assertEqual(status, 0, output)
+        obligations: dict[str, object] = json.loads(self.workspace.read('obligations/counter.obligations.json'))
+        by_id = {item['id']: item for item in obligations['obligations']}
+        self.assertEqual(by_id['demo.counter.lemma']['shows'], 'a >= 0')
+        self.assertEqual(by_id['demo.counter.structural']['untouched'], ['address'])
+        self.assertEqual(by_id['demo.counter.structural']['missing'], 'the slots are not the block')
 
     def test_c9_const_parameter_once(self) -> None:
         # A declared pointer-to-const keeps its one const; any other type gains it.
