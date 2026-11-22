@@ -712,6 +712,10 @@ def call_of(value: object, index: int, declaration: dict[str, object], states: t
     parameter: str
     for parameter in parameter_table:
         identifier_checked(parameter, where + ': parameters')
+        if parameter in known_names:
+            # A parameter named like a term or a constant would make the clause's text and the predicate's
+            # parameters disagree about which one a name means.
+            raise DeclarationError(where + ': parameter ' + repr(parameter) + ' has the name of a term or constant')
         parameters.append((parameter, text_of(parameter_table, parameter, where + ': parameters')))
     visible: dict[str, str] = dict(known_names)
     visible.update(dict(parameters))
@@ -948,7 +952,8 @@ def declaration_paths(project: Project) -> list[str]:
     pattern: str
     for pattern in project.declarations:
         match: str
-        for match in glob.glob(pattern, root_dir=project.root):
+        # `**` matches any number of directories, as the docs' project file uses it.
+        for match in glob.glob(pattern, root_dir=project.root, recursive=True):
             found.add(Path(match).as_posix())
     result: list[str] = sorted(found)
     return result
@@ -1087,12 +1092,16 @@ def matching_line(lines: list[str], start: str, where: str, low: int = 0, high: 
 
 
 def class_end(lines: list[str], anchor_index: int) -> int:
-    """The line after the anchor's class: its first `};` at the anchor's indentation."""
+    """The line after the anchor's class: its first `};` at the anchor's indentation, or, for a C
+    `typedef struct name {`, its first `} name;` there (a C ABI's function table)."""
     line: str = lines[anchor_index]
-    closing: str = line[:len(line) - len(line.lstrip())] + '};'
+    indent: str = line[:len(line) - len(line.lstrip())]
+    closing: str = indent + '};'
+    typedef_closing: re.Pattern[str] = re.compile(re.escape(indent) + r'\}\s*[A-Za-z_][A-Za-z0-9_]*\s*;\Z')
     index: int
     for index in range(anchor_index + 1, len(lines)):
-        if lines[index].rstrip() == closing:
+        text: str = lines[index].rstrip()
+        if text == closing or typedef_closing.match(text):
             return index + 1
     return len(lines)
 

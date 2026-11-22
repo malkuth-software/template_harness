@@ -20,7 +20,13 @@ Properties:
       one header may declare the same line; a declaration line that is not
       unique in its scope is an error;
   C6  a predicate's parameters follow the call's parameters in declared
-      order, then the terms; constants are values, not parameters.
+      order, then the terms; constants are values, not parameters;
+  C7  a C function table (`typedef struct name {` ... `} name;`) is a
+      component's scope as a class is: its members are looked for between
+      the two lines, so two tables may hold a slot of one name;
+  C8  a parameter may not take the name of a term or a constant (the
+      predicate would read the wrong one), and `**` in a declarations glob
+      matches nested directories.
 """
 from __future__ import annotations
 
@@ -109,7 +115,7 @@ DECLARATION: str = textwrap.dedent('''\
 
 PROJECT: str = textwrap.dedent('''\
     schema = 1
-    declarations = ["include/*.ic.toml"]
+    declarations = ["include/**/*.ic.toml"]
     manifest_column = "manifest/constraints.json"
     blocks = "blocks"
     obligations = "obligations"
@@ -233,6 +239,10 @@ class DeclarationTests(unittest.TestCase):
     def test_c2_requirement_message(self) -> None:
         self.refused(', message = "Counter: index out of range"', '', 'a requirement needs its message')
 
+    def test_c8_parameter_shadows_term(self) -> None:
+        self.refused('parameters = { index = "usize" }', 'parameters = { count = "usize" }',
+                     "parameter 'count' has the name of a term or constant")
+
     def test_c2_states_needed(self) -> None:
         self.refused('states = ["open", "closed"]\ninitial = "open"\n'
                      'state_query = { call = "is_open", observes = { open = "true", closed = "false" } }\n', '',
@@ -325,6 +335,14 @@ class OutputTests(unittest.TestCase):
         checks: str = self.workspace.read('include/counter_checks.hpp')
         self.assertIn('admits_take_amount(const usize amount, const usize scale, const usize count) noexcept', checks)
         self.assertIn('(1 <= scale && scale <= limit) && (amount <= count)', checks)
+
+    def test_c7_c_typedef_scope(self) -> None:
+        lines: list[str] = ['typedef struct gf_first_table {', '    gf_status (GF_CALL* create)(void);',
+                            '} gf_first_table;', '', 'typedef struct gf_second_table {',
+                            '    gf_status (GF_CALL* create)(void);', '} gf_second_table;']
+        self.assertEqual(ic.class_end(lines, 0), 3)
+        self.assertEqual(ic.class_end(lines, 4), 7)
+        self.assertEqual(ic.matching_line(lines, 'gf_status (GF_CALL* create)(', 'probe', 4, ic.class_end(lines, 4)), 5)
 
 
 if __name__ == '__main__':
