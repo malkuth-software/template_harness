@@ -1205,7 +1205,7 @@ def checks_text(project: Project, declaration: Declaration) -> str:
             if requirement.check in written:
                 continue
             written.add(requirement.check)
-            parameters: list[str] = ['const ' + call_types[name] + ' ' + name for name in requirement.names
+            parameters: list[str] = [const_parameter(call_types[name]) + ' ' + name for name in requirement.names
                                      if name not in constant_names]
             clause: Node = renamed(requirement.clause, cpp_names)
             lines.extend(comment_lines(declaration.component + '::' + call.name + ': ' + requirement.holds + '; else '
@@ -1246,6 +1246,13 @@ def result_lines(clause: Node, limit: int) -> list[str]:
         lines.append(' ' * (len(first) - len(joiner)) + joiner + operand)
     lines[-1] = lines[-1] + ';'
     return lines
+
+
+def const_parameter(type_name: str) -> str:
+    """A predicate parameter's type: const, once (a declared `const T*` already is)."""
+    if type_name.startswith('const '):
+        return type_name
+    return 'const ' + type_name
 
 
 def renamed(node: Node, cpp_names: dict[str, str]) -> Node:

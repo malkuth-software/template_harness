@@ -344,6 +344,12 @@ class OutputTests(unittest.TestCase):
         self.assertEqual(ic.class_end(lines, 4), 7)
         self.assertEqual(ic.matching_line(lines, 'gf_status (GF_CALL* create)(', 'probe', 4, ic.class_end(lines, 4)), 5)
 
+    def test_c9_const_parameter_once(self) -> None:
+        # A declared pointer-to-const keeps its one const; any other type gains it.
+        self.assertEqual(ic.const_parameter('const gf_spec*'), 'const gf_spec*')
+        self.assertEqual(ic.const_parameter('gf_spec*'), 'const gf_spec*')
+        self.assertEqual(ic.const_parameter('usize'), 'const usize')
+
 
 if __name__ == '__main__':
     unittest.main()
