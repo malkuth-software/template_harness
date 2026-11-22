@@ -31,7 +31,8 @@ and new form. Provisional rows there may change without an entry.
   `deductions` (IC4); `[engine]` tables in a declaration and `engine` on a
   call; a call's `refusal_order` (which refusal wins when several apply);
   obligations as lemmas (`given`, `shows`, `sources`) or structural
-  (`untouched`, `paths`, `metadata`), and `missing`. A declaration without
+  (`untouched`, `paths`, `metadata`), invariants kept by every step
+  (`from`, `covers`), and `missing`. A declaration without
   them generates what it did before (`docs/ic_declarations.md` sections 3,
   7 and 8).
 - `new_app.sh`/`new_app.ps1` and `harness/new_app.py`: one command to a

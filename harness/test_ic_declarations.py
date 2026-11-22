@@ -36,7 +36,8 @@ Properties:
       lemma (given, shows, sources) or as a structural obligation
       (untouched, paths, metadata, missing), each carried into the
       obligations file; a lemma that is also structural, or untouched
-      without paths, is refused.
+      without paths, is refused; an invariant (from, covers) needs given
+      and shows, and covers needs from.
 """
 from __future__ import annotations
 
@@ -271,6 +272,11 @@ class DeclarationTests(unittest.TestCase):
         status, output = self.workspace.run('check')
         self.assertEqual(status, 2, output)
         self.assertIn('untouched and paths go together', output)
+        bare: str = '\n[[obligation]]\nid = "kept"\nstatement = "s"\nfrom = ["base: lemma"]\n'
+        self.workspace.write('include/counter.ic.toml', DECLARATION + bare)
+        status, output = self.workspace.run('check')
+        self.assertEqual(status, 2, output)
+        self.assertIn('an invariant (from) needs given', output)
 
     def test_c2_states_needed(self) -> None:
         self.refused('states = ["open", "closed"]\ninitial = "open"\n'

@@ -141,6 +141,14 @@ statement = "..."
 untouched = ["address", "value"]
 paths = ["src/state/allocator.cpp: release_common: Release::refused"]   # `path: function: refusal`
 metadata = ["slice_heads"]            # accessors whose pointers lie elsewhere (a premise)
+
+[[obligation]]                        # an invariant kept by every step (section 8)
+id = "page_protocol"
+statement = "..."
+given = ["H & F == 0", "live == SH + SR"]      # the invariant's clauses
+shows = "SF + live == capacity"               # what the invariant gives
+from = ["base: bit_made", "take: bit_take, count_take"]   # `step: lemma, lemma`; base steps make it
+covers = ['src/state: page\.live\s*=[^=] => live']        # `path: pattern => what it changes`
 ```
 
 **Keys.** `keys.manifest` (default `namespace::component`) is the type's
@@ -306,4 +314,12 @@ while those hashes match, so a changed source reopens it. A lemma
 (`given`, `shows`, `sources`) is proved from its givens; a structural
 obligation (`untouched`, `paths`, `metadata`) is read from the functions it
 names; `missing` records what a deduction lacks when it stays open.
+
+An invariant (`given`, `from`, `covers`, `shows`) is made by its base steps
+(a step named `base...`, whose lemmas show every clause) and kept by every
+other step: a step whose lemmas name a clause's word or counter after it
+(`X_after`) must show that clause after it. Every line a `covers` pattern
+finds must be cited by some step lemma's `sources`, and a step citing it
+must say how it changes what the pattern names after `=>`. Word identities
+in a lemma (`&`, `|`, `^`, `~`) are decided bit by bit.
 

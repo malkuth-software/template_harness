@@ -81,7 +81,7 @@ FAIL_KEYS: frozenset[str] = frozenset({'failure', 'when', 'leaves'})
 RETURN_KEYS: frozenset[str] = frozenset({'type', 'owns', 'state', 'borrows', 'until', 'revokes'})
 TRANSFER_KEYS: frozenset[str] = frozenset({'what', 'from', 'to'})
 OBLIGATION_KEYS: frozenset[str] = frozenset({'id', 'statement', 'method', 'premises', 'given', 'shows', 'sources',
-                                            'untouched', 'paths', 'metadata', 'missing'})
+                                            'untouched', 'paths', 'metadata', 'missing', 'from', 'covers'})
 # The name refusal_order uses for a call's typestate refusal (its `outside`).
 ORDER_OUTSIDE: str = 'outside'
 
@@ -532,6 +532,8 @@ class Obligation:
     paths: tuple[str, ...] = ()       # `path: function: refusal` the structural obligation reads
     metadata: tuple[str, ...] = ()    # accessors whose pointers lie outside what `untouched` names
     missing: str = ''                 # the premise a deduction lacks, as its author states it
+    composes: tuple[str, ...] = ()    # `from`: `step: lemma, lemma` (an invariant kept by every step)
+    covers: tuple[str, ...] = ()      # `path: pattern` of every write the steps must cite
 
 
 @dataclasses.dataclass(frozen=True)
@@ -975,13 +977,19 @@ def load_declaration(root: Path, relative: str) -> Declaration:
                                       texts_of(obligation_table, 'untouched', obligation_where),
                                       texts_of(obligation_table, 'paths', obligation_where),
                                       texts_of(obligation_table, 'metadata', obligation_where),
-                                      text_of(obligation_table, 'missing', obligation_where, '')))
+                                      text_of(obligation_table, 'missing', obligation_where, ''),
+                                      texts_of(obligation_table, 'from', obligation_where),
+                                      texts_of(obligation_table, 'covers', obligation_where)))
         last: Obligation = obligations[-1]
         if last.shows and last.untouched:
             raise DeclarationError(obligation_where + ': an obligation is a lemma (given, shows) or structural '
                                    '(untouched, paths), not both')
         if bool(last.untouched) != bool(last.paths):
             raise DeclarationError(obligation_where + ': untouched and paths go together')
+        if last.composes and not (last.given and last.shows):
+            raise DeclarationError(obligation_where + ': an invariant (from) needs given (the invariant) and shows')
+        if last.covers and not last.composes:
+            raise DeclarationError(obligation_where + ': covers belongs to an invariant (from)')
         if last.metadata and not last.untouched:
             raise DeclarationError(obligation_where + ': metadata belongs to a structural obligation (untouched)')
     declaration: Declaration = Declaration(relative, identifier, text, component, namespace, header, anchor,
@@ -1518,6 +1526,9 @@ def obligations_text(project: Project, declaration: Declaration) -> str:
             record['untouched'] = list(obligation.untouched)
             record['paths'] = list(obligation.paths)
             record['metadata'] = list(obligation.metadata)
+        if obligation.composes:
+            record['from'] = list(obligation.composes)
+            record['covers'] = list(obligation.covers)
         if obligation.missing:
             record['missing'] = obligation.missing
         obligations.append(record)
