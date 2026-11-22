@@ -16,6 +16,15 @@ and new form. Provisional rows there may change without an entry.
   provenance.
 
 ### Added
+- `harness/ic_declarations.py` (provisional): behavioural constraint
+  declarations, the IC study's phase IC1. One TOML declaration per component,
+  beside its header, states each call's clauses and refusals, the object's
+  states and the calls each admits, threads and ownership; `generate` writes
+  the header's `// ic:` contract lines, an entry-check header (one predicate
+  per clause, which the code calls), a member-manifest column, fuzz block
+  stubs and proof obligations; `check` fails on a stale output or an uncalled
+  predicate (`docs/ic_declarations.md`). STXlib's allocator, containers and
+  files are the first adopters.
 - `new_app.sh`/`new_app.ps1` and `harness/new_app.py`: one command to a
   harnessed GUI.Forms app (`docs/new_app.md`). It validates the name and
   derives the names (`docs/adopting.md` §2, checked against every project
