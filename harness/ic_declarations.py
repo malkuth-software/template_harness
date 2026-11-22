@@ -2395,8 +2395,8 @@ class BlockWriter:
                 if not self.codes_enum():
                     raise DeclarationError(self.declaration.path + ': a refusal code needs engine.codes')
                 code = 'static_cast<stxlib::u32>(' + self.codes_enum() + '::' + refusal.code + ')'
-            lines.append('    if (' + outcome + '.succeeded()) return step.defect(::stxlib_ic::DefectKind::misuse_accepted, "'
-                         + cpp_string(call_name) + ' succeeded");')
+            lines.append('    if (' + outcome + '.succeeded()) return step.defect('
+                         '::stxlib_ic::DefectKind::misuse_accepted, "' + cpp_string(call_name) + ' succeeded");')
             lines.append('    return step.refused(*' + outcome + '.error(), ' + kind + ', ' + code + ', '
                          + ('true' if refusal.code else 'false') + ');')
             return lines
@@ -2518,8 +2518,8 @@ class BlockWriter:
         else:
             for requirement in requirements:
                 if target is not None and requirement.check == target.check:
-                    body.append('    if (' + self.predicate_call(requirement, variables) + ') return step.bail("' + label
-                                + ': ' + requirement.check + ' holds");')
+                    body.append('    if (' + self.predicate_call(requirement, variables) + ') return step.bail("'
+                                + label + ': ' + requirement.check + ' holds");')
                 else:
                     body.append('    if (!' + self.predicate_call(requirement, variables) + ') return step.bail("'
                                 + label + ': ' + requirement.check + ' fails too");')
