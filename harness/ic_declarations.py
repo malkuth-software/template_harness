@@ -1231,6 +1231,13 @@ def wrapped(sentences: list[str], indent: str, limit: int) -> list[str]:
 
 # ---- generators ------------------------------------------------------------------------------
 
+def fresh_call_name(declaration: Declaration) -> str:
+    """The engine's fresh-object call: `make`, or `fresh` when the component declares a call named make."""
+    declared: set[str] = {call.identifier for call in declaration.calls}
+    name: str = 'fresh' if 'make' in declared else 'make'
+    return name
+
+
 def stripped_lines(text: str) -> list[str]:
     """The header's lines without generated contract lines."""
     kept: list[str] = [line for line in text.split('\n') if not line.lstrip().startswith(COMMENT_PREFIX)]
@@ -2866,7 +2873,7 @@ class BlockWriter:
         calls: list[str] = [call.identifier for call in declaration.calls] + [compound.name for compound in
                                                                                engine.compounds]
         if engine.make:
-            calls.append('make')
+            calls.append(fresh_call_name(declaration))
         header.append('inline constexpr const char* call_names[] = {' + ', '.join('"' + name + '"' for name in calls)
                       + '};')
         header.append('')
@@ -2941,8 +2948,8 @@ class BlockWriter:
         if engine.make:
             make_line: str = 'holder.emplace();' if engine.make == 'default' else 'holder.replace(' + engine.make + ');'
             self.lines.append('// A fresh object in the initial state.')
-            self.lines.append('inline ::stxlib_ic::Outcome legal_make(::stxlib_ic::Step& step, ObjectHolder& holder) '
-                              'noexcept {')
+            self.lines.append('inline ::stxlib_ic::Outcome legal_' + fresh_call_name(declaration)
+                              + '(::stxlib_ic::Step& step, ObjectHolder& holder) noexcept {')
             self.lines.append('    step.line().holder(step.slot).text(".' + ('emplace()' if engine.make == 'default'
                                                                             else 'replace(' + cpp_string(engine.make)
                                                                             + ')') + ';").end();')
@@ -2956,7 +2963,8 @@ class BlockWriter:
             self.lines.append('    return ::stxlib_ic::Outcome::completed;')
             self.lines.append('}')
             self.lines.append('')
-            self.entries.append(('legal_make', 'make', 'legal', all_mask, 'any', len(calls) - 1, ''))
+            fresh: str = fresh_call_name(declaration)
+            self.entries.append(('legal_' + fresh, fresh, 'legal', all_mask, 'any', len(calls) - 1, ''))
         call_index: int
         call: Call
         for call_index, call in enumerate(declaration.calls):
@@ -3187,7 +3195,7 @@ def engine_outputs(project: Project, declarations: list[Declaration]) -> tuple[d
         legal: int = sum(1 for entry in writer.entries if entry[2] == 'legal')
         misuse: int = len(writer.entries) - legal
         states: int = len(declaration.states) or 1
-        driven: int = len({entry[1] for entry in writer.entries if entry[0] != 'legal_make'
+        driven: int = len({entry[1] for entry in writer.entries if entry[0] != 'legal_' + fresh_call_name(declaration)
                            and entry[1] in {call.identifier for call in declaration.calls}})
         edges: int = 0
         call: Call
