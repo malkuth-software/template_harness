@@ -41,6 +41,10 @@ The harness provides:
 - **Checkers:** `check_house_style.py`, `check_lifetime_rules.py`,
   `check_state_machines.py`, `check_loop_branches.py`, `check_const_restrict.py` and
   `check_copies.py`.
+- **Constraint declarations:** `ic_declarations.py` generates a component's
+  header contract lines, entry checks, member-manifest column, fuzz block
+  stubs and proof obligations from one declaration beside its header, and
+  checks they stay current (`docs/ic_declarations.md`).
 - **The AST reader:** `clang_ast.py` reads a translation unit from its
   compile command into one tree model, for the checkers and codemods that
   need more than tokens. It reads through the pinned LLVM's libclang
