@@ -67,10 +67,12 @@ PROJECT_KEYS: frozenset[str] = frozenset(
      'gate', 'gate_run', 'deductions'})
 DECLARATION_KEYS: frozenset[str] = frozenset(
     {'schema', 'component', 'namespace', 'header', 'anchor', 'keys', 'thread', 'states', 'initial',
-     'state_query', 'identity', 'terms', 'constants', 'checks', 'call', 'obligation', 'engine'})
+     'state_query', 'identity', 'terms', 'constants', 'checks', 'call', 'obligation', 'engine', 'represents'})
 KEY_KEYS: frozenset[str] = frozenset({'manifest', 'abi', 'registry', 'surface'})
 STATE_QUERY_KEYS: frozenset[str] = frozenset({'call', 'observes'})
-IDENTITY_KEYS: frozenset[str] = frozenset({'kind', 'stale'})
+IDENTITY_KEYS: frozenset[str] = frozenset({'kind', 'stale', 'state', 'tested'})
+REPRESENTS_KEYS: frozenset[str] = frozenset({'states', 'sources', 'build', 'assume', 'succeeds', 'untouching'})
+REASON_KEYS: frozenset[str] = frozenset({'holds', 'call', 'because'})
 CONSTANT_KEYS: frozenset[str] = frozenset({'value', 'cpp', 'type'})
 CHECKS_KEYS: frozenset[str] = frozenset({'path', 'namespace', 'includes', 'used_in'})
 CALL_KEYS: frozenset[str] = frozenset(
@@ -520,6 +522,18 @@ class Checks:
 
 
 @dataclasses.dataclass(frozen=True)
+class Represents:
+    """What each state is, as a C++ condition over the object's members, and what the deducer may take
+    (tools/ic_deduce.py reads the calls' bodies against it)."""
+    states: tuple[tuple[str, str], ...]        # state -> condition
+    sources: tuple[str, ...]                   # the files the calls and their helpers are read from
+    build: tuple[str, ...]                     # macros taken as defined where the sources branch on #if
+    assume: tuple[tuple[str, str], ...]        # (condition, because): taken as true, each a premise
+    succeeds: tuple[tuple[str, str], ...]      # call -> condition over `result` that a success meets
+    untouching: tuple[tuple[str, str], ...]    # (call text, because): a call taken as changing no state member
+
+
+@dataclasses.dataclass(frozen=True)
 class Obligation:
     identifier: str
     statement: str
@@ -559,6 +573,9 @@ class Declaration:
     calls: tuple[Call, ...]
     obligations: tuple[Obligation, ...]
     engine: EngineObject | None = None
+    represents: Represents | None = None
+    identity_state: str = ''                   # the state a stale identity is in (with represents)
+    identity_tested: tuple[str, ...] = ()      # `path: what` tests that cover the identity
 
     def manifest_key(self) -> str:
         key: str = dict(self.keys).get('manifest', '')
@@ -912,11 +929,17 @@ def load_declaration(root: Path, relative: str) -> Declaration:
             observes.append((state, text_of(observed, state, 'state_query.observes')))
     identity_kind: str = ''
     identity_stale: Refusal | None = None
+    identity_state: str = ''
+    identity_tested: tuple[str, ...] = ()
     if 'identity' in raw:
         identity_table: dict[str, object] = table_of(raw['identity'], 'identity')
         known_keys(identity_table, IDENTITY_KEYS, 'identity')
         identity_kind = text_of(identity_table, 'kind', 'identity')
         identity_stale = refusal_of(text_of(identity_table, 'stale', 'identity'), 'identity.stale')
+        identity_state = text_of(identity_table, 'state', 'identity', '')
+        if identity_state and identity_state not in states:
+            raise DeclarationError('identity.state names ' + repr(identity_state) + ', not a declared state')
+        identity_tested = texts_of(identity_table, 'tested', 'identity')
     term_table: dict[str, object] = table_of(raw.get('terms', {}), 'terms')
     terms: list[tuple[str, str]] = []
     for key in term_table:
@@ -996,8 +1019,53 @@ def load_declaration(root: Path, relative: str) -> Declaration:
                                            tuple(keys), thread, states, initial, state_query, tuple(observes),
                                            identity_kind, identity_stale, tuple(terms), tuple(constants), checks,
                                            tuple(calls), tuple(obligations),
-                                           engine_object_of(raw, dict(terms), states, known_names))
+                                           engine_object_of(raw, dict(terms), states, known_names),
+                                           represents_of(raw, states, calls, checks, header), identity_state,
+                                           identity_tested)
     return declaration
+
+
+def represents_of(raw: dict[str, object], states: tuple[str, ...], calls: list[Call], checks: Checks | None,
+                  header: str) -> Represents | None:
+    """The declaration's `represents` table: every state's condition, and what the deducer may take."""
+    if 'represents' not in raw:
+        return None
+    if not states:
+        raise DeclarationError('represents needs states')
+    table: dict[str, object] = table_of(raw['represents'], 'represents')
+    known_keys(table, REPRESENTS_KEYS, 'represents')
+    given: dict[str, object] = table_of(table.get('states', {}), 'represents.states')
+    if sorted(given) != sorted(states):
+        raise DeclarationError('represents.states must give the condition of every state')
+    conditions: tuple[tuple[str, str], ...] = tuple((state, text_of(given, state, 'represents.states'))
+                                                   for state in states)
+    sources: tuple[str, ...] = texts_of(table, 'sources', 'represents') or \
+        ((checks.used_in if checks is not None else ()) + (header,))
+    reasons: list[tuple[tuple[str, str], ...]] = []
+    for key, wanted in (('assume', 'holds'), ('untouching', 'call')):
+        value: object = table.get(key, [])
+        if not isinstance(value, list):
+            raise DeclarationError('represents.' + key + ' must be an array of tables')
+        found: list[tuple[str, str]] = []
+        index: int
+        item: object
+        for index, item in enumerate(value):
+            where: str = 'represents.' + key + ' ' + str(index + 1)
+            entry: dict[str, object] = table_of(item, where)
+            known_keys(entry, REASON_KEYS, where)
+            found.append((text_of(entry, wanted, where), text_of(entry, 'because', where)))
+        reasons.append(tuple(found))
+    succeeds_table: dict[str, object] = table_of(table.get('succeeds', {}), 'represents.succeeds')
+    names: set[str] = {call.name for call in calls}
+    name: str
+    for name in succeeds_table:
+        if name not in names:
+            raise DeclarationError('represents.succeeds names ' + repr(name) + ', not a declared call')
+    succeeds: tuple[tuple[str, str], ...] = tuple((name, text_of(succeeds_table, name, 'represents.succeeds'))
+                                                 for name in succeeds_table)
+    result: Represents = Represents(conditions, sources, texts_of(table, 'build', 'represents'), reasons[0],
+                                    succeeds, reasons[1])
+    return result
 
 
 def same_clause(calls: list[Call], check: str) -> bool:
@@ -1501,17 +1569,23 @@ def obligations_text(project: Project, declaration: Declaration) -> str:
             obligations.append(open_obligation(base + '.moves', 'transition',
                                                call.name + ' succeeding in ' + source + ' leaves the object in '
                                                + call.moves + '.', ''))
+            obligations[-1]['covered_by'] = transition_coverage(project, declaration, call, base)
         state: str
         refusal: Refusal
         for state, refusal in call.outside:
             obligations.append(open_obligation(base + '.outside.' + state, 'typestate-refusal',
                                                call.name + ' in ' + state + ': ' + refusal.described()
                                                + ', changing nothing observable.', ''))
+            obligations[-1]['covered_by'] = block_coverage(project, declaration, [base + '.outside.' + state],
+                                                           'the misuse block drives ' + call.name + ' in ' + state
+                                                           + ' and checks the refusal and that nothing changed')
     if declaration.identity_kind and declaration.identity_stale is not None:
         obligations.append(open_obligation(prefix + '.identity', 'identity',
                                            'A stale identity (' + declaration.identity_kind + ') is refused: '
                                            + declaration.identity_stale.described() + ', changing nothing observable.',
                                            ''))
+        if declaration.identity_tested:
+            obligations[-1]['covered_by'] = {'mechanism': 'tests', 'tests': list(declaration.identity_tested)}
     obligation: Obligation
     for obligation in declaration.obligations:
         record: dict[str, object] = open_obligation(prefix + '.' + obligation.identifier, 'stated',
@@ -1542,6 +1616,28 @@ def obligations_text(project: Project, declaration: Declaration) -> str:
     }
     result: str = json.dumps(document, indent=2) + '\n'
     return result
+
+
+def block_coverage(project: Project, declaration: Declaration, names: list[str], what: str) -> dict[str, object]:
+    """The engine's blocks that exercise an obligation (tests, by the owner's definition, not deductions)."""
+    record: dict[str, object] = {'mechanism': 'engine blocks', 'blocks': names,
+                                 'file': project.blocks + '/' + declaration.identifier + '.blocks.json',
+                                 'what': what}
+    if declaration.engine is None or project.engine is None:
+        record['mechanism'] = 'engine blocks (stubs: the declaration has no [engine] table, so none runs)'
+    else:
+        record['run_by'] = project.engine.path + '/' + declaration.identifier + '.blocks.inc'
+    return record
+
+
+def transition_coverage(project: Project, declaration: Declaration, call: Call, base: str) -> dict[str, object]:
+    states: list[str] = list(call.admitting) if call.admitting else list(declaration.states)
+    query: str = (declaration.engine.state_query if declaration.engine is not None else '') or \
+        declaration.state_query
+    what: str = ('the legal blocks drive ' + call.name + ' and ' +
+                 ('observe the state after it through ' + query if query else
+                  'follow ' + call.moves + ' in the engine\'s model; no query observes the state'))
+    return block_coverage(project, declaration, [base + '.' + state for state in states], what)
 
 
 def open_obligation(identifier: str, kind: str, statement: str, evidence: str) -> dict[str, object]:
@@ -1609,6 +1705,12 @@ def deduced(project: Project, declaration: Declaration, text: str) -> str:
     for record in records:
         if isinstance(record, dict) and isinstance(record.get('id'), str):
             by_id[str(record['id'])] = record
+    reasons: dict[str, str] = {}
+    still_open: object = loaded_deductions.get('open', [])
+    for record in still_open if isinstance(still_open, list) else []:
+        if isinstance(record, dict) and isinstance(record.get('id'), str) and \
+                record.get('declaration') == declaration.path:
+            reasons[str(record['id'])] = str(record.get('why', ''))
     document: dict[str, object] = json.loads(text)
     declaration_hash: str = hashlib.sha256(declaration.text.encode('utf-8')).hexdigest()
     items: object = document.get('obligations', [])
@@ -1617,8 +1719,11 @@ def deduced(project: Project, declaration: Declaration, text: str) -> str:
     for item in items:
         assert isinstance(item, dict)
         found: dict[str, object] | None = by_id.get(str(item.get('id')))
+        if str(item.get('id')) in reasons and item.get('status') == 'open':
+            item['not_deduced'] = reasons[str(item.get('id'))]
         if found is None or found.get('declaration_sha256') != declaration_hash:
             continue
+        item.pop('not_deduced', None)
         hashes: object = found.get('sources', {})
         if not isinstance(hashes, dict) or not sources_current(project.root, hashes):
             continue
@@ -3144,7 +3249,8 @@ def gate_text(project: Project, summaries: list[EngineSummary], obligations: dic
         'The gate of the IC study (notes, gui_forms branch, planning/stages/IC-integrity-constraints/STUDY.md, '
         'section 8): per component, the clauses declared, the blocks generated, the states and edges a run '
         'reached, the defects found and fixed, and the legal-mode false positives over a stated run. Results of '
-        'the engine are tests, by the owner\'s definition; the obligations column counts deductions.', width=100))
+        'the engine are tests, by the owner\'s definition; the obligations column counts deductions, and an '
+        'obligation still open names the blocks or tests that cover it.', width=100))
     lines.append('')
     if run:
         lines.append('Run: ' + str(run.get('stated', 'unstated')) + '.')
@@ -3172,6 +3278,7 @@ def gate_text(project: Project, summaries: list[EngineSummary], obligations: dic
             states = 'not driven'
             edges = 'not driven'
         discharged: int = 0
+        covered: int = 0
         total: int = 0
         text: str | None = obligations.get(summary.declaration)
         if text is not None:
@@ -3180,10 +3287,13 @@ def gate_text(project: Project, summaries: list[EngineSummary], obligations: dic
             if isinstance(items, list):
                 total = len(items)
                 discharged = sum(1 for item in items if isinstance(item, dict) and item.get('status') == 'discharged')
+                covered = sum(1 for item in items if isinstance(item, dict) and item.get('status') != 'discharged'
+                              and item.get('covered_by'))
         lines.append('| ' + summary.component + ' | ' + str(summary.clauses) + ' | ' + str(summary.driven) + ' of '
                      + str(summary.calls) + ' | ' + str(summary.legal_blocks) + ' + ' + str(summary.misuse_blocks)
                      + ' | ' + states + ' | ' + edges + ' | ' + defects + ' | ' + false_positives + ' | '
-                     + str(discharged) + ' / ' + str(total) + ' |')
+                     + str(discharged) + ' / ' + str(total) + (' (' + str(covered) + ' open, covered by blocks or '
+                                                               'tests)' if covered else '') + ' |')
     lines.append('')
     lines.append('## Calls the engine does not drive')
     lines.append('')

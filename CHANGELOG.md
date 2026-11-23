@@ -16,6 +16,15 @@ and new form. Provisional rows there may change without an entry.
   provenance.
 
 ### Added
+
+- `harness/ic_declarations.py`: a declaration's `represents` table (each
+  state as a condition over the object's members, with `sources`, `build`,
+  `assume`, `succeeds` and `untouching`), `identity.state` and
+  `identity.tested`; an open obligation records `not_deduced` and
+  `covered_by` (the engine blocks that drive it, or the identity's tests),
+  and the gate counts them. Additive: schema 1 declarations without them
+  read as before. Kept identical to STXlib's copy, whose
+  `tools/ic_typestate.py` reads the tables.
 - `harness/ic_declarations.py` (provisional): behavioural constraint
   declarations, the IC study's phase IC1. One TOML declaration per component,
   beside its header, states each call's clauses and refusals, the object's

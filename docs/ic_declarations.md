@@ -84,7 +84,17 @@ thread = "owner"                      # the calls' default thread
 states = ["closed", "reading", "writing", "appending"]
 initial = "closed"
 state_query = { call = "is_open", observes = { closed = "false", reading = "true", writing = "true", appending = "true" } }
-identity = { kind = "handle", stale = "failure:disposed:closed_handle" }
+identity = { kind = "handle", stale = "failure:disposed:closed_handle", state = "closed" }
+# identity.state: the state a stale identity is in (with represents);
+# identity.tested: `path: what` tests that cover it when no deduction does
+
+[represents]                          # optional: each state as a condition over the members (section 8)
+states = { closed = "handle_ == closed", reading = "handle_ != closed && mode_ == FileMode::read", writing = "...", appending = "..." }
+sources = ["src/core/files.cpp", "include/stxlib/files.hpp"]  # default: checks.used_in and the header
+build = ["STXLIB_LOCK_CHECKS"]        # macros taken as defined where the sources branch on #if
+assume = [{ holds = "font.bytes.data() != nullptr", because = "..." }]   # each a premise
+succeeds = { join = "result == JoinResult::joined" }   # a call's success, over `result`
+untouching = [{ call = ".done_cv.wait(", because = "..." }]  # an opaque call taken as changing no state member
 
 [terms]                               # the object's own values a clause may name
 count = "usize"
@@ -314,6 +324,16 @@ while those hashes match, so a changed source reopens it. A lemma
 (`given`, `shows`, `sources`) is proved from its givens; a structural
 obligation (`untouched`, `paths`, `metadata`) is read from the functions it
 names; `missing` records what a deduction lacks when it stays open.
+
+With a `represents` table the deducer reads the calls' bodies against the
+states (STXlib's `tools/ic_typestate.py`): a typestate refusal holds when
+every path through the call, in that state, refuses as declared before it
+changes anything; a transition when every succeeding path, in each
+admitting state, leaves the `moves` state; an identity when moving from the
+object leaves `identity.state` and every stateful call refuses there. An
+obligation the deducer does not reach stays open with `not_deduced` (its
+reason) and `covered_by` (the engine's blocks that drive it, or
+`identity.tested`), and the gate counts those beside the deduced ones.
 
 An invariant (`given`, `from`, `covers`, `shows`) is made by its base steps
 (a step named `base...`, whose lemmas show every clause) and kept by every

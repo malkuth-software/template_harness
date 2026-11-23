@@ -37,7 +37,12 @@ Properties:
       (untouched, paths, metadata, missing), each carried into the
       obligations file; a lemma that is also structural, or untouched
       without paths, is refused; an invariant (from, covers) needs given
-      and shows, and covers needs from.
+      and shows, and covers needs from;
+  C12 a represents table gives every state's condition (one missing is
+      refused, as is a succeeds for an unknown call and an identity.state
+      that is not a state); an open transition or typestate refusal names
+      the blocks that cover it, and identity.tested is carried as the
+      identity's coverage.
 """
 from __future__ import annotations
 
@@ -278,6 +283,19 @@ class DeclarationTests(unittest.TestCase):
         self.assertEqual(status, 2, output)
         self.assertIn('an invariant (from) needs given', output)
 
+    def test_c12_represents_refused(self) -> None:
+        self.workspace.write('include/counter.ic.toml', DECLARATION + '\n[represents]\nstates = { open = "a_ != 0" }\n')
+        status, output = self.workspace.run('check')
+        self.assertEqual(status, 2, output)
+        self.assertIn('represents.states must give the condition of every state', output)
+        table: str = '\n[represents]\nstates = { open = "a_ != 0", closed = "a_ == 0" }\n'
+        self.workspace.write('include/counter.ic.toml', DECLARATION + table + 'succeeds = { open = "result" }\n')
+        status, output = self.workspace.run('check')
+        self.assertEqual(status, 2, output)
+        self.assertIn("represents.succeeds names 'open', not a declared call", output)
+        self.refused('thread = "owner"', 'thread = "owner"\nidentity = { kind = "k", stale = "requirement", '
+                     'state = "gone" }', "identity.state names 'gone', not a declared state")
+
     def test_c2_states_needed(self) -> None:
         self.refused('states = ["open", "closed"]\ninitial = "open"\n'
                      'state_query = { call = "is_open", observes = { open = "true", closed = "false" } }\n', '',
@@ -413,6 +431,21 @@ class OutputTests(unittest.TestCase):
         self.assertEqual(by_id['demo.counter.lemma']['shows'], 'a >= 0')
         self.assertEqual(by_id['demo.counter.structural']['untouched'], ['address'])
         self.assertEqual(by_id['demo.counter.structural']['missing'], 'the slots are not the block')
+
+    def test_c12_coverage_carried(self) -> None:
+        declared: str = DECLARATION.replace('thread = "owner"', 'thread = "owner"\nidentity = { kind = "k", stale = '
+                                            '"requirement", tested = ["tests/t.cpp: stale"] }', 1)
+        self.workspace.write('include/counter.ic.toml', declared + '\n[represents]\nstates = { open = "a_ != 0", '
+                             'closed = "a_ == 0" }\nsucceeds = { close = "true" }\n')
+        status, output = self.workspace.run('generate')
+        self.assertEqual(status, 0, output)
+        obligations: dict[str, object] = json.loads(self.workspace.read('obligations/counter.obligations.json'))
+        by_id = {item['id']: item for item in obligations['obligations']}
+        self.assertEqual(by_id['demo.counter.close.moves']['covered_by']['blocks'], ['demo.counter.close.open'])
+        self.assertEqual(by_id['demo.counter.at.outside.closed']['covered_by']['blocks'],
+                         ['demo.counter.at.outside.closed'])
+        self.assertEqual(by_id['demo.counter.identity']['covered_by'], {'mechanism': 'tests',
+                                                                        'tests': ['tests/t.cpp: stale']})
 
     def test_c9_const_parameter_once(self) -> None:
         # A declared pointer-to-const keeps its one const; any other type gains it.
