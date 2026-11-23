@@ -39,6 +39,8 @@ CONTRACT_FILES: tuple[str, ...] = (
     'harness/restore_local.py',
     'CHANGELOG.md',
     'harness/lock.py',
+    'harness/ic_declarations.py',
+    'docs/ic_declarations.md',
     '.github/actions/harness-checkout/action.yml',
     '.github/actions/harness-checkout/read_lock.sh',
     'new_app.sh',
