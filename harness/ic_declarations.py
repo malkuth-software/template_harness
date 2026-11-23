@@ -1750,7 +1750,8 @@ def sources_current(root: Path, hashes: dict[object, object]) -> bool:
         file: Path = root / str(name)
         if not file.is_file():
             return False
-        if hashlib.sha256(file.read_bytes()).hexdigest() != hashes[name]:
+        # Line endings normalised: a Windows checkout may hold the sources with CRLF.
+        if hashlib.sha256(file.read_bytes().replace(b'\r\n', b'\n')).hexdigest() != hashes[name]:
             return False
     return True
 
