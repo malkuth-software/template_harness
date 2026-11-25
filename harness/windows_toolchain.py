@@ -4,9 +4,16 @@
 Contract for a consumer: extract the archive, prepend msys64/clang64/bin and
 msys64/usr/bin to PATH, and use it without network access. Its clang.exe is the
 byte-identical compiler recorded as compiler_sha256 in both this manifest and
-the cache manifest. Cache hits additionally require extraction at the
-producer's msys_root: system header paths enter preprocessed output, and
-CCACHE_BASEDIR covers only the workspace.
+the cache manifest. Cache hits additionally require the same place relative
+to the workspace: system header paths enter preprocessed output, and
+CCACHE_BASEDIR covers only the workspace. restore therefore extracts it
+under the workspace, at .toolchain/<spec digest>/msys64
+(workspace_destination), where restore_local.py puts it on a local machine
+too, so neither needs CI's D:\\a\\_temp. (Before the cache bootstrap it went
+to RUNNER_TEMP, and caches of that time hit only with the toolchain at
+D:\\a\\_temp\\msys64.) A packaging run builds with setup-msys2's tree in
+RUNNER_TEMP, so its cache hits only there; the next run restores the
+published archive under the workspace.
 
 Requires Python 3.14 (stdlib zstd) for packing and extraction.
 """
@@ -35,6 +42,9 @@ MANIFEST_NAME: str = project.current().toolchain_asset_prefix + PLATFORM + '.jso
 # product still restores the toolchain.
 CACHE_NAME: str | None = (None if project.current().cache_asset_prefix is None
                           else project.current().cache_asset(PLATFORM))
+# Under the workspace root: one extracted toolchain per specification digest
+# (restore_local.py's TOOLCHAIN_DIRECTORY).
+TOOLCHAIN_DIRECTORY: str = '.toolchain'
 SPEC_PATH: Path = Path(__file__).resolve().parent / 'windows_toolchain.json'
 # The release that holds the published archive of the current specification,
 # kept apart from the specification, whose digest names the toolchain.
@@ -422,6 +432,12 @@ def publication_files(root: Path) -> list[Path]:
     return files
 
 
+def workspace_destination(workspace: Path, digest: str) -> Path:
+    """Where restore extracts the toolchain of a specification digest: msys64/ goes under it."""
+    destination: Path = workspace / TOOLCHAIN_DIRECTORY / digest
+    return destination
+
+
 def packaging_requested(environ: dict[str, str]) -> bool:
     return environ.get(PACKAGE_VARIABLE, '').strip().lower() in ('1', 'true')
 
@@ -455,8 +471,13 @@ def restore_command(repository: str) -> None:
     tag: str = found[0]
     manifest: dict[str, Any] = found[1]
     archive: Path = download_release_archive(repository, tag, manifest, ci_reuse.ROOT)
+    destination: Path = workspace_destination(project.current().workspace_root(), digest)
+    if (destination / COMPILER_MEMBER).is_file():
+        msys_root: Path = destination / ARCHIVE_ROOT
+    else:
+        destination.mkdir(parents=True, exist_ok=True)
+        msys_root = extract(archive, manifest, destination)
     temporary: Path = Path(os.environ['RUNNER_TEMP'])
-    msys_root: Path = extract(archive, manifest, temporary)
     wrapper: Path = write_wrapper(msys_root, temporary / 'setup-msys2', manifest['msystem'])
     append_line('GITHUB_PATH', str(wrapper.parent))
     append_line('GITHUB_ENV', 'MSYSTEM=' + manifest['msystem'])

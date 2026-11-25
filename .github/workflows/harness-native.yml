@@ -34,7 +34,10 @@ name: Harness native build
 # - Linux: the project file's [linux_packages.<linux_profile>] packages and
 #   apt.llvm.org's clang-22 (harness/install_linux_ci_packages.sh), with the
 #   downloaded packages kept in an Actions cache; linux_display runs the build
-#   command under Xvfb.
+#   command under Xvfb. Those packages are only the bootstrap compiler: the
+#   C++ runtime is the static PIC archives harness/build_linux_runtimes.py
+#   builds into .build/toolchain/ (cached), whose prefix is
+#   <env_prefix>_LLVM_RUNTIME, as on macOS.
 #
 # Every host then checks the compiler (harness/compiler_identity.py: clang
 # 22.1.8 and ccache), restores the installs named by install_cache_paths
@@ -86,6 +89,10 @@ on:
         default: true
       macos_runtimes:
         description: Build (or restore) the macOS 14 minimum LLVM runtimes
+        type: boolean
+        default: true
+      linux_runtimes:
+        description: Build (or restore) the static position-independent LLVM runtimes on Linux
         type: boolean
         default: true
       timeout_minutes:
@@ -228,6 +235,36 @@ jobs:
       - name: Identify and verify the LLVM release compiler
         id: compiler
         run: python "$HARNESS_ROOT/harness/compiler_identity.py"
+      # llvm22.cmake reads $HARNESS_ENV_PREFIX_LLVM_RUNTIME on Linux too; the
+      # directory names the architecture and the C library (glibc or musl).
+      - name: Select the Linux runtime prefix
+        id: linux-runtime
+        if: runner.os == 'Linux' && inputs.linux_runtimes
+        shell: bash
+        env:
+          ENV_PREFIX: ${{ steps.project.outputs.env-prefix }}
+        run: |
+          directory="$(python "$HARNESS_ROOT/harness/linux_runtime_manifest.py" --directory-name)"
+          echo "HARNESS_ENV_PREFIX=$ENV_PREFIX" >> "$GITHUB_ENV"
+          echo "${ENV_PREFIX}_LLVM_RUNTIME=$PWD/.build/toolchain/$directory" >> "$GITHUB_ENV"
+          echo "directory=$directory" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        if: runner.os == 'Linux' && inputs.linux_runtimes
+        with:
+          path: .build/toolchain/${{ steps.linux-runtime.outputs.directory }}
+          key: ${{ steps.project.outputs.name }}-linux-runtimes-v1-${{ steps.linux-runtime.outputs.directory }}-${{ steps.compiler.outputs.identity }}-${{ hashFiles(format('{0}/harness/build_linux_runtimes.py', inputs.harness_path), format('{0}/harness/linux_runtime_manifest.py', inputs.harness_path), format('{0}/harness/macos_runtime_manifest.py', inputs.harness_path)) }}
+      - name: Build the static Linux runtimes
+        if: runner.os == 'Linux' && inputs.linux_runtimes
+        shell: bash
+        env:
+          ENV_PREFIX: ${{ steps.project.outputs.env-prefix }}
+        run: |
+          variable="${ENV_PREFIX}_LLVM_RUNTIME"
+          runtime="${!variable}"
+          if [ ! -f "$runtime/runtime-manifest.json" ]; then
+            python "$HARNESS_ROOT/harness/build_linux_runtimes.py" --work "$RUNNER_TEMP/llvm-runtimes" --prefix "$runtime" --jobs 4
+          fi
+          python "$HARNESS_ROOT/harness/linux_runtime_manifest.py" "$runtime"
       - uses: actions/cache@v4
         if: runner.os == 'macOS' && inputs.macos_runtimes
         with:

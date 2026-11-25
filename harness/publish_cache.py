@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Publish one tested platform without waiting for other matrix jobs."""
+"""Publish one tested platform without waiting for other matrix jobs.
+
+Into the build-<sha> pre-release: the Windows toolchain, the runtime archive
+(ci.runtime_asset_prefix), the compiler cache and the installed SDK
+(ci.sdk_asset_prefix), the optional ones when the job made them.
+"""
 from __future__ import annotations
 import argparse
 import json
@@ -66,7 +71,17 @@ def main() -> None:
         # Publish the toolchain first: a consumer never sees a Windows cache
         # without the exact compiler tree that filled it.
         archives.extend(windows_toolchain.publication_files(Path('.')))
-    archives.append(Path(project.current().cache_asset(args.platform)))
+    product: project.Project = project.current()
+    # The runtime the cache's objects were compiled against comes before the cache, and the
+    # installed SDK after it; each only when the product names it and this job made it
+    # (a job that reused a validation compiled nothing and has neither).
+    runtime: str | None = product.runtime_asset(args.platform)
+    if runtime is not None and Path(runtime).is_file():
+        archives.append(Path(runtime))
+    archives.append(Path(product.cache_asset(args.platform)))
+    sdk: str | None = product.sdk_asset(args.platform)
+    if sdk is not None and Path(sdk).is_file():
+        archives.append(Path(sdk))
     archive: Path
     for archive in archives:
         publish(os.environ['GITHUB_REPOSITORY'], identity['revision'], archive)

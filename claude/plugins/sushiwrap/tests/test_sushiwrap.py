@@ -573,6 +573,15 @@ class SurveyTests(Isolated):
         anonymous = sw.anonymize(manifest)
         self.assertNotIn(manifest["user"]["home"], json.dumps(anonymous))
 
+    def test_anonymize_host_containing_user(self):
+        # GitHub's Linux runners: user "runner" on host "runnervm7aw5e".
+        manifest = {"user": {"name": "runner", "home": "/home/runner"},
+                    "host": {"hostname": "runnervm7aw5e"}, "note": "runner on runnervm7aw5e"}
+        anonymous = sw.anonymize(manifest)
+        self.assertEqual(anonymous["host"]["hostname"], "<host>")
+        self.assertEqual(anonymous["user"]["name"], "<user>")
+        self.assertEqual(anonymous["note"], "<user> on <host>")
+
     def test_survey_cli_writes_both_files(self):
         self.write_config({"survey": {"login_path": False}})
         out_base = os.path.join(self.tmp, "manifest")

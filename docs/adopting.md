@@ -27,9 +27,11 @@ You need:
 The harness provides:
 
 - **The toolchain:** `windows_toolchain.py` restores the Windows toolchain,
-  `build_macos_runtimes.py` builds the macOS 14 runtimes, and
+  `build_macos_runtimes.py` builds the macOS 14 runtimes,
   `install_linux_ci_packages.sh` installs the Ubuntu packages and
-  apt.llvm.org's clang-22. `compiler_identity.py` verifies the compiler,
+  apt.llvm.org's clang-22 (the bootstrap compiler), and
+  `build_linux_runtimes.py` builds the static position-independent C++
+  runtime every Linux build links. `compiler_identity.py` verifies the compiler,
   and `cmake/llvm22.cmake` is the CMake toolchain file.
 - **Caches and reuse:** `ci_cache.py`, `ci_reuse.py`, `ci_promote.py`,
   `ci_sanitizer_seed.py`, `ci_tree_receipt.py`, `publish_cache.py`,
@@ -39,6 +41,10 @@ The harness provides:
 - **Checkers:** `check_house_style.py`, `check_lifetime_rules.py`,
   `check_state_machines.py`, `check_loop_branches.py`, `check_const_restrict.py` and
   `check_copies.py`.
+- **Constraint declarations:** `ic_declarations.py` generates a component's
+  header contract lines, entry checks, member-manifest column, fuzz block
+  stubs and proof obligations from one declaration beside its header, and
+  checks they stay current (`docs/ic_declarations.md`).
 - **The AST reader:** `clang_ast.py` reads a translation unit from its
   compile command into one tree model, for the checkers and codemods that
   need more than tokens. It reads through the pinned LLVM's libclang
@@ -103,6 +109,7 @@ new history of caches and receipts, so choose the names once.
 | `[project] env_prefix` | Every environment variable the tools read or set: `<env_prefix>_LLVM_RUNTIME`, `_PLATFORM`, `_COMPILER_ID`, `_RUNNER`, `_SANITIZER_DEBUG_INFO`, `_PACKAGE_WINDOWS_TOOLCHAIN` | yes |
 | `[ci] artifact_prefix` | Every workflow artifact: `<prefix>validated-…`, `inputs-…`, `tree-…`, `sanitize-ccache-…` | yes |
 | `[ci] cache_asset_prefix` | The compiler-cache release asset `<prefix><platform>.tar.gz` | no: leave it out if you publish no compiler caches (the bootstrap then restores none) |
+| `[ci] runtime_asset_prefix`, `sdk_asset_prefix` | Release assets beside the cache, `<prefix><platform>.tar.gz`, that `publish_cache.py` publishes when the job made them: the C++ runtime the objects were compiled against (extracted into the workspace; the bootstrap restores it with the cache) and the installed SDK an application links instead of compiling the product | no |
 | `[ci] native_workflow`, `native_job` | The workflow file and job whose runs may produce receipts and caches; reuse trusts no other. `native_job` has two forms, described below | yes |
 | `[ci] pinned_cache_revisions` | A JSON file under the source root listing the cache releases the pruner keeps | no; only `prune_cache_releases.py` reads it |
 | `[toolchain] repository` | The Windows toolchain's publisher, and where `restore_local.py` reads it from | yes |
@@ -111,6 +118,8 @@ new history of caches and receipts, so choose the names once.
 | `[tests] name_prefixes` | `tests/X.cpp` names the tests `X` and `<prefix>X` | yes, may be `[]` |
 | `[linux_packages.<profile>] packages`, `extends` | The package sets `install_linux_ci_packages.sh <profile>` installs; `extends` names one other profile, one level deep | the table is required; define the profiles your jobs use |
 | `[state_machines] first_party_dirs`, `vocabulary_headers`, `areas`, `full_tree_triggers` | The state-machine checker's scope, its atom vocabulary, `[prefix, area]` ownership pairs (most specific first), and the paths whose change widens a changed-code run to the full tree | no: without the table, `check_state_machines.py` refuses to run; with it, all four are required and the lists may be empty |
+| `[state_machines] reviewed_shapes` | C3 records reviewed and kept, each `[path, record, reason]` | no |
+| `[state_machines] expected_compile_failures` | Translation units meant not to compile (a test that a bad program is refused at compile time), each `[glob, reason]`; the glob is matched with `fnmatch` against the checkout-relative POSIX path, so `*` also crosses `/`. `check_state_machines.py` runs a listed unit in scope even without a switch, never caches or analyses it, and `--gate` fails when one compiles, so a stale entry is caught | no; both parts of every entry must be non-empty |
 | `[loop_branches] decisions` | The loop-branch review's recorded decisions, a path in the product checkout | no; without it, every branch in a loop is listed as open |
 | `[copies] decisions` | The copies review's recorded decisions, a path in the product checkout | no; without it, every candidate is listed as open or signature-bound |
 | `[const_restrict] decisions` | The const and restrict review's recorded decisions, a path in the product checkout | no; without it, every candidate is listed as open or signature-bound |
@@ -268,7 +277,7 @@ There are two ways to run the harness in CI.
 
 - `harness-native.yml`: one host's build per call, with inputs `runner`,
   `platform`, `shell`, `product_path`, `project` and `build_command`.
-  Optional inputs are `linux_profile`, `linux_display`, `macos_runtimes`,
+  Optional inputs are `linux_profile`, `linux_display`, `linux_runtimes`, `macos_runtimes`,
   `install_cache_paths` and `install_cache_key_files`. It restores the
   toolchain, the macOS runtimes, the Linux packages and the ccache
   directory. It then runs your build command from the workspace root and
@@ -279,7 +288,11 @@ There are two ways to run the harness in CI.
   `configure_command` (a Ninja tree with compile commands) and
   `build_dir`. It checks what a change can affect, and the whole tree on a
   full-tree trigger. It is the one job that installs `python3-clang-22`
-  (with `libclang-22-dev`), for the AST reader.
+  (with `libclang-22-dev`), for the AST reader. Like the native build it
+  builds or restores the static Linux runtime the toolchain file requires
+  (`linux_runtimes`, on by default) and shares that cache and the
+  `install_cache_paths` cache with the native job of `platform`
+  (`linux-x64` by default).
 
 Call each one as
 `uses: malkuth-software/template_harness/.github/workflows/<file>@<commit>`,
@@ -315,6 +328,9 @@ never a shim or an old path:
   `hashFiles('template_harness/harness/install_linux_ci_packages.sh', 'template_harness/projects/<name>.toml')`.
 - The macOS runtimes key:
   `hashFiles('template_harness/harness/build_macos_runtimes.py', 'template_harness/harness/macos_runtime_manifest.py')`.
+- The Linux runtimes key: the directory name, the compiler identity and
+  `hashFiles` of `build_linux_runtimes.py`, `linux_runtime_manifest.py` and
+  `macos_runtime_manifest.py` (which holds the pinned version).
 
 `hashFiles` hashes content, not paths. Because the moved files were
 byte-identical, GUI.Forms' runtime key did not change. The Linux key did
@@ -413,9 +429,19 @@ It runs these steps:
    `DIR/template_harness` and runs the remaining steps from it;
 2. clones the notes, with the notes branch as a worktree;
 3. clones the private projects repository, with `--in-house` only;
-4. restores the toolchain and the newest usable compiler cache. The cache
-   is skipped when the project has no `ci.cache_asset_prefix`;
-5. runs the smoke command from `DIR`.
+4. restores the toolchain and the newest usable compiler cache (with its
+   runtime archive, when the release has one), then restores or builds the
+   C++ runtime on macOS and Linux (`restore_local.py runtime`; on Linux once
+   the printed packages bring clang 22.1). The cache is skipped when the
+   project has no `ci.cache_asset_prefix`. Then it writes CI's build
+   environment (`restore_local.py env`, `harness/build_environment.py`):
+   the ccache settings and locale the restored `cache-manifest.json`
+   records, the toolchain and runtime, and the `[bootstrap]` environment;
+   it names anything that will still make the cache miss on this machine
+   (another compiler build, another macOS SDK), runs the platform's
+   `prepare` commands in it, and leaves it in `.ci/local-build-env.sh` and
+   `.ps1` for later builds;
+5. runs the smoke command from `DIR`, in that environment.
 
 With `source_dir = "."`, step 1 clones the product into `DIR` itself.
 `DIR` must be empty or missing, or already that clone, which a re-run
@@ -438,13 +464,15 @@ The `[bootstrap]` fields:
 | `notes_branch` | the project name | the worktree `DIR/notes-<branch>` |
 | `projects_repository` | `<owner>/projects` | cloned with `--in-house` |
 | `smoke` | none | the smoke command, run from `DIR`; `{python}` becomes the bootstrap's interpreter |
+| `environment` | none | `NAME = "value"` pairs of every platform's build environment; `{workspace}` becomes the workspace root |
+| `[bootstrap.<platform>] environment` | none | the same for one platform, over the common ones |
+| `[bootstrap.<platform>] prepare` | none | commands run from `DIR` after the restore, in the environment; each `NAME=VALUE` line one prints joins it |
 
 Pick a smoke command that is quick and needs only what the restore
 supplies. GUI.Forms uses
-`["{python}", "gui_forms/tools/ci_build.py", "--tests", "^gui_forms_core_tests$"]`:
-a plain build of what one test reads, then that test, with nothing
-installed. Its build driver was changed to accept that command; check
-that yours accepts the command you name.
+`["{python}", "gui_forms/tools/ci_build.py", "--install-only"]`: the plain
+build CI's cache holds, installed and checked as an SDK. Check that your
+build driver accepts the command you name.
 
 **The checkpoint tool** folds workers' local branches into one verified PR.
 It is the default way work reaches GitHub: workers never push, and the

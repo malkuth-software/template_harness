@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Build the pinned LLVM runtimes with a real macOS 14 arm64 minimum."""
+"""Build the pinned LLVM runtimes with a real macOS 14 arm64 minimum.
+
+The prefix holds libc++, libc++abi and libunwind both as dylibs and as static
+archives. The archives let a program link its C++ runtime statically, as it
+does on Linux and Windows, so a shipped macOS program depends only on system
+libraries (one module per program; a consumer's toolchain file picks the
+archives when present). They are hermetic: built with hidden visibility, so a
+shared library that links them (a C ABI library) exports none of their
+symbols. The dylibs stay for consumers that still link dynamically.
+"""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -52,8 +61,16 @@ def main() -> None:
          '-DLLVM_ENABLE_RUNTIMES=libcxx;libcxxabi;libunwind',
          '-DLLVM_INCLUDE_TESTS=OFF', '-DLIBCXX_INCLUDE_TESTS=OFF', '-DLIBCXX_INCLUDE_BENCHMARKS=OFF',
          '-DLIBCXXABI_INCLUDE_TESTS=OFF', '-DLIBUNWIND_INCLUDE_TESTS=OFF',
-         '-DLIBCXX_ENABLE_STATIC=OFF', '-DLIBCXXABI_ENABLE_STATIC=OFF',
-         '-DLIBUNWIND_ENABLE_STATIC=OFF', '-DLIBCXXABI_USE_LLVM_UNWINDER=ON',
+         '-DLIBCXX_ENABLE_SHARED=ON', '-DLIBCXXABI_ENABLE_SHARED=ON', '-DLIBUNWIND_ENABLE_SHARED=ON',
+         '-DLIBCXX_ENABLE_STATIC=ON', '-DLIBCXXABI_ENABLE_STATIC=ON', '-DLIBUNWIND_ENABLE_STATIC=ON',
+         # Hidden visibility in the archives only; the dylibs keep their exports.
+         '-DLIBCXX_HERMETIC_STATIC_LIBRARY=ON', '-DLIBCXXABI_HERMETIC_STATIC_LIBRARY=ON',
+         '-DLIBUNWIND_HIDE_SYMBOLS=ON',
+         # libc++abi.a stays without libunwind's objects: a program links
+         # libunwind.a itself, or uses the system unwinder in libSystem.
+         '-DLIBCXXABI_STATICALLY_LINK_UNWINDER_IN_STATIC_LIBRARY=OFF',
+         '-DLIBCXX_STATICALLY_LINK_ABI_IN_STATIC_LIBRARY=OFF',
+         '-DLIBCXXABI_USE_LLVM_UNWINDER=ON',
          '-DLIBCXX_ENABLE_VENDOR_AVAILABILITY_ANNOTATIONS=OFF'])
     run(['cmake', '--build', str(build), '--parallel', str(args.jobs)])
     run(['cmake', '--install', str(build)])

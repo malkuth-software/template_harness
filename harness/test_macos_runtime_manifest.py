@@ -34,6 +34,7 @@ class RuntimeManifestTests(unittest.TestCase):
         name: str
         for name in ('libc++', 'libc++abi', 'libunwind'):
             (self.root / 'lib' / (name + '.1.0.dylib')).write_bytes(name.encode('ascii'))
+            (self.root / 'lib' / (name + '.a')).write_bytes(b'!<arch>\n' + name.encode('ascii'))
         self.sdk: str = "15.5"
         self.compiler: Path = self.root / 'clang++'
         self.compiler.write_bytes(b'compiler binary')
@@ -65,6 +66,11 @@ class RuntimeManifestTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     manifest.verify(self.root)
                 self.record()
+                archive: Path = self.root / 'lib/libc++abi.a'
+                archive.write_bytes(b'!<arch>\nchanged archive')
+                with self.assertRaises(RuntimeError):
+                    manifest.verify(self.root)
+                self.record()
                 self.compiler.write_bytes(b'different compiler with same version')
                 with self.assertRaises(RuntimeError):
                     manifest.verify(self.root)
@@ -89,6 +95,22 @@ class RuntimeManifestTests(unittest.TestCase):
         (self.headers / '__config_site').unlink()
         with self.assertRaises(RuntimeError):
             manifest.payload_hashes(self.root)
+
+    def test_static_archives_are_recorded(self) -> None:
+        hashes: dict[str, str] = manifest.payload_hashes(self.root)
+        name: str
+        for name in manifest.STATIC_ARCHIVES:
+            self.assertIn('lib/' + name, hashes)
+
+    def test_missing_static_archive(self) -> None:
+        name: str
+        for name in manifest.STATIC_ARCHIVES:
+            archive: Path = self.root / 'lib' / name
+            content: bytes = archive.read_bytes()
+            archive.unlink()
+            with self.assertRaises(RuntimeError):
+                manifest.payload_hashes(self.root)
+            archive.write_bytes(content)
 
     def test_missing_library(self) -> None:
         (self.root / 'lib/libc++.1.0.dylib').unlink()

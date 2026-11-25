@@ -137,12 +137,17 @@ def restore_seed() -> None:
     A seed only fills ccache, which checks every hit, and every test still
     runs, so an archive that fails its digest even after the downloads
     verified_archive retries is skipped with a warning instead of failing the
-    job. Nothing is extracted from an archive that failed.
+    job. Nothing is extracted from an archive that failed. A seed comes from
+    another tree, possibly built with an older runtime, so its runtime is
+    never extracted (keep_runtime): the job keeps the runtime it restored or
+    built. A runtime check that still fails (RuntimeError) is reported and
+    the job builds on.
     """
     identity: dict[str, Any] = json.loads((ci_reuse.STATE / 'inputs.json').read_text())
     try:
-        ci_reuse.restore_archive(identity, ci_reuse.STATE / 'seed.json')
-    except (ValueError, OSError, tarfile.TarError, zipfile.BadZipFile, subprocess.CalledProcessError) as error:
+        ci_reuse.restore_archive(identity, ci_reuse.STATE / 'seed.json', keep_runtime=True)
+    except (ValueError, OSError, RuntimeError, tarfile.TarError, zipfile.BadZipFile,
+            subprocess.CalledProcessError) as error:
         print('::warning::Seed objects not restored (' + str(error) + '); building from the restored cache',
               flush=True)
 

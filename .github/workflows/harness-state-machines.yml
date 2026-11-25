@@ -23,7 +23,13 @@ name: Harness state-machine gate
 # One Linux host: the configure command needs only to write the tree's
 # compile commands (and any generated headers the checker builds), from the
 # workspace root, with the project's [linux_packages.<linux_profile>]
-# installed.
+# installed and, with linux_runtimes (the default), the static LLVM runtime
+# harness/cmake/llvm22.cmake requires on Linux: built by
+# harness/build_linux_runtimes.py into .build/toolchain/, named by
+# <env_prefix>_LLVM_RUNTIME, as harness-native.yml does. The runtime and the
+# installs (install_cache_paths) are cached under harness-native.yml's keys
+# for the same platform, so a gate after a native build of the same inputs
+# restores them instead of building them again.
 on:
   workflow_call:
     inputs:
@@ -55,6 +61,14 @@ on:
         description: The project file's [linux_packages.<profile>] the configure step needs
         type: string
         default: toolkit
+      linux_runtimes:
+        description: Build (or restore) the static position-independent LLVM runtimes the configure step needs
+        type: boolean
+        default: true
+      platform:
+        description: The native platform whose runtime and install caches the gate shares (harness-native.yml)
+        type: string
+        default: linux-x64
       timeout_minutes:
         type: number
         default: 30
@@ -81,6 +95,11 @@ jobs:
       HARNESS_PROJECT: ${{ github.workspace }}/${{ inputs.project }}
       HARNESS_ROOT: ${{ github.workspace }}/${{ inputs.harness_path }}
       HARNESS_CACHE: ${{ github.workspace }}/.harness-cache
+      # The LLVM release compiler, as in harness-native.yml, for a configure
+      # that builds an install from source.
+      CC: clang
+      CXX: clang++
+      OBJCXX: clang++
       BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
     steps:
       # The whole history, so the changed paths come from the merge base.
@@ -111,6 +130,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Read the project's names
+        id: project
+        run: |
+          python3 - <<'EOF'
+          import os, sys
+          sys.path.insert(0, os.path.join(os.environ['HARNESS_ROOT'], 'harness'))
+          import project
+          product = project.current()
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('name=' + product.name + '\n')
+              output.write('env-prefix=' + product.env_prefix + '\n')
+          EOF
       - name: Find the changed C and C++ files
         id: scope
         env:
@@ -205,17 +236,45 @@ jobs:
         with:
           path: ${{ runner.temp }}/apt-archives
           key: ${{ steps.linux-packages.outputs.cache-primary-key }}
-      # As in harness-native.yml: an install the configure command builds
-      # from source is reused while its inputs and the compiler match.
+      # As in harness-native.yml: the static runtime and any install the
+      # configure command builds from source are reused while their inputs
+      # and the compiler match, under the native job's keys.
       - name: Identify the compiler
         id: compiler
-        if: steps.scope.outputs.scope != 'none' && inputs.install_cache_paths != ''
+        if: steps.scope.outputs.scope != 'none' && (inputs.install_cache_paths != '' || inputs.linux_runtimes)
         run: python3 "$HARNESS_ROOT/harness/compiler_identity.py"
+      - name: Select the Linux runtime prefix
+        id: linux-runtime
+        if: steps.scope.outputs.scope != 'none' && inputs.linux_runtimes
+        env:
+          ENV_PREFIX: ${{ steps.project.outputs.env-prefix }}
+        run: |
+          directory="$(python3 "$HARNESS_ROOT/harness/linux_runtime_manifest.py" --directory-name)"
+          echo "HARNESS_ENV_PREFIX=$ENV_PREFIX" >> "$GITHUB_ENV"
+          echo "${ENV_PREFIX}_LLVM_RUNTIME=$PWD/.build/toolchain/$directory" >> "$GITHUB_ENV"
+          echo "directory=$directory" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        if: steps.scope.outputs.scope != 'none' && inputs.linux_runtimes
+        with:
+          path: .build/toolchain/${{ steps.linux-runtime.outputs.directory }}
+          key: ${{ steps.project.outputs.name }}-linux-runtimes-v1-${{ steps.linux-runtime.outputs.directory }}-${{ steps.compiler.outputs.identity }}-${{ hashFiles(format('{0}/harness/build_linux_runtimes.py', inputs.harness_path), format('{0}/harness/linux_runtime_manifest.py', inputs.harness_path), format('{0}/harness/macos_runtime_manifest.py', inputs.harness_path)) }}
+      - name: Build the static Linux runtimes
+        if: steps.scope.outputs.scope != 'none' && inputs.linux_runtimes
+        shell: bash
+        env:
+          ENV_PREFIX: ${{ steps.project.outputs.env-prefix }}
+        run: |
+          variable="${ENV_PREFIX}_LLVM_RUNTIME"
+          runtime="${!variable}"
+          if [ ! -f "$runtime/runtime-manifest.json" ]; then
+            python3 "$HARNESS_ROOT/harness/build_linux_runtimes.py" --work "$RUNNER_TEMP/llvm-runtimes" --prefix "$runtime" --jobs 4
+          fi
+          python3 "$HARNESS_ROOT/harness/linux_runtime_manifest.py" "$runtime"
       - uses: actions/cache@v4
         if: steps.scope.outputs.scope != 'none' && inputs.install_cache_paths != ''
         with:
           path: ${{ inputs.install_cache_paths }}
-          key: state-machines-installs-v1-${{ runner.arch }}-${{ steps.compiler.outputs.identity }}-${{ hashFiles(inputs.install_cache_key_files) }}
+          key: ${{ steps.project.outputs.name }}-installs-v1-${{ inputs.platform }}-${{ steps.compiler.outputs.identity }}-${{ hashFiles(inputs.install_cache_key_files) }}
       - name: Configure the tree
         if: steps.scope.outputs.scope != 'none'
         env:

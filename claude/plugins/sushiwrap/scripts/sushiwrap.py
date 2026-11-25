@@ -1095,7 +1095,10 @@ def anonymize(manifest):
     text = json.dumps(manifest)
     if home and len(home) > 3:
         text = text.replace(json.dumps(home)[1:-1], "~")
-    for value, placeholder in ((user, "<user>"), (host, "<host>")):
+    # The longer name first: a host name that contains the user name (GitHub's
+    # runnervm... hosts and user runner) is replaced whole, not as <user>vm....
+    replacements = sorted(((user, "<user>"), (host, "<host>")), key=lambda pair: -len(pair[0]))
+    for value, placeholder in replacements:
         if value and len(value) > 2:
             text = text.replace(value, placeholder)
     import re

@@ -252,7 +252,11 @@ class ReuseTests(unittest.TestCase):
             receipt: dict[str, Any] = fixture_identity()
             receipt.update(archive_sha256=hashlib.sha256(archive.read_bytes()).hexdigest())
             ci_reuse.write_json(state / 'reused.json', receipt)
-            with patch.object(ci_reuse, 'ROOT', root), patch.object(ci_reuse, 'STATE', state):
+            # The fixture is a Linux cache; the job's own runtime (on a macOS
+            # runner, the macOS one) must not be checked as a Linux runtime.
+            with patch.object(ci_reuse, 'ROOT', root), patch.object(ci_reuse, 'STATE', state), \
+                    patch.dict(os.environ):
+                os.environ.pop(project.current().variable('LLVM_RUNTIME'), None)
                 ci_reuse.restore_archive(fixture_identity())
                 self.assertEqual(json.loads((root / 'cache-manifest.json').read_text()), manifest)
                 archive.write_bytes(archive.read_bytes() + b'corrupt')
@@ -266,6 +270,38 @@ class ReuseTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'Unexpected cache archive member'):
                     ci_reuse.restore_archive(fixture_identity())
 
+
+    def test_a_seed_keeps_the_jobs_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root: Path = Path(directory)
+            state: Path = root / '.ci'
+            (state / 'download').mkdir(parents=True)
+            runtime: Path = root / '.build/toolchain/llvm-22.1.8-macos14'
+            runtime.mkdir(parents=True)
+            (runtime / 'runtime-manifest.json').write_text('job')
+            archive: Path = state / 'download/gui-forms-cache-linux-x64.tar.gz'
+            manifest: dict[str, str] = {'revision': 'commit', 'compiler': 'compiler', 'platform': 'linux-x64'}
+            members: dict[str, bytes] = {'cache-manifest.json': json.dumps(manifest).encode(),
+                                         '.ccache/object': b'object',
+                                         '.build/toolchain/llvm-22.1.8-macos14/runtime-manifest.json': b'seed'}
+            with tarfile.open(archive, 'w:gz') as payload:
+                name: str
+                for name in members:
+                    entry: tarfile.TarInfo = tarfile.TarInfo(name)
+                    entry.size = len(members[name])
+                    payload.addfile(entry, io.BytesIO(members[name]))
+            receipt: dict[str, Any] = fixture_identity()
+            receipt.update(archive_sha256=hashlib.sha256(archive.read_bytes()).hexdigest())
+            ci_reuse.write_json(state / 'seed.json', receipt)
+            with patch.object(ci_reuse, 'ROOT', root), patch.object(ci_reuse, 'STATE', state), \
+                    patch.dict(os.environ):
+                os.environ.pop(project.current().variable('LLVM_RUNTIME'), None)
+                ci_reuse.restore_archive(fixture_identity(), state / 'seed.json', keep_runtime=True)
+                self.assertEqual((root / '.ccache/object').read_bytes(), b'object')
+                self.assertEqual((runtime / 'runtime-manifest.json').read_text(), 'job')
+                # An exact-tree reuse takes the archive's runtime with its objects.
+                ci_reuse.restore_archive(fixture_identity(), state / 'seed.json')
+                self.assertEqual((runtime / 'runtime-manifest.json').read_text(), 'seed')
 
     def test_a_cut_short_download_is_fetched_again(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

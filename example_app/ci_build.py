@@ -7,7 +7,8 @@
 Run from the workspace root (the directory that holds template_harness/),
 with LLVM 22.1.8, CMake and Ninja on PATH: the harness's native workflow
 provides them (the Windows CLANG64 toolchain GUI.Forms publishes, Homebrew's
-llvm@22 with the harness-built macOS runtimes, apt.llvm.org's clang-22).
+llvm@22 with the harness-built macOS runtimes, apt.llvm.org's clang-22 with
+the harness-built Linux runtimes, named by <HARNESS_ENV_PREFIX>_LLVM_RUNTIME).
 
 1. fetch_sdk.py fetches the source SDK pinned in gui_forms.lock and builds
    and installs GUI.Forms from it for the target (default: this host) in the
@@ -15,17 +16,23 @@ llvm@22 with the harness-built macOS runtimes, apt.llvm.org's clang-22).
    else the user cache), or reuses an install built from the same archive
    with the same toolchain. --allow-network-inputs lets that build download
    what the SDK manifest says it still downloads.
-2. CMake configures example_app/ with the installed prefix and the harness's
-   harness/cmake/llvm22.cmake into .build/native-<target>/example-app/.
-   On macOS the toolchain file needs the LLVM runtime prefix (in
-   <HARNESS_ENV_PREFIX>_LLVM_RUNTIME, else HARNESS_LLVM_RUNTIME): the
-   environment's, else the one the SDK carries (llvm-runtime/).
+2. CMake configures example_app/ with the installed prefix into
+   .build/native-<target>/example-app/. On macOS and Linux the toolchain
+   file is the harness's harness/cmake/llvm22.cmake, which needs the LLVM
+   runtime prefix (in <HARNESS_ENV_PREFIX>_LLVM_RUNTIME, else
+   HARNESS_LLVM_RUNTIME): the environment's, else on macOS the one the SDK
+   carries (llvm-runtime/). On Windows a program links the SDK only when it
+   is built as the SDK was, for x86_64-pc-windows-msvc on STXlib's own
+   runtime: the toolchain file is the SDK's llvm22-windows-msvc.cmake (fetch
+   prints it as windows_toolchain) with GUI_FORMS_MSVC_RUNTIME=OWN and the
+   three own runtime settings fetch printed (else the environment's).
 3. The tree is built, and ctest runs its tests (the form's test, and the
    start test when the SDK has a native host; on Linux it needs DISPLAY).
 
 --gui-forms-prefix DIR replaces step 1: the build uses the GUI.Forms
 installed at DIR, such as the local lockstep build's
-(`harness/lockstep.py prefix`), and fetches and builds nothing.
+(`harness/lockstep.py prefix`), and fetches and builds nothing; the prefix
+is described as fetch describes its own installs.
 
 --configure-only stops after step 2, for the state-machine checker, which
 reads the tree's compile commands.
@@ -49,6 +56,28 @@ def runtime_variable() -> str:
     prefix: str = os.environ.get('HARNESS_ENV_PREFIX', '')
     result: str = prefix + '_LLVM_RUNTIME' if prefix else 'HARNESS_LLVM_RUNTIME'
     return result
+
+
+def toolchain_options(platform: str, lines: list[str]) -> list[str]:
+    """The configure options that choose the toolchain: the SDK's Windows toolchain with its own runtime
+    when fetch named one, else the harness's harness/cmake/llvm22.cmake."""
+    windows_toolchain: str = value_of(lines, 'windows_toolchain')
+    if not platform.startswith('windows') or not windows_toolchain:
+        harness_toolchain: Path = HARNESS_ROOT / 'harness' / 'cmake' / 'llvm22.cmake'
+        result: list[str] = ['-DCMAKE_TOOLCHAIN_FILE=' + harness_toolchain.as_posix()]
+        return result
+    options: list[str] = ['-DCMAKE_TOOLCHAIN_FILE=' + windows_toolchain, '-DGUI_FORMS_MSVC_RUNTIME=OWN']
+    missing: list[str] = []
+    name: str
+    for name in fetch_sdk.OWN_RUNTIME_SETTINGS:
+        value: str = value_of(lines, name) or os.environ.get(name, '')
+        if not value:
+            missing.append(name)
+        options.append('-D' + name + '=' + Path(value).as_posix())
+    if missing:
+        raise fetch_sdk.FetchError('the Windows SDK at ' + value_of(lines, 'prefix') + ' links STXlib\'s own runtime, '
+                                   'and neither it nor the environment names ' + ', '.join(missing))
+    return options
 
 
 def run(command: list[str]) -> None:
@@ -95,11 +124,12 @@ def main() -> int:
             if not package.is_file():
                 raise fetch_sdk.FetchError('--gui-forms-prefix ' + args.gui_forms_prefix.as_posix()
                                            + ' has no lib/cmake/GUIForms/GUIFormsConfig.cmake')
-            lines = ['prefix=' + args.gui_forms_prefix.resolve().as_posix()]
+            lines = fetch_sdk.describe(args.gui_forms_prefix.resolve())
         else:
             lock: fetch_sdk.Lock = fetch_sdk.read_lock(fetch_sdk.LOCK_PATH)
             lines = fetch_sdk.fetch_command(lock, platform, fetch_sdk.checked_cache(cache), args.jobs,
                                             args.allow_network_inputs)
+        toolchain: list[str] = toolchain_options(platform, lines)
     except fetch_sdk.FetchError as error:
         print('ci_build: ' + str(error), file=sys.stderr)
         return 1
@@ -112,11 +142,10 @@ def main() -> int:
     if platform.startswith('macos') and bundled_runtime and not os.environ.get(variable, ''):
         os.environ[variable] = bundled_runtime
     tree: Path = Path.cwd() / '.build' / ('native-' + platform) / 'example-app'
-    toolchain: Path = HARNESS_ROOT / 'harness' / 'cmake' / 'llvm22.cmake'
     run(['cmake', '-S', HERE.as_posix(), '-B', tree.as_posix(), '-G', 'Ninja',
          '-DCMAKE_BUILD_TYPE=Release',
          '-DCMAKE_PREFIX_PATH=' + prefix,
-         '-DCMAKE_TOOLCHAIN_FILE=' + toolchain.as_posix(),
+         *toolchain,
          '-DCMAKE_NO_SYSTEM_FROM_IMPORTED=ON',
          '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON'])
     if args.configure_only:

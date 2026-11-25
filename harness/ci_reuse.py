@@ -222,7 +222,15 @@ def verified_archive(archive: Path, receipt: dict[str, Any]) -> None:
         download_archive(artifact_id, archive)
 
 
-def restore_archive(identity: dict[str, Any], receipt_path: Path | None = None) -> None:
+def restore_archive(identity: dict[str, Any], receipt_path: Path | None = None,
+                    keep_runtime: bool = False) -> None:
+    """Extract a validated cache archive into the workspace and check the LLVM runtime it leaves.
+
+    keep_runtime (a seed from another tree): only the objects and the cache manifest are
+    extracted; the archive's .build/toolchain runtime is left out, so the runtime this job
+    restored or built stays in place and is the one checked. An exact-tree reuse takes the
+    archive's runtime with its objects.
+    """
     if receipt_path is None:
         receipt_path = STATE / 'reused.json'
     receipt: dict[str, Any] = json.loads(receipt_path.read_text())
@@ -237,7 +245,10 @@ def restore_archive(identity: dict[str, Any], receipt_path: Path | None = None) 
                  or entry.name == '.build/toolchain/llvm-22.1.8-macos14'
                  or entry.name.startswith('.build/toolchain/llvm-22.1.8-macos14/'))):
                 raise ValueError('Unexpected cache archive member: ' + entry.name)
-        payload.extractall(ROOT, filter='data')
+        members: list[tarfile.TarInfo] = payload.getmembers()
+        if keep_runtime:
+            members = [member for member in members if not member.name.startswith('.build/')]
+        payload.extractall(ROOT, members=members, filter='data')
     manifest: dict[str, Any] = json.loads((ROOT / 'cache-manifest.json').read_text())
     if (manifest['revision'] != receipt['revision'] or manifest['compiler'] != identity['compiler']
             or manifest['platform'] != identity['platform']):
@@ -245,6 +256,11 @@ def restore_archive(identity: dict[str, Any], receipt_path: Path | None = None) 
     if identity['platform'] == 'macos-arm64':
         from macos_runtime_manifest import verify
         verify(Path(os.environ[project.current().variable('LLVM_RUNTIME')]))
+    # On Linux the runtime is not in the cache archive (its own Actions cache
+    # restores it); a reused cache must still have been built against it.
+    elif identity['platform'].startswith('linux-') and project.current().variable('LLVM_RUNTIME') in os.environ:
+        import linux_runtime_manifest
+        linux_runtime_manifest.verify(Path(os.environ[project.current().variable('LLVM_RUNTIME')]))
 
 
 def main() -> None:

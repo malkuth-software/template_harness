@@ -81,7 +81,7 @@ for product build drivers to read:
                         '' for a GUI.Forms commit without harness.lock
     toolchain_file      <source>/cmake/llvm22.cmake, the toolchain file used
     font_dir            <prefix>/share/GUIForms/fonts: GUI_FORMS_FONT_DIR
-    llvm_runtime        GUI_FORMS_LLVM_RUNTIME of the build (macOS), else ''
+    llvm_runtime        GUI_FORMS_LLVM_RUNTIME of the build (macOS, Linux), else ''
     ccache_dir          the shared compiler cache
     ccache_basedir      the lockstep workspace
     lang                the LANG the build ran with ('' when left alone)
@@ -496,7 +496,7 @@ def full_record(layout: Layout, commit: str, harness: str, target: str, identity
         'package_dir': (prefix / 'lib' / 'cmake' / 'GUIForms').as_posix(),
         'source': layout.source.as_posix(), 'harness': harness, 'toolchain_file': (layout.source / 'cmake' / 'llvm22.cmake').as_posix(),
         'font_dir': (prefix / 'share' / 'GUIForms' / 'fonts').as_posix(),
-        'llvm_runtime': environment.get('GUI_FORMS_LLVM_RUNTIME', '') if target.startswith('macos') else '',
+        'llvm_runtime': environment.get('GUI_FORMS_LLVM_RUNTIME', '') if target.startswith(('macos', 'linux')) else '',
         'ccache_dir': layout.ccache.as_posix(), 'ccache_basedir': layout.workspace.as_posix(),
         'lang': environment.get('LANG', '') if target.startswith('windows') else ''}
     return record

@@ -4,6 +4,7 @@ import contextlib
 import dataclasses
 import hashlib
 import io
+import json
 import os
 from pathlib import Path
 import shlex
@@ -186,6 +187,128 @@ class ToolchainTests(unittest.TestCase):
              mock.patch.object(restore_local.windows_toolchain, 'find_release', return_value=None):
             with self.assertRaisesRegex(restore_local.RestoreError, 'No published Windows toolchain'):
                 restore_local.restore_toolchain(product, 'windows-x64', True)
+
+
+class PagedGitHub(FakeGitHub):
+    """Lists the releases RELEASES_PER_PAGE at a time, as the API pages them."""
+
+    def __init__(self, releases: list[dict[str, Any]], archive: bytes) -> None:
+        super().__init__(releases, archive)
+        self.paths: list[str] = []
+
+    def json(self, path: str) -> Any:
+        self.paths.append(path)
+        page: int = int(path.rpartition('page=')[2])
+        size: int = restore_local.RELEASES_PER_PAGE
+        return self.releases[(page - 1) * size:page * size]
+
+
+class ReleaseListingTests(CacheTests):
+    def test_a_cache_past_the_first_page_is_found(self) -> None:
+        filler: list[dict[str, Any]] = [release(UNKNOWN, '2026-10-30T00:00:00Z', 'other.tar.gz')
+                                        for _ in range(restore_local.RELEASES_PER_PAGE)]
+        github: PagedGitHub = PagedGitHub(filler + [release(self.newer, '2026-10-24T00:00:00Z', self.asset)],
+                                          self.archive)
+        self.assertEqual(self.restore(github), 'build-' + self.newer)
+        self.assertEqual(len(github.paths), 2)
+
+    def test_a_named_older_revision_is_restored_instead_of_the_newest(self) -> None:
+        github: FakeGitHub = FakeGitHub([release(self.older, '2026-10-20T00:00:00Z', self.asset),
+                                         release(self.newer, '2026-10-24T00:00:00Z', self.asset)], self.archive)
+        with mock.patch.object(restore_local, 'gh_json', github.json), \
+             mock.patch.object(restore_local, 'gh_download', github.download), \
+             contextlib.redirect_stdout(io.StringIO()):
+            tag: str | None = restore_local.restore_cache(self.product, 'linux-x64', False, self.older[:12])
+            missing: str | None = restore_local.restore_cache(self.product, 'linux-x64', False, UNKNOWN[:12])
+        self.assertEqual(tag, 'build-' + self.older)
+        self.assertIsNone(missing)
+
+
+class RuntimeAssetTests(CacheTests):
+    def test_the_release_runtime_is_restored_with_the_cache(self) -> None:
+        runtime: str | None = self.product.runtime_asset('linux-x64')
+        assert runtime is not None
+        entry: dict[str, Any] = release(self.newer, '2026-10-24T00:00:00Z', self.asset)
+        entry['assets'].append({'name': runtime, 'created_at': '2026-10-24T00:00:00Z'})
+        github: FakeGitHub = FakeGitHub([entry], self.archive)
+        self.assertEqual(self.restore(github), 'build-' + self.newer)
+        self.assertEqual(github.downloads, ['build-' + self.newer, 'build-' + self.newer])
+        record: dict[str, Any] = json.loads((self.workspace / restore_local.CACHE_RECORD).read_text(encoding='utf-8'))
+        self.assertEqual(record['runtime'], runtime)
+
+    def test_a_release_without_a_runtime_restores_the_cache_alone(self) -> None:
+        github: FakeGitHub = FakeGitHub([release(self.newer, '2026-10-24T00:00:00Z', self.asset)], self.archive)
+        self.assertEqual(self.restore(github), 'build-' + self.newer)
+        self.assertEqual(github.downloads, ['build-' + self.newer])
+
+
+class RuntimeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        directory: tempfile.TemporaryDirectory[str] = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.workspace: Path = Path(directory.name).resolve()
+        patched: mock._patch_dict = mock.patch.dict(os.environ, {'HARNESS_WORKSPACE': str(self.workspace)})
+        patched.start()
+        self.addCleanup(patched.stop)
+        self.product: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
+
+    def test_a_restored_runtime_is_verified_and_kept(self) -> None:
+        prefix: Path = self.workspace / '.build/toolchain/llvm-22.1.8-linux'
+        prefix.mkdir(parents=True)
+        (prefix / 'runtime-manifest.json').write_text('{}', encoding='utf-8')
+        with mock.patch.object(restore_local.linux_runtime_manifest, 'verify') as verify, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(restore_local.restore_runtime(self.product, 'linux-x64', False), prefix)
+        verify.assert_called_once_with(prefix)
+
+    def test_a_runtime_that_does_not_verify_is_set_aside_and_rebuilt(self) -> None:
+        prefix: Path = self.workspace / '.build/toolchain/llvm-22.1.8-linux'
+        prefix.mkdir(parents=True)
+        (prefix / 'runtime-manifest.json').write_text('{}', encoding='utf-8')
+        with mock.patch.object(restore_local.linux_runtime_manifest, 'verify', side_effect=RuntimeError('mismatch')), \
+             mock.patch.object(restore_local, 'has_clang_22', return_value=False), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertIsNone(restore_local.restore_runtime(self.product, 'linux-x64', False))
+        self.assertFalse(prefix.exists())
+        self.assertTrue((prefix.parent / 'llvm-22.1.8-linux.unverified' / 'runtime-manifest.json').is_file())
+
+    def test_without_clang_22_nothing_is_built(self) -> None:
+        output: io.StringIO = io.StringIO()
+        with mock.patch.object(restore_local, 'has_clang_22', return_value=False), \
+             mock.patch.object(restore_local.subprocess, 'run') as run, contextlib.redirect_stdout(output):
+            self.assertIsNone(restore_local.restore_runtime(self.product, 'linux-x64', False))
+        run.assert_not_called()
+        self.assertIn('build_linux_runtimes.py', output.getvalue())
+
+
+class FakeResponse(io.BytesIO):
+    """urlopen's response: a readable context manager."""
+
+    def __enter__(self) -> FakeResponse:
+        return self
+
+    def __exit__(self, *arguments: object) -> None:
+        self.close()
+
+
+class FakeOpener:
+    """Stands in for urllib.request.urlopen: records each address and answers an empty listing."""
+
+    def __init__(self) -> None:
+        self.opened: list[str] = []
+
+    def open(self, request: Any, timeout: int) -> FakeResponse:
+        self.opened.append(request.full_url)
+        return FakeResponse(b'[]')
+
+
+class PublicEndpointTests(unittest.TestCase):
+    def test_without_gh_the_public_api_is_read(self) -> None:
+        opener: FakeOpener = FakeOpener()
+        with mock.patch.object(restore_local.shutil, 'which', return_value=None), \
+             mock.patch.object(restore_local.urllib.request, 'urlopen', opener.open):
+            self.assertEqual(restore_local.gh_json('repos/o/r/releases?per_page=1'), [])
+        self.assertEqual(opener.opened, ['https://api.github.com/repos/o/r/releases?per_page=1'])
 
 
 if __name__ == '__main__':

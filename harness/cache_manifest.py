@@ -10,9 +10,29 @@ from pathlib import Path
 import subprocess
 import sys
 
+import build_environment
 import native_tests
 import project
 import windows_toolchain
+
+
+def recorded_environment() -> dict[str, str | None]:
+    """The ccache settings and locale of this build (None: unset), which a consumer's build must
+    repeat for its keys to match (build_environment.py reads them back)."""
+    recorded: dict[str, str | None] = {}
+    name: str
+    for name in build_environment.RECORDED_VARIABLES:
+        recorded[name] = os.environ.get(name)
+    return recorded
+
+
+def compiler_location(compiler_path: str, workspace: Path) -> str:
+    """Where the compiler was: relative to the workspace when inside it (then any workspace path
+    hashes the same), else absolute (then a consumer needs that same path)."""
+    resolved: Path = Path(compiler_path).resolve()
+    if resolved.is_relative_to(workspace.resolve()):
+        return resolved.relative_to(workspace.resolve()).as_posix()
+    return resolved.as_posix()
 
 
 def main() -> None:
@@ -45,6 +65,8 @@ def main() -> None:
         'layout': {'source': product.source_dir + '/', 'build': build + '/'},
         'ccache': {'basedir': basedir, 'compiler_check': 'content',
                    'version': subprocess.check_output(['ccache', '--version'], text=True)},
+        'environment': recorded_environment(),
+        'compiler_location': compiler_location(compiler_path, workspace),
         'minimum_platform': '14.0' if sys.argv[1] == 'macos-arm64' else
                             ('Windows 10 (0x0A00)' if sys.argv[1] == 'windows-x64' else 'Ubuntu 24.04'),
         'run_id': os.environ.get('GITHUB_RUN_ID', ''),
@@ -56,6 +78,10 @@ def main() -> None:
         runtime: Path = Path(os.environ[product.variable('LLVM_RUNTIME')])
         manifest['runtime'] = json.loads((runtime / 'runtime-manifest.json').read_text(encoding='utf-8'))
         manifest['runtime_layout'] = '.build/toolchain/llvm-22.1.8-macos14'
+    elif sys.argv[1].startswith('linux-') and product.variable('LLVM_RUNTIME') in os.environ:
+        linux_runtime: Path = Path(os.environ[product.variable('LLVM_RUNTIME')])
+        manifest['runtime'] = json.loads((linux_runtime / 'runtime-manifest.json').read_text(encoding='utf-8'))
+        manifest['runtime_layout'] = '.build/toolchain/' + linux_runtime.name
     if sys.argv[1] == 'windows-x64':
         # The packaged MSYS2 tree must contain the compiler that filled this cache.
         toolchain: dict[str, object] = json.loads(

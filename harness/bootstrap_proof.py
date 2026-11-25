@@ -14,9 +14,14 @@ root); the log is the bootstrap's output.
 
 matrix: the jobs to run, one per host for each project file in DIR that has
 a [bootstrap] table and is ready. A project is ready when its notes branch
-exists and the script its smoke command runs is on the product's default
-branch (smoke_paths); until then it is skipped, and the reason is written to
-the summary and printed as a GitHub notice. It reads GitHub through gh, so
+exists, the smoke command the bootstrap will run is this project file's, and
+the script it runs is on the product's default branch (smoke_paths); until
+then it is skipped, and the reason is written to the summary and printed as
+a GitHub notice. The bootstrap runs the smoke command of the product's
+pinned harness (bootstrap.pin_harness reads projects/<name>.toml at the
+harness.lock commit), so a product whose pin names another smoke command
+than this file's (one its default branch has moved past, such as GUI.Forms'
+ci_build.py --tests) waits for its lock to move (pinned_smoke_reason). It reads GitHub through gh, so
 GH_TOKEN must be set. FILE receives "matrix=<JSON>" and "count=<jobs>" lines
 (GITHUB_OUTPUT); the summary is Markdown (GITHUB_STEP_SUMMARY). Each entry
 says whether the job keeps a warm compiler cache (warm_cache): only for a
@@ -77,6 +82,7 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
+import tomllib
 import urllib.parse
 
 import ci_tree_receipt
@@ -254,12 +260,51 @@ def readiness(product: project.Project, github: GitHub) -> str | None:
         return product.repository + ' cannot be read (missing or private)'
     if not github.has_branch(product.bootstrap.notes_repository, product.bootstrap.notes_branch):
         return product.bootstrap.notes_repository + ' has no branch ' + product.bootstrap.notes_branch + ' yet'
+    stale: str | None = pinned_smoke_reason(product, branch, github)
+    if stale is not None:
+        return stale
     path: str
     for path in smoke_paths(product.bootstrap.smoke):
         inside: str | None = repository_path(product, path)
         if inside is not None and not github.has_path(product.repository, inside, branch):
             return 'its smoke script ' + inside + ' is not on ' + product.repository + ' ' + branch + ' yet'
     return None
+
+
+def pinned_smoke_reason(product: project.Project, branch: str, github: GitHub) -> str | None:
+    """None when the bootstrap will run this project file's smoke command, else why the product waits.
+
+    A product with a harness.lock is bootstrapped with its pinned harness's projects/<name>.toml
+    (bootstrap.pin_harness), so it runs that file's [bootstrap] smoke against its current checkout.
+    This project file names the product's current smoke command; a pinned one that differs is one the
+    product's default branch has moved past, and the product waits for its lock to move. Without a
+    lock, or when the pinned harness has no project file for it, the bootstrap keeps this file.
+    """
+    assert product.bootstrap is not None
+    text: str | None = github.text(product.repository, lock.LOCK_NAME, branch)
+    if text is None:
+        return None
+    try:
+        pinned: lock.Lock = lock.parse(text, product.repository + ' ' + lock.LOCK_NAME)
+    except lock.LockError as error:
+        return str(error)
+    pinned_file: str = 'projects/' + product.name + '.toml'
+    pinned_text: str | None = github.text(pinned.repository, pinned_file, pinned.commit)
+    if pinned_text is None:
+        return None
+    try:
+        document: dict[str, object] = tomllib.loads(pinned_text)
+    except tomllib.TOMLDecodeError as error:
+        return 'its pinned harness\'s ' + pinned_file + ' does not parse: ' + str(error)
+    table: object = document.get('bootstrap')
+    smoke: object = table.get('smoke') if type(table) is dict else None
+    pinned_smoke: tuple[str, ...] = tuple(str(part) for part in smoke) if type(smoke) is list else ()
+    if pinned_smoke == product.bootstrap.smoke:
+        return None
+    reason: str = ('its ' + lock.LOCK_NAME + ' pins the harness at ' + pinned.commit[:12] + ', whose ' + pinned_file
+                   + ' runs the smoke build ' + ' '.join(pinned_smoke or ('(none)',)) + ', not this file\'s '
+                   + ' '.join(product.bootstrap.smoke) + '; its lock must move to a harness that runs this one')
+    return reason
 
 
 def repository_path(product: project.Project, path: str) -> str | None:

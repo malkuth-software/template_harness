@@ -3,7 +3,6 @@
 #include <gui_forms/event.hpp>
 
 #include <string>
-#include <string_view>
 
 namespace example_app {
 
@@ -27,15 +26,15 @@ Greeter::Greeter()
 }
 
 void Greeter::on_greet() {
-    const std::string_view typed = (*name).text();
-    if (typed.empty()) {
-        (*greeting).set_text("Type a name first.");
+    // Properties are cells: `.read()` reads, assignment writes (and raises
+    // the change), and the list's items are edited in place.
+    const std::string person = (*name).text.read();
+    if (person.empty()) {
+        (*greeting).text = "Type a name first.";
         return;
     }
-    const std::string person(typed);
-    const std::string text = "Hello, " + person + "!";
-    (*greeting).set_text(text);
-    (*greeted).add_item(person);
+    (*greeting).text = "Hello, " + person + "!";
+    (*greeted).items.append(person);
 }
 
 } // namespace example_app

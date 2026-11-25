@@ -158,7 +158,26 @@ class LiveWatchdogTests(SandboxCase):
         return subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], stdout=subprocess.PIPE).stdout.decode().strip()
 
     def fake_procs(self):
-        return [p for p in sushirice.list_processes() if p["path"] == self.fake]
+        """The processes started through this test's fake-clang link.
+
+        macOS's `ps -o comm=` gives the executable's full path; Linux's gives only its
+        basename (at most 15 characters), so there the path is confirmed from argv[0],
+        which the build script passes as the link's full path."""
+        found = []
+        for process in sushirice.list_processes():
+            if process["path"] == self.fake:
+                found.append(process)
+            elif process["name"] == "fake-clang" and self.argv0(process["pid"]) == self.fake:
+                found.append(process)
+        return found
+
+    @staticmethod
+    def argv0(pid):
+        try:
+            with open("/proc/%d/cmdline" % pid, "rb") as handle:
+                return handle.read().split(b"\0")[0].decode("utf-8", "replace")
+        except OSError:
+            return None  # no /proc (macOS), or the process has ended
 
     def write_rules(self, mode="enforce", **watchdog):
         settings = {"interval_s": 0.2, "max_compilers": 1, "pressure_level": "none", "min_free_memory_percent": 0,

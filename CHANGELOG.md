@@ -6,7 +6,41 @@ and new form. Provisional rows there may change without an entry.
 
 ## Unreleased
 
+### Fixed
+- FranSushi plugin tests on Linux. sushirice's live watchdog tests found
+  their fake compilers by the full path in `ps -o comm=`, which Linux gives
+  as a 15-character basename, so `test_sigterm_to_wrapper_releases_paused_jobs`
+  saw "nothing was paused" and the tests' "nothing left" checks passed
+  without looking. They now confirm a basename match from
+  `/proc/<pid>/cmdline`. sushiwrap's `anonymize` replaced the user name
+  inside a host name that contains it (GitHub's runner on runnervm...),
+  leaving `<user>vm...`; it now replaces the longer name first.
+
 ### Changed
+- Linux links the harness's own C++ runtime, on every distribution.
+  `harness/build_linux_runtimes.py` builds libc++, libc++abi and libunwind
+  from the pinned LLVM 22.1.8 as position-independent, hermetic static
+  archives for the host's C library (glibc or musl) and architecture, into
+  `.build/toolchain/llvm-22.1.8-linux-<arch>-<libc>`. A shared library can
+  therefore carry the runtime: a distribution's archives need not be
+  position independent (Alpine's libc++abi.a is not). On Linux
+  `harness/cmake/llvm22.cmake` now requires `<env_prefix>_LLVM_RUNTIME` and
+  the archives, and refuses to configure without them; the distribution's
+  packages are only the bootstrap compiler. `harness/linux_runtime_manifest.py`
+  records and verifies the payload. `harness-native.yml` gains the
+  `linux_runtimes` input (default on) and caches the runtime, keyed on both
+  scripts and the compiler identity.
+- macOS links its C++ runtime statically, as Linux and Windows do (one
+  module per program, owner decision 2026-11-15).
+  `harness/build_macos_runtimes.py` builds hermetic static archives of
+  libc++, libc++abi and libunwind beside the dylibs. Hermetic means hidden
+  visibility, so a shared library that links them exports none of their
+  symbols. `harness/macos_runtime_manifest.py` requires and records the
+  archives, so a cached runtime tree without them is rebuilt: the cache key
+  hashes both scripts. When the archives are present, `harness/cmake/llvm22.cmake`
+  links them with `-nostdlib++`, and a program then depends only on system
+  libraries. `HARNESS_STATIC_CXX_RUNTIME` reports which runtime was linked.
+  A tree with dylibs only still links them through the rpath.
 - `claude/` is now where the FranSushi plugins are developed: each plugin
   keeps its tests in `claude/plugins/<name>/tests/`, and
   `harness/test_fransushi.py` runs them with the harness suite. The
@@ -16,6 +50,33 @@ and new form. Provisional rows there may change without an entry.
   provenance.
 
 ### Added
+- `[state_machines] expected_compile_failures` in the project file: `[glob,
+  reason]` pairs naming translation units meant not to compile, such as
+  GUI.Forms' `tests/effect_pass` refusal cases built with its effect-pass
+  Clang plugin. Since a unit whose front end fails now fails
+  `check_state_machines.py --gate`, those units failed it by design.
+  A listed unit in scope runs even without a switch, is never cached, and
+  is not analysed; its failure is counted. One that compiles is listed with
+  its entry and fails `--gate`, so the list cannot go stale silently.
+  `projects/gui_forms.toml` lists the 17 reject cases.
+- `harness/ic_declarations.py` (provisional): behavioural constraint
+  declarations, the IC study's phase IC1. One TOML declaration per component,
+  beside its header, states each call's clauses and refusals, the object's
+  states and the calls each admits, threads and ownership; `generate` writes
+  the header's `// ic:` contract lines, an entry-check header (one predicate
+  per clause, which the code calls), a member-manifest column, fuzz block
+  stubs and proof obligations; `check` fails on a stale output or an uncalled
+  predicate (`docs/ic_declarations.md`). STXlib's allocator, containers and
+  files are the first adopters.
+- `harness/ic_declarations.py`, additive format of schema 1 (provisional,
+  kept identical with STXlib's `tools/ic_declarations.py`): the project
+  keys `engine` (the engine's C++ blocks, IC2), `gate`, `gate_run` and
+  `deductions` (IC4); `[engine]` tables in a declaration and `engine` on a
+  call; a call's `refusal_order` (which refusal wins when several apply);
+  obligations as lemmas (`given`, `shows`, `sources`) or structural
+  (`untouched`, `paths`, `metadata`), and `missing`. A declaration without
+  them generates what it did before (`docs/ic_declarations.md` sections 3,
+  7 and 8).
 - `new_app.sh`/`new_app.ps1` and `harness/new_app.py`: one command to a
   harnessed GUI.Forms app (`docs/new_app.md`). It validates the name and
   derives the names (`docs/adopting.md` §2, checked against every project
