@@ -352,6 +352,11 @@ def prepare_build(plan: Plan, harness: PinnedHarness) -> None:
     """Writes the build environment (restore_local.py env), runs the platform's prepare commands in it
     ([bootstrap.<platform>] prepare), and writes it again with the NAME=VALUE lines they printed."""
     restore: Path = harness.root / 'harness' / 'restore_local.py'
+    if restore.is_file() and 'def write_build_environment' not in restore.read_text(encoding='utf-8'):
+        # A product pinning a harness older than the env command keeps its own
+        # build setup; its next harness.lock bump brings the environment.
+        say('the pinned harness writes no build environment; build as the product scripts do')
+        return
     env_command: list[str] = [sys.executable, '-B', str(restore), 'env', '--platform', plan.platform]
     change(plan, env_command, 'writing the build environment', plan.workspace, step_environment(plan, harness))
     table: project.BootstrapPlatform | None = (None if harness.product.bootstrap is None
@@ -434,7 +439,7 @@ def bootstrap(plan: Plan) -> None:
         say('Smoke build skipped' + (' (--no-smoke)' if not plan.smoke else ' (the project names none)'))
     else:
         change(plan, smoke, 'the smoke build', plan.workspace, environment)
-    if plan.restore:
+    if plan.restore and (plan.workspace / BUILD_ENVIRONMENT_RECORD).is_file():
         say('Before building in this workspace, load its build environment: . ' + BUILD_ENVIRONMENT_RECORD[:-len('.json')]
             + '.ps1 (PowerShell) or . ' + BUILD_ENVIRONMENT_RECORD[:-len('.json')] + '.sh (a shell)')
     say('Bootstrap finished' + (' (dry run: nothing was changed)' if plan.dry_run else ''))
