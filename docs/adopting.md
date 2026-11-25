@@ -109,6 +109,7 @@ new history of caches and receipts, so choose the names once.
 | `[project] env_prefix` | Every environment variable the tools read or set: `<env_prefix>_LLVM_RUNTIME`, `_PLATFORM`, `_COMPILER_ID`, `_RUNNER`, `_SANITIZER_DEBUG_INFO`, `_PACKAGE_WINDOWS_TOOLCHAIN` | yes |
 | `[ci] artifact_prefix` | Every workflow artifact: `<prefix>validated-…`, `inputs-…`, `tree-…`, `sanitize-ccache-…` | yes |
 | `[ci] cache_asset_prefix` | The compiler-cache release asset `<prefix><platform>.tar.gz` | no: leave it out if you publish no compiler caches (the bootstrap then restores none) |
+| `[ci] runtime_asset_prefix`, `sdk_asset_prefix` | Release assets beside the cache, `<prefix><platform>.tar.gz`, that `publish_cache.py` publishes when the job made them: the C++ runtime the objects were compiled against (extracted into the workspace; the bootstrap restores it with the cache) and the installed SDK an application links instead of compiling the product | no |
 | `[ci] native_workflow`, `native_job` | The workflow file and job whose runs may produce receipts and caches; reuse trusts no other. `native_job` has two forms, described below | yes |
 | `[ci] pinned_cache_revisions` | A JSON file under the source root listing the cache releases the pruner keeps | no; only `prune_cache_releases.py` reads it |
 | `[toolchain] repository` | The Windows toolchain's publisher, and where `restore_local.py` reads it from | yes |
@@ -424,9 +425,19 @@ It runs these steps:
    `DIR/template_harness` and runs the remaining steps from it;
 2. clones the notes, with the notes branch as a worktree;
 3. clones the private projects repository, with `--in-house` only;
-4. restores the toolchain and the newest usable compiler cache. The cache
-   is skipped when the project has no `ci.cache_asset_prefix`;
-5. runs the smoke command from `DIR`.
+4. restores the toolchain and the newest usable compiler cache (with its
+   runtime archive, when the release has one), then restores or builds the
+   C++ runtime on macOS and Linux (`restore_local.py runtime`; on Linux once
+   the printed packages bring clang 22.1). The cache is skipped when the
+   project has no `ci.cache_asset_prefix`. Then it writes CI's build
+   environment (`restore_local.py env`, `harness/build_environment.py`):
+   the ccache settings and locale the restored `cache-manifest.json`
+   records, the toolchain and runtime, and the `[bootstrap]` environment;
+   it names anything that will still make the cache miss on this machine
+   (another compiler build, another macOS SDK), runs the platform's
+   `prepare` commands in it, and leaves it in `.ci/local-build-env.sh` and
+   `.ps1` for later builds;
+5. runs the smoke command from `DIR`, in that environment.
 
 With `source_dir = "."`, step 1 clones the product into `DIR` itself.
 `DIR` must be empty or missing, or already that clone, which a re-run
@@ -449,13 +460,15 @@ The `[bootstrap]` fields:
 | `notes_branch` | the project name | the worktree `DIR/notes-<branch>` |
 | `projects_repository` | `<owner>/projects` | cloned with `--in-house` |
 | `smoke` | none | the smoke command, run from `DIR`; `{python}` becomes the bootstrap's interpreter |
+| `environment` | none | `NAME = "value"` pairs of every platform's build environment; `{workspace}` becomes the workspace root |
+| `[bootstrap.<platform>] environment` | none | the same for one platform, over the common ones |
+| `[bootstrap.<platform>] prepare` | none | commands run from `DIR` after the restore, in the environment; each `NAME=VALUE` line one prints joins it |
 
 Pick a smoke command that is quick and needs only what the restore
 supplies. GUI.Forms uses
-`["{python}", "gui_forms/tools/ci_build.py", "--tests", "^gui_forms_core_tests$"]`:
-a plain build of what one test reads, then that test, with nothing
-installed. Its build driver was changed to accept that command; check
-that yours accepts the command you name.
+`["{python}", "gui_forms/tools/ci_build.py", "--install-only"]`: the plain
+build CI's cache holds, installed and checked as an SDK. Check that your
+build driver accepts the command you name.
 
 **The checkpoint tool** folds workers' local branches into one verified PR.
 It is the default way work reaches GitHub: workers never push, and the
