@@ -16,10 +16,10 @@ schema = 2
 
 [release]
 repository = "malkuth-software/gui_forms"
-tag = "v1.0.1634"
+tag = "v1.0.1649"
 # The source archive's name; pin substitutes the release's version.
 source_asset = "gui-forms-sdk-{version}-source.tar.gz"
 
 [source]
-name = "gui-forms-sdk-1.0.1634-source.tar.gz"
-sha256 = "8aea115b8199512f84cf4ce220f5cb211d0fac9632adbf0590ed5e4cd912efd5"
+name = "gui-forms-sdk-1.0.1649-source.tar.gz"
+sha256 = "d8c1855aaffa7575739b623fe98b98d92a2da6395dfa52b546584463e362b54a"
