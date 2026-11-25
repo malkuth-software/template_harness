@@ -970,6 +970,11 @@ def syntax_command(command: str) -> list[str]:
             continue
         if argument in ("-MD", "-MMD", "-c"):
             continue
+        # The build's warnings-as-errors would turn the gate's own switch
+        # warnings into front-end failures, and a unit that fails is a unit
+        # left unchecked: the findings are read from the warnings.
+        if argument in ("-Werror", "/WX", "-WX") or argument.startswith("-Werror="):
+            continue
         result.append(argument)
     result.extend(["-fsyntax-only", "-Wno-everything", "-Wswitch", "-Wswitch-enum", "-Wswitch-default",
                    "-fno-color-diagnostics", "-fno-caret-diagnostics"])

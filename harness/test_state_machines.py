@@ -278,6 +278,17 @@ int b(E e) {
         self.assertIn("-fsyntax-only", arguments)
         self.assertIn("-Wswitch-default", arguments)
 
+    def test_syntax_command_drops_warnings_as_errors(self) -> None:
+        # With the build's -Werror the gate's -Wswitch-default warnings
+        # would fail the unit, which would then go unchecked.
+        arguments: list[str] = hunt.syntax_command(
+            "clang++ -Wall -Werror -Werror=switch /WX -c src/a.cpp")
+        self.assertNotIn("-Werror", arguments)
+        self.assertNotIn("-Werror=switch", arguments)
+        self.assertNotIn("/WX", arguments)
+        self.assertIn("-Wall", arguments)
+        self.assertIn("-Wswitch-default", arguments)
+
     def test_syntax_command_drops_the_cache_settings_of_a_precompiled_header_build(self) -> None:
         # CMake's precompiled-header commands pass ccache a setting before
         # the compiler; it is neither the program nor a compiler argument.
