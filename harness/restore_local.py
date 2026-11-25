@@ -356,9 +356,9 @@ def restore_toolchain(product: project.Project, platform: str, dry_run: bool) ->
         macos_runtime_manifest.verify(runtime)
         print('The macOS runtime at ' + str(runtime) + ' matches its manifest', flush=True)
         return
-    print('Build the macOS runtime yourself: python3 ' + str(harness / 'build_macos_runtimes.py')
-          + ' --work <scratch> --prefix ' + str(runtime) + '; then set ' + product.variable('LLVM_RUNTIME')
-          + '=' + str(runtime), flush=True)
+    print('The macOS runtime comes with the cache, or restore_local.py runtime builds it: python3 '
+          + str(harness / 'build_macos_runtimes.py') + ' --work <scratch> --prefix ' + str(runtime) + '; then set '
+          + product.variable('LLVM_RUNTIME') + '=' + str(runtime), flush=True)
 
 
 def runtime_target(workspace: Path, platform: str) -> Path:
@@ -390,11 +390,20 @@ def restore_runtime(product: project.Project, platform: str, dry_run: bool) -> P
     if restored is not None:
         try:
             verifier.verify(restored)
+            print('The C++ runtime at ' + str(restored) + ' matches its manifest', flush=True)
+            return restored
         except RuntimeError as error:
-            raise RestoreError('the restored C++ runtime at ' + str(restored) + ' does not verify here (' + str(error)
-                               + '); remove it to have this step build one') from error
-        print('The C++ runtime at ' + str(restored) + ' matches its manifest', flush=True)
-        return restored
+            # A runtime from CI's archive records CI's compiler and SDK; on a machine with
+            # another one its own check refuses it (and the cached objects miss anyway), so
+            # it is set aside and this machine's runtime is built in its place.
+            aside: Path = restored.with_name(restored.name + build_environment.UNVERIFIED_SUFFIX)
+            print('warning: the restored C++ runtime at ' + str(restored) + ' does not verify here (' + str(error)
+                  + '); ' + ('it would be set aside and rebuilt' if dry_run else 'setting it aside as ' + str(aside)
+                             + ' and building one'), flush=True)
+            if not dry_run:
+                if aside.exists():
+                    shutil.rmtree(aside)
+                restored.rename(aside)
     target: Path = runtime_target(workspace, platform)
     builder: str = 'build_macos_runtimes.py' if platform == 'macos-arm64' else 'build_linux_runtimes.py'
     command: list[str] = [sys.executable, '-B', str(Path(__file__).resolve().parent / builder),

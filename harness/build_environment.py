@@ -57,6 +57,8 @@ TOOLCHAIN_PATH_RECORD: str = '.ci/local-toolchain-path.txt'
 CACHE_MANIFEST: str = 'cache-manifest.json'
 RUNTIME_DIRECTORY: str = '.build/toolchain'
 RUNTIME_MANIFEST: str = 'runtime-manifest.json'
+# A restored runtime that did not verify, set aside by restore_local.py runtime.
+UNVERIFIED_SUFFIX: str = '.unverified'
 # The locale variables ccache hashes into every key (ccache's hash_common_info).
 LOCALE_VARIABLES: tuple[str, ...] = ('LANG', 'LC_ALL', 'LC_CTYPE', 'LC_MESSAGES')
 # The ccache settings cache_manifest.py records under "environment" (with the locale).
@@ -107,11 +109,13 @@ def recorded_environment(manifest: dict[str, Any], platform: str) -> dict[str, s
 
 
 def runtime_prefix(workspace: Path) -> Path | None:
-    """The one directory under .build/toolchain/ holding a runtime-manifest.json, or None (none, or several)."""
+    """The one directory under .build/toolchain/ holding a runtime-manifest.json, or None (none, or several);
+    one set aside as unverified does not count."""
     directory: Path = workspace / RUNTIME_DIRECTORY
     if not directory.is_dir():
         return None
-    found: list[Path] = sorted(manifest.parent for manifest in directory.glob('*/' + RUNTIME_MANIFEST))
+    found: list[Path] = sorted(manifest.parent for manifest in directory.glob('*/' + RUNTIME_MANIFEST)
+                               if not manifest.parent.name.endswith(UNVERIFIED_SUFFIX))
     prefix: Path | None = found[0] if len(found) == 1 else None
     return prefix
 

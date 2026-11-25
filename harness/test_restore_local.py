@@ -261,13 +261,16 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(restore_local.restore_runtime(self.product, 'linux-x64', False), prefix)
         verify.assert_called_once_with(prefix)
 
-    def test_a_runtime_that_does_not_verify_is_refused(self) -> None:
+    def test_a_runtime_that_does_not_verify_is_set_aside_and_rebuilt(self) -> None:
         prefix: Path = self.workspace / '.build/toolchain/llvm-22.1.8-linux'
         prefix.mkdir(parents=True)
         (prefix / 'runtime-manifest.json').write_text('{}', encoding='utf-8')
-        with mock.patch.object(restore_local.linux_runtime_manifest, 'verify', side_effect=RuntimeError('mismatch')):
-            with self.assertRaisesRegex(restore_local.RestoreError, 'does not verify'):
-                restore_local.restore_runtime(self.product, 'linux-x64', False)
+        with mock.patch.object(restore_local.linux_runtime_manifest, 'verify', side_effect=RuntimeError('mismatch')), \
+             mock.patch.object(restore_local, 'has_clang_22', return_value=False), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertIsNone(restore_local.restore_runtime(self.product, 'linux-x64', False))
+        self.assertFalse(prefix.exists())
+        self.assertTrue((prefix.parent / 'llvm-22.1.8-linux.unverified' / 'runtime-manifest.json').is_file())
 
     def test_without_clang_22_nothing_is_built(self) -> None:
         output: io.StringIO = io.StringIO()
