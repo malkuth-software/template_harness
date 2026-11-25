@@ -23,9 +23,10 @@ another file). In order:
 3. with --in-house only: <github>/<projects_repository>.git into
    DIR/projects. It is private; without access the bootstrap stops and
    says so;
-4. the toolchain and the compiler cache, through harness/restore_local.py
-   (skipped with --no-restore; the cache also when the project publishes
-   none, having no ci.cache_asset_prefix); then CI's build environment
+4. the toolchain, the compiler cache and the C++ runtime, through
+   harness/restore_local.py (skipped with --no-restore; the cache also when
+   the project publishes none, having no ci.cache_asset_prefix; the runtime
+   restored with the cache or built, on macOS and Linux); then CI's build environment
    (restore_local.py env: the ccache settings, CI's locale, the project's
    [bootstrap.<platform>] environment), the platform's prepare commands
    run in it, and the environment again with the settings they printed;
@@ -416,6 +417,9 @@ def bootstrap(plan: Plan) -> None:
             kinds.append('cache')
         else:
             say('Cache restore skipped (the project publishes no compiler caches: no ci.cache_asset_prefix)')
+        if (harness.root / 'harness' / 'build_environment.py').is_file():
+            # The pinned harness restores or builds the C++ runtime (restore_local.py runtime).
+            kinds.append('runtime')
         kind: str
         for kind in kinds:
             command: list[str] = [sys.executable, '-B', str(harness.root / 'harness' / 'restore_local.py'), kind,

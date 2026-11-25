@@ -7,6 +7,7 @@ project of HARNESS_PROJECT in the workspace of HARNESS_WORKSPACE:
 
     python3 harness/restore_local.py toolchain --platform P [--dry-run]
     python3 harness/restore_local.py cache --platform P [--dry-run] [--revision SHA]
+    python3 harness/restore_local.py runtime --platform P [--dry-run]
     python3 harness/restore_local.py env --platform P [--dry-run] [--set NAME=VALUE ...]
 
 toolchain
@@ -33,6 +34,15 @@ cache
     platform's, it is restored the same way: the C++ runtime CI built
     (GUI.Forms: the own runtime on Windows, the static runtime on Linux),
     which a fresh machine would otherwise build for minutes.
+runtime
+    macos-arm64 and linux-*: the static C++ runtime the build links
+    (<PREFIX>_LLVM_RUNTIME). One the cache or runtime archive restored under
+    .build/toolchain/ is verified against its manifest; else it is built
+    there with harness/build_macos_runtimes.py or build_linux_runtimes.py,
+    when a clang 22.1 is on PATH (on Linux the packages printed by
+    toolchain bring it; without it the step says so and changes nothing).
+    windows-x64: nothing (a product builds its own runtime in its
+    [bootstrap.windows-x64] prepare commands, reusing a restored one).
 env
     The build environment CI gives the project's build
     (build_environment.py): the ccache settings and locale the restored
@@ -54,6 +64,7 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import platform as host_platform
 import shlex
 import shutil
 import subprocess
@@ -63,6 +74,7 @@ import urllib.request
 from typing import Any, BinaryIO
 
 import build_environment
+import linux_runtime_manifest
 import macos_runtime_manifest
 import project
 import windows_toolchain
@@ -349,6 +361,58 @@ def restore_toolchain(product: project.Project, platform: str, dry_run: bool) ->
           + '=' + str(runtime), flush=True)
 
 
+def runtime_target(workspace: Path, platform: str) -> Path:
+    """Where the platform's runtime goes when the bootstrap builds it."""
+    if platform == 'macos-arm64':
+        return workspace / MACOS_RUNTIME
+    name: str = linux_runtime_manifest.runtime_directory_name(linux_runtime_manifest.c_library(),
+                                                              host_platform.machine())
+    return workspace / build_environment.RUNTIME_DIRECTORY / name
+
+
+def has_clang_22() -> bool:
+    """Whether the clang on PATH is LLVM 22.1 (the runtimes' bootstrap compiler)."""
+    if shutil.which('clang') is None:
+        return False
+    version: str = subprocess.run(['clang', '--version'], capture_output=True, text=True, check=False).stdout
+    return 'clang version 22.1.' in version
+
+
+def restore_runtime(product: project.Project, platform: str, dry_run: bool) -> Path | None:
+    """The runtime prefix, verified when restored and built when missing (see runtime above); None
+    when the platform needs none here or it could not be built."""
+    if platform == 'windows-x64':
+        print('The Windows runtime is the product\'s own ([bootstrap.windows-x64] prepare)', flush=True)
+        return None
+    workspace: Path = product.workspace_root()
+    restored: Path | None = build_environment.runtime_prefix(workspace)
+    verifier: Any = macos_runtime_manifest if platform == 'macos-arm64' else linux_runtime_manifest
+    if restored is not None:
+        try:
+            verifier.verify(restored)
+        except RuntimeError as error:
+            raise RestoreError('the restored C++ runtime at ' + str(restored) + ' does not verify here (' + str(error)
+                               + '); remove it to have this step build one') from error
+        print('The C++ runtime at ' + str(restored) + ' matches its manifest', flush=True)
+        return restored
+    target: Path = runtime_target(workspace, platform)
+    builder: str = 'build_macos_runtimes.py' if platform == 'macos-arm64' else 'build_linux_runtimes.py'
+    command: list[str] = [sys.executable, '-B', str(Path(__file__).resolve().parent / builder),
+                          '--work', str(workspace / DOWNLOAD_DIRECTORY / 'llvm-runtimes'), '--prefix', str(target),
+                          '--jobs', str(os.cpu_count() or 4)]
+    if dry_run:
+        print('would run: ' + shlex.join(command), flush=True)
+        return None
+    if not has_clang_22():
+        print('The C++ runtime is not built: no clang 22.1 on PATH (install the packages above first); then '
+              'run: ' + shlex.join(command), flush=True)
+        return None
+    print('Building the C++ runtime into ' + str(target) + ' (several minutes, once per workspace)', flush=True)
+    subprocess.run(command, check=True)
+    verifier.verify(target)
+    return target
+
+
 def write_environment(product: project.Project, platform: str, settings: list[tuple[str, str]],
                       dry_run: bool) -> None:
     """env: writes (or with dry_run prints) the build environment, then names what will still miss."""
@@ -380,7 +444,7 @@ def parse_setting(text: str) -> tuple[str, str]:
 def main(argv: list[str] | None = None) -> int:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=('toolchain', 'cache', 'env'))
+    parser.add_argument('command', choices=('toolchain', 'cache', 'runtime', 'env'))
     parser.add_argument('--platform', required=True, choices=PLATFORMS)
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--set', dest='settings', action='append', type=parse_setting, default=[],
@@ -394,6 +458,8 @@ def main(argv: list[str] | None = None) -> int:
             restore_toolchain(product, args.platform, args.dry_run)
         elif args.command == 'cache':
             restore_cache(product, args.platform, args.dry_run, args.revision)
+        elif args.command == 'runtime':
+            restore_runtime(product, args.platform, args.dry_run)
         else:
             write_environment(product, args.platform, args.settings, args.dry_run)
     except (RestoreError, ValueError, OSError, subprocess.CalledProcessError) as error:

@@ -242,6 +242,42 @@ class RuntimeAssetTests(CacheTests):
         self.assertEqual(github.downloads, ['build-' + self.newer])
 
 
+class RuntimeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        directory: tempfile.TemporaryDirectory[str] = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.workspace: Path = Path(directory.name).resolve()
+        patched: mock._patch_dict = mock.patch.dict(os.environ, {'HARNESS_WORKSPACE': str(self.workspace)})
+        patched.start()
+        self.addCleanup(patched.stop)
+        self.product: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
+
+    def test_a_restored_runtime_is_verified_and_kept(self) -> None:
+        prefix: Path = self.workspace / '.build/toolchain/llvm-22.1.8-linux'
+        prefix.mkdir(parents=True)
+        (prefix / 'runtime-manifest.json').write_text('{}', encoding='utf-8')
+        with mock.patch.object(restore_local.linux_runtime_manifest, 'verify') as verify, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(restore_local.restore_runtime(self.product, 'linux-x64', False), prefix)
+        verify.assert_called_once_with(prefix)
+
+    def test_a_runtime_that_does_not_verify_is_refused(self) -> None:
+        prefix: Path = self.workspace / '.build/toolchain/llvm-22.1.8-linux'
+        prefix.mkdir(parents=True)
+        (prefix / 'runtime-manifest.json').write_text('{}', encoding='utf-8')
+        with mock.patch.object(restore_local.linux_runtime_manifest, 'verify', side_effect=RuntimeError('mismatch')):
+            with self.assertRaisesRegex(restore_local.RestoreError, 'does not verify'):
+                restore_local.restore_runtime(self.product, 'linux-x64', False)
+
+    def test_without_clang_22_nothing_is_built(self) -> None:
+        output: io.StringIO = io.StringIO()
+        with mock.patch.object(restore_local, 'has_clang_22', return_value=False), \
+             mock.patch.object(restore_local.subprocess, 'run') as run, contextlib.redirect_stdout(output):
+            self.assertIsNone(restore_local.restore_runtime(self.product, 'linux-x64', False))
+        run.assert_not_called()
+        self.assertIn('build_linux_runtimes.py', output.getvalue())
+
+
 class FakeResponse(io.BytesIO):
     """urlopen's response: a readable context manager."""
 
