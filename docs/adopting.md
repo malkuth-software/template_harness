@@ -288,7 +288,11 @@ There are two ways to run the harness in CI.
   `configure_command` (a Ninja tree with compile commands) and
   `build_dir`. It checks what a change can affect, and the whole tree on a
   full-tree trigger. It is the one job that installs `python3-clang-22`
-  (with `libclang-22-dev`), for the AST reader.
+  (with `libclang-22-dev`), for the AST reader. Like the native build it
+  builds or restores the static Linux runtime the toolchain file requires
+  (`linux_runtimes`, on by default) and shares that cache and the
+  `install_cache_paths` cache with the native job of `platform`
+  (`linux-x64` by default).
 
 Call each one as
 `uses: malkuth-software/template_harness/.github/workflows/<file>@<commit>`,

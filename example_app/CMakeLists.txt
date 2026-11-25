@@ -44,15 +44,20 @@ if(TARGET GUIForms::Application)
         set(example_app_fonts "$<TARGET_FILE_DIR:example_app>/fonts")
     endif()
     add_custom_command(TARGET example_app POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${GUIForms_FONT_DIR}" "${example_app_fonts}")
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${GUIForms_FONT_DIR} ${example_app_fonts}
+        VERBATIM)
 
     # An installed Windows SDK keeps its DLLs in bin/; stage the ones the
-    # program actually uses beside it.
+    # program actually uses beside it. A program that links only static
+    # archives (the v1.0 SDK's Application) uses none, and copy_if_different
+    # with no source is a usage error, so the whole command is generated only
+    # when the list is not empty.
     if(WIN32)
+        set(example_app_dlls "$<TARGET_RUNTIME_DLLS:example_app>")
         add_custom_command(TARGET example_app POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_RUNTIME_DLLS:example_app> $<TARGET_FILE_DIR:example_app>
-            COMMAND_EXPAND_LISTS)
+            COMMAND "$<$<BOOL:${example_app_dlls}>:${CMAKE_COMMAND};-E;copy_if_different;${example_app_dlls};$<TARGET_FILE_DIR:example_app>>"
+            COMMAND_EXPAND_LISTS
+            VERBATIM)
     endif()
 
     # Opens the native window and closes it once ready. It needs a display:
