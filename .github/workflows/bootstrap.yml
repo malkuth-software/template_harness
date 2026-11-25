@@ -17,9 +17,9 @@ name: Bootstrap proof
 # has merged. Dispatch with projects to run only some.
 #
 # The bootstrap prints, but does not run, the steps that need an
-# administrator: the Ubuntu packages on Linux and the LLVM runtime build on
-# macOS. This workflow runs the command the first bootstrap printed, as a
-# person would. The run steps are:
+# administrator: the Ubuntu packages and the static C++ runtime build on
+# Linux, and the LLVM runtime build on macOS. This workflow runs the commands
+# the first bootstrap printed, as a person would. The run steps are:
 #
 # 1. bootstrap-first (--no-smoke): clones, pins the harness and restores;
 #    harness/bootstrap_proof.py first checks its output and the workspace;
@@ -253,6 +253,51 @@ jobs:
         with:
           path: ${{ runner.temp }}/apt-archives
           key: ${{ steps.linux-packages.outputs.cache-primary-key }}
+      # The Linux C++ runtime step the first bootstrap printed after the
+      # packages: "Then build the static C++ runtime with that compiler:
+      # <command>; then set NAME to that prefix", the prefix written as
+      # <workspace>/.build/toolchain/<python3 MANIFEST --directory-name>.
+      - name: Read the Linux runtime step the first bootstrap named
+        id: linux-runtime-step
+        if: runner.os == 'Linux'
+        run: |
+          line=$(sed -n 's/^Then build the static C++ runtime with that compiler: //p' "$PROOF_LOGS/bootstrap-first.log")
+          if [ -z "$line" ]; then
+            echo "The first bootstrap named no Linux runtime step" >&2
+            exit 1
+          fi
+          manifest=$(printf '%s' "$line" | sed -n 's/.*<python3 \([^>]*\) --directory-name>.*/\1/p')
+          prefix="$PROOF_WORKSPACE/.build/toolchain/$(python3 -B "$manifest" --directory-name)"
+          command=$(printf '%s' "${line%%; then set *}" | sed -e "s|<scratch>|$RUNNER_TEMP/llvm-runtimes|" \
+            -e "s|<workspace>/.build/toolchain/<python3 [^>]*>|$prefix|")
+          variable=${line##*; then set }
+          variable=${variable% to that prefix}
+          echo "command=$command" >> "$GITHUB_OUTPUT"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          # The product's own name for it, and the toolchain's default
+          # (llvm22.cmake reads HARNESS_LLVM_RUNTIME without
+          # HARNESS_ENV_PREFIX; Plan Paint's smoke build reads that name).
+          echo "$variable=$prefix" >> "$GITHUB_ENV"
+          echo "HARNESS_LLVM_RUNTIME=$prefix" >> "$GITHUB_ENV"
+          echo "$command"
+          echo "$variable=$prefix"
+      - uses: actions/cache/restore@v4
+        id: linux-runtime-cache
+        if: runner.os == 'Linux'
+        with:
+          path: ${{ steps.linux-runtime-step.outputs.prefix }}
+          key: bootstrap-linux-runtime-v1-${{ runner.arch }}-${{ steps.linux-image.outputs.image }}-${{ hashFiles('ws/template_harness/harness/build_linux_runtimes.py', 'ws/template_harness/harness/linux_runtime_manifest.py', 'harness/harness/build_linux_runtimes.py', 'harness/harness/linux_runtime_manifest.py') }}
+      - name: Build the Linux runtime as the first bootstrap named
+        id: linux-runtime-build
+        if: runner.os == 'Linux' && steps.linux-runtime-cache.outputs.cache-hit != 'true'
+        env:
+          RUNTIME_COMMAND: ${{ steps.linux-runtime-step.outputs.command }}
+        run: sh harness/.github/scripts/proof_step.sh linux-runtime sh -c "$RUNTIME_COMMAND"
+      - uses: actions/cache/save@v4
+        if: steps.linux-runtime-build.outcome == 'success'
+        with:
+          path: ${{ steps.linux-runtime-step.outputs.prefix }}
+          key: ${{ steps.linux-runtime-cache.outputs.cache-primary-key }}
       - name: Install the macOS build tools
         if: runner.os == 'macOS'
         env:
