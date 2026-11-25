@@ -193,7 +193,7 @@ class BootstrapTests(unittest.TestCase):
         for line in output.splitlines():
             if line.startswith('would run: '):
                 lines.append(line)
-        self.assertEqual(len(lines), 8, output)
+        self.assertEqual(len(lines), 9, output)
         self.assertIn('git clone --quiet', lines[0])
         self.assertIn('malkuth-software/gui_forms.git', lines[0])
         self.assertIn('submodule update --init --recursive (when the product has .gitmodules)', lines[1])
@@ -203,7 +203,9 @@ class BootstrapTests(unittest.TestCase):
         # shlex quotes a path with backslashes, so the script name may be followed by a quote.
         self.assertRegex(lines[5], r"restore_local\.py'? toolchain --platform linux-x64$")
         self.assertRegex(lines[6], r"restore_local\.py'? cache --platform linux-x64$")
-        self.assertIn('smoke.json', lines[7])
+        # CI's build environment, written after the restore (no prepare commands on Linux).
+        self.assertRegex(lines[7], r"restore_local\.py'? env --platform linux-x64$")
+        self.assertIn('smoke.json', lines[8])
 
     def test_in_house_without_access_stops_clearly(self) -> None:
         status: int

@@ -158,15 +158,25 @@ merge_method = "merge"
 
 # harness/bootstrap.py: the notes clone (main, plus the gui_forms side branch
 # as the worktree notes-gui_forms), the in-house projects repository, and the
-# smoke build: ci_build.py configures as CI does, then a plain (not
-# sanitized) build of only what gui_forms_core_tests reads, and that test;
-# without --sanitize, --tests installs nothing (GUI.Forms #408 admitted it).
-# {python} is the interpreter running the bootstrap.
+# smoke build: ci_build.py --install-only builds the plain tree as CI does,
+# installs it and checks the installed SDK (ci_build.py lost --tests when
+# the tests moved to gui_forms_tests, so the old smoke stopped at argument
+# parsing). {python} is the interpreter running the bootstrap.
 [bootstrap]
 notes_repository = "malkuth-software/notes"
 notes_branch = "gui_forms"
 projects_repository = "malkuth-software/projects"
-smoke = ["{python}", "gui_forms/tools/ci_build.py", "--tests", "^gui_forms_core_tests$"]
+smoke = ["{python}", "gui_forms/tools/ci_build.py", "--install-only"]
+
+# Windows, as native-platform.yml builds it: STXlib's own runtime and libc++
+# (tools/own_runtime.py build prints the three GUI_FORMS_*_PREFIX/SOURCE
+# settings the toolchain reads), and the stx package where CI keeps it: its
+# include directories enter every compile's arguments relative to
+# CCACHE_BASEDIR, so the build tree's default stx-package/ misses every
+# cached object (Windows field test, 2026-11-24).
+[bootstrap.windows-x64]
+prepare = [["{python}", "gui_forms/tools/own_runtime.py", "build", "--out", ".ci/own-runtime", "--jobs", "4"]]
+environment = { GUI_FORMS_STX_PACKAGE_DIR = "{workspace}/.ci/stx-package" }
 
 [const_restrict]
 # harness/check_const_restrict.py (E3): the recorded restrict decisions,
