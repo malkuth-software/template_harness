@@ -24,6 +24,14 @@ struct CloseWhenReady final {
 };
 
 int run(const bool close_when_ready) {
+    // The application comes first, so the window made below joins it.
+    gui_forms::ApplicationCreateResult created = gui_forms::Application::create(gui_forms::ApplicationConfig{});
+    if (!created) {
+        std::cerr << "example_app: the application was not created (error "
+                  << static_cast<int>(created.error) << ")\n";
+        return 1;
+    }
+    gui_forms::Application& application = *created.application;
     Greeter greeter{};
     std::unique_ptr<gui_forms::Window> window =
         std::make_unique<gui_forms::Window>(greeter.root, gui_forms::Size{420.0, 360.0});
@@ -32,7 +40,7 @@ int run(const bool close_when_ready) {
     options.initial_size = {420.0, 360.0};
     options.minimum_size = {420.0, 360.0};
     if (close_when_ready) options.ready = CloseWhenReady{};
-    const gui_forms::ApplicationResult result = gui_forms::Application::run(std::move(window), std::move(options));
+    const gui_forms::ApplicationResult result = application.run(std::move(window), std::move(options));
     if (!result.accepted()) {
         std::cerr << "example_app: the application run failed (error "
                   << static_cast<int>(result.error) << ")\n";

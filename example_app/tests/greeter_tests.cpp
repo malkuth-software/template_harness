@@ -3,11 +3,11 @@
 // and drives it as a user would.
 #include "greeter.hpp"
 
+#include <gui_forms/borrow/borrowed_view/borrowed_view.hpp>
 #include <gui_forms/window.hpp>
 
 #include <cstdlib>
 #include <iostream>
-#include <span>
 #include <string>
 
 namespace {
@@ -30,24 +30,24 @@ int main() {
     example_app::Greeter greeter{};
     gui_forms::Window window(greeter.root, gui_forms::Size{420.0, 360.0});
     window.perform_layout();
-    require((*greeter.greeted).items().empty(), "the list starts empty");
+    require((*greeter.greeted).items.read().empty(), "the list starts empty");
 
     click(*greeter.greet);
-    require((*greeter.greeting).text() == "Type a name first.", "an empty name asks for one");
-    require((*greeter.greeted).items().empty(), "an empty name is not listed");
+    require((*greeter.greeting).text.read() == "Type a name first.", "an empty name asks for one");
+    require((*greeter.greeted).items.read().empty(), "an empty name is not listed");
 
-    (*greeter.name).set_text("Ada");
+    (*greeter.name).text = "Ada";
     click(*greeter.greet);
-    (*greeter.name).set_text("Grace");
+    (*greeter.name).text = "Grace";
     click(*greeter.greet);
-    require((*greeter.greeting).text() == "Hello, Grace!", "the label greets the latest name");
-    const std::span<const std::string> listed = (*greeter.greeted).items();
+    require((*greeter.greeting).text.read() == "Hello, Grace!", "the label greets the latest name");
+    const gui_forms::BorrowedSpan<std::string> listed = (*greeter.greeted).items.read();
     require(listed.size() == 2U && listed[0] == "Ada" && listed[1] == "Grace", "each greeted name is listed in order");
 
     greeter.dispose();
-    (*greeter.name).set_text("Linus");
+    (*greeter.name).text = "Linus";
     click(*greeter.greet);
-    require((*greeter.greeted).items().size() == 2U, "a disposed greeter no longer handles the button");
+    require((*greeter.greeted).items.read().size() == 2U, "a disposed greeter no longer handles the button");
     std::cout << "greeter: empty name, greeting, list and disposal passed\n";
     return 0;
 }
