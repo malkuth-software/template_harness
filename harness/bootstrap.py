@@ -58,7 +58,6 @@ HARNESS_WORKSPACE set.
 from __future__ import annotations
 import argparse
 from dataclasses import dataclass
-import json
 import os
 from pathlib import Path
 import platform as host_platform
@@ -67,6 +66,7 @@ import shlex
 import subprocess
 import sys
 
+import build_environment
 import lock
 import project
 
@@ -82,9 +82,9 @@ HARNESS_DIRECTORY: str = 'template_harness'
 # restore_local.py's TOOLCHAIN_DIRECTORY and DOWNLOAD_DIRECTORY.
 ROOT_LAYOUT_ENTRIES: tuple[str, ...] = (HARNESS_DIRECTORY + '/', 'notes/', '.build/', '.ccache/', '.ci/',
                                         '.toolchain/', '.bootstrap/')
-# Written by restore_local.py (its TOOLCHAIN_PATH_RECORD and BUILD_ENVIRONMENT_RECORD).
-TOOLCHAIN_PATH_RECORD: str = '.ci/local-toolchain-path.txt'
-BUILD_ENVIRONMENT_RECORD: str = '.ci/local-build-env.json'
+# Written by restore_local.py (build_environment's records).
+TOOLCHAIN_PATH_RECORD: str = build_environment.TOOLCHAIN_PATH_RECORD
+BUILD_ENVIRONMENT_RECORD: str = build_environment.BUILD_ENVIRONMENT_RECORD
 # A prepare command's output line that sets a build variable (project.BootstrapPlatform).
 SETTING_LINE: re.Pattern[str] = re.compile(r'[A-Z][A-Z0-9_]*=.*')
 
@@ -308,27 +308,18 @@ def pin_harness(plan: Plan) -> PinnedHarness:
 
 
 def step_environment(plan: Plan, harness: PinnedHarness) -> dict[str, str]:
-    """The environment of the steps after the clones: the project and workspace variables, the
-    restored Windows toolchain (restore_local.TOOLCHAIN_PATH_RECORD) before PATH when there is one,
-    and the build environment (restore_local.BUILD_ENVIRONMENT_RECORD) when it is written."""
+    """The environment of the steps after the clones: the project and workspace variables, and the
+    build environment (build_environment.BUILD_ENVIRONMENT_RECORD) once restore_local.py env wrote it,
+    else the restored Windows toolchain (TOOLCHAIN_PATH_RECORD) before PATH when there is one."""
     environment: dict[str, str] = dict(os.environ)
+    build_record: Path = plan.workspace / BUILD_ENVIRONMENT_RECORD
     record: Path = plan.workspace / TOOLCHAIN_PATH_RECORD
-    if record.is_file():
+    if build_record.is_file():
+        # Its PATH already puts the toolchain first (build_environment.build_environment).
+        environment = build_environment.apply_build_environment(build_record, environment)
+    elif record.is_file():
         directories: list[str] = record.read_text(encoding='utf-8').splitlines()
         environment['PATH'] = os.pathsep.join(directories + [environment.get('PATH', '')])
-    build_record: Path = plan.workspace / BUILD_ENVIRONMENT_RECORD
-    if build_record.is_file():
-        # restore_local.apply_build_environment's rule, repeated here: restore_local
-        # imports windows_toolchain, which needs the project at import.
-        values: dict[str, str] = json.loads(build_record.read_text(encoding='utf-8'))
-        name: str
-        for name in sorted(values):
-            if name == 'PATH':
-                continue  # the toolchain record above already put it first
-            if values[name] == '':
-                environment.pop(name, None)
-            else:
-                environment[name] = values[name]
     environment[project.PROJECT_VARIABLE] = str(harness.product.path)
     environment[project.WORKSPACE_VARIABLE] = str(plan.workspace)
     return environment
@@ -352,7 +343,7 @@ def prepare_build(plan: Plan, harness: PinnedHarness) -> None:
     """Writes the build environment (restore_local.py env), runs the platform's prepare commands in it
     ([bootstrap.<platform>] prepare), and writes it again with the NAME=VALUE lines they printed."""
     restore: Path = harness.root / 'harness' / 'restore_local.py'
-    if restore.is_file() and 'def write_build_environment' not in restore.read_text(encoding='utf-8'):
+    if restore.is_file() and not (harness.root / 'harness' / 'build_environment.py').is_file():
         # A product pinning a harness older than the env command keeps its own
         # build setup; its next harness.lock bump brings the environment.
         say('the pinned harness writes no build environment; build as the product scripts do')
@@ -440,8 +431,9 @@ def bootstrap(plan: Plan) -> None:
     else:
         change(plan, smoke, 'the smoke build', plan.workspace, environment)
     if plan.restore and (plan.workspace / BUILD_ENVIRONMENT_RECORD).is_file():
-        say('Before building in this workspace, load its build environment: . ' + BUILD_ENVIRONMENT_RECORD[:-len('.json')]
-            + '.ps1 (PowerShell) or . ' + BUILD_ENVIRONMENT_RECORD[:-len('.json')] + '.sh (a shell)')
+        say('Before building in this workspace, load its build environment: . '
+            + build_environment.BUILD_ENVIRONMENT_SHELL + ' (a shell) or . '
+            + build_environment.BUILD_ENVIRONMENT_POWERSHELL + ' (PowerShell)')
     say('Bootstrap finished' + (' (dry run: nothing was changed)' if plan.dry_run else ''))
 
 

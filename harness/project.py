@@ -10,7 +10,8 @@ holds the product's checkout (source_dir) and the CI state (.ci/, .ccache/,
 product's checkout is the workspace root itself, and the harness and the CI
 state sit inside it (File Manager's layout).
 
-A few fields may be left out (ci.cache_asset_prefix, ci.pinned_cache_revisions,
+A few fields may be left out (ci.cache_asset_prefix, ci.runtime_asset_prefix,
+ci.sdk_asset_prefix, ci.pinned_cache_revisions,
 tests.areas_file, the [state_machines] table, and the [checkpoint] and
 [bootstrap] tables); a tool that needs one fails with MissingField, "project
 <name> has no <field>", and the others run.
@@ -121,6 +122,9 @@ class BootstrapTable:
     linux_packages: str | None
     # [bootstrap.<platform>] tables by platform name; a platform without one needs nothing.
     platforms: dict[str, BootstrapPlatform]
+    # [bootstrap] environment: NAME = value pairs of every platform's build environment
+    # ({workspace} as in BootstrapPlatform); a platform's own environment overrides them.
+    environment: tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True)
@@ -142,6 +146,14 @@ class Project:
     # A compiler-cache archive is <cache_asset_prefix><platform>.tar.gz; None
     # for a product that publishes no compiler caches (cache_asset fails).
     cache_asset_prefix: str | None
+    # Beside the compiler cache in the same build-<sha> release, when the product
+    # publishes them (publish_cache.py; None: it does not): the C++ runtime CI
+    # built (<runtime_asset_prefix><platform>.tar.gz, extracted into the
+    # workspace; restore_local.py cache restores it), and the installed SDK an
+    # application links instead of compiling the product
+    # (<sdk_asset_prefix><platform>.tar.gz).
+    runtime_asset_prefix: str | None
+    sdk_asset_prefix: str | None
     # The workflow whose runs may produce receipts and caches, and its native
     # job's name: a prefix ("native" matches "native (<runner>, <platform>, ...)")
     # or a template with {platform} that a job's whole name must equal
@@ -249,6 +261,16 @@ class Project:
     def cache_asset(self, platform: str) -> str:
         """The compiler-cache archive's file and release asset name for a platform."""
         result: str = self.require_cache_asset_prefix() + platform + '.tar.gz'
+        return result
+
+    def runtime_asset(self, platform: str) -> str | None:
+        """The runtime archive's name for a platform, or None when the product publishes none."""
+        result: str | None = None if self.runtime_asset_prefix is None else self.runtime_asset_prefix + platform + '.tar.gz'
+        return result
+
+    def sdk_asset(self, platform: str) -> str | None:
+        """The installed SDK archive's name for a platform, or None when the product publishes none."""
+        result: str | None = None if self.sdk_asset_prefix is None else self.sdk_asset_prefix + platform + '.tar.gz'
         return result
 
     def native_job_matches(self, job_name: str, platform: str) -> bool:
@@ -506,7 +528,13 @@ def bootstrap_platform(value: Any, platform: str) -> BootstrapPlatform:
     command: Any
     for command in commands:
         prepare.append(text_list({'prepare': command}, 'prepare', where))
-    table: Any = value.get('environment', {})
+    result: BootstrapPlatform = BootstrapPlatform(prepare=tuple(prepare),
+                                                  environment=environment_table(value.get('environment', {}), where))
+    return result
+
+
+def environment_table(table: Any, where: str) -> tuple[tuple[str, str], ...]:
+    """An environment table's NAME = value pairs, sorted by name."""
     if type(table) is not dict:
         raise ValueError(where + '.environment must be a table of strings')
     environment: list[tuple[str, str]] = []
@@ -515,13 +543,12 @@ def bootstrap_platform(value: Any, platform: str) -> BootstrapPlatform:
         if type(table[name]) is not str:
             raise ValueError(where + '.environment.' + name + ' must be a string')
         environment.append((name, table[name]))
-    result: BootstrapPlatform = BootstrapPlatform(prepare=tuple(prepare), environment=tuple(environment))
-    return result
+    return tuple(environment)
 
 
 def bootstrap_table(value: Any, name: str, repository: str) -> BootstrapTable | None:
     """Defaults: <owner>/notes, the project name as the notes branch, <owner>/projects, no smoke build,
-    no named Linux package profile, no platform preparation."""
+    no named Linux package profile, no platform preparation, no environment."""
     if value is None:
         return None
     if type(value) is not dict:
@@ -541,7 +568,8 @@ def bootstrap_table(value: Any, name: str, repository: str) -> BootstrapTable | 
         projects_repository=named_text(value, 'projects_repository', 'bootstrap', owner + '/projects'),
         smoke=smoke,
         linux_packages=optional_text(value, 'linux_packages', 'bootstrap'),
-        platforms=platforms)
+        platforms=platforms,
+        environment=environment_table(value.get('environment', {}), 'bootstrap'))
     return table
 
 
@@ -580,6 +608,8 @@ def parse(document: dict[str, Any], path: Path) -> Project:
         env_prefix=text_field(product, 'env_prefix', 'project'),
         artifact_prefix=text_field(ci, 'artifact_prefix', 'ci'),
         cache_asset_prefix=optional_text(ci, 'cache_asset_prefix', 'ci'),
+        runtime_asset_prefix=optional_text(ci, 'runtime_asset_prefix', 'ci'),
+        sdk_asset_prefix=optional_text(ci, 'sdk_asset_prefix', 'ci'),
         native_workflow=text_field(ci, 'native_workflow', 'ci'),
         native_job=text_field(ci, 'native_job', 'ci'),
         toolchain_repository=text_field(toolchain, 'repository', 'toolchain'),

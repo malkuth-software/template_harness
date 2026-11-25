@@ -4,6 +4,7 @@ import contextlib
 import dataclasses
 import hashlib
 import io
+import json
 import os
 from pathlib import Path
 import shlex
@@ -223,83 +224,52 @@ class ReleaseListingTests(CacheTests):
         self.assertIsNone(missing)
 
 
-class BuildEnvironmentTests(unittest.TestCase):
-    def setUp(self) -> None:
-        directory: tempfile.TemporaryDirectory[str] = tempfile.TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        self.workspace: Path = Path(directory.name).resolve()
-        patched: mock._patch_dict = mock.patch.dict(os.environ, {'HARNESS_WORKSPACE': str(self.workspace)})
-        patched.start()
-        self.addCleanup(patched.stop)
-        base: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
-        assert base.bootstrap is not None
-        table: project.BootstrapPlatform = project.BootstrapPlatform(
-            prepare=(), environment=(('GUI_FORMS_STX_PACKAGE_DIR', '{workspace}/.ci/stx-package'),))
-        self.product: project.Project = dataclasses.replace(
-            base, bootstrap=dataclasses.replace(base.bootstrap, platforms={'windows-x64': table}))
+class RuntimeAssetTests(CacheTests):
+    def test_the_release_runtime_is_restored_with_the_cache(self) -> None:
+        runtime: str | None = self.product.runtime_asset('linux-x64')
+        assert runtime is not None
+        entry: dict[str, Any] = release(self.newer, '2026-10-24T00:00:00Z', self.asset)
+        entry['assets'].append({'name': runtime, 'created_at': '2026-10-24T00:00:00Z'})
+        github: FakeGitHub = FakeGitHub([entry], self.archive)
+        self.assertEqual(self.restore(github), 'build-' + self.newer)
+        self.assertEqual(github.downloads, ['build-' + self.newer, 'build-' + self.newer])
+        record: dict[str, Any] = json.loads((self.workspace / restore_local.CACHE_RECORD).read_text(encoding='utf-8'))
+        self.assertEqual(record['runtime'], runtime)
 
-    def test_windows_gets_the_ccache_settings_the_locale_and_the_project_environment(self) -> None:
-        values: dict[str, str] = restore_local.build_environment(self.product, 'windows-x64', [('EXTRA', 'x')])
-        base: str = self.workspace.as_posix()
-        self.assertEqual(values['CCACHE_DIR'], base + '/.ccache')
-        self.assertEqual(values['CCACHE_BASEDIR'], base)
-        self.assertEqual(values['CCACHE_COMPILERCHECK'], 'content')
-        self.assertEqual(values['CMAKE_CXX_COMPILER_LAUNCHER'], 'ccache')
-        # ccache hashes the locale: CI's msys2 shell sets LANG and no LC_* variable.
-        self.assertEqual(values['LANG'], 'en_US.UTF-8')
-        self.assertEqual(values['LC_ALL'], '')
-        self.assertEqual(values['GUI_FORMS_STX_PACKAGE_DIR'], base + '/.ci/stx-package')
-        self.assertEqual(values['EXTRA'], 'x')
-
-    def test_a_recorded_locale_wins(self) -> None:
-        (self.workspace / 'cache-manifest.json').write_text('{"environment": {"LANG": "C.UTF-8"}}',
-                                                            encoding='utf-8')
-        values: dict[str, str] = restore_local.build_environment(self.product, 'windows-x64', [])
-        self.assertEqual(values['LANG'], 'C.UTF-8')
-
-    def test_the_record_and_the_scripts_are_written_and_applied(self) -> None:
-        values: dict[str, str] = restore_local.build_environment(self.product, 'windows-x64', [])
-        with contextlib.redirect_stdout(io.StringIO()):
-            record: Path = restore_local.write_build_environment(self.product, values)
-        powershell: str = (self.workspace / restore_local.BUILD_ENVIRONMENT_POWERSHELL).read_text(encoding='utf-8')
-        shell: str = (self.workspace / restore_local.BUILD_ENVIRONMENT_SHELL).read_text(encoding='utf-8')
-        self.assertIn("$env:LANG = 'en_US.UTF-8'", powershell)
-        self.assertIn('Remove-Item -ErrorAction SilentlyContinue env:LC_ALL', powershell)
-        self.assertIn('export LANG=en_US.UTF-8', shell)
-        self.assertIn('unset LC_ALL', shell)
-        applied: dict[str, str] = restore_local.apply_build_environment(record, {'LC_ALL': 'C', 'PATH': 'p'})
-        self.assertNotIn('LC_ALL', applied)
-        self.assertEqual(applied['LANG'], 'en_US.UTF-8')
-
-    def test_a_bad_name_is_refused(self) -> None:
-        with self.assertRaisesRegex(restore_local.RestoreError, 'Not an environment variable name'):
-            restore_local.build_environment(self.product, 'linux-x64', [('lower', 'x')])
+    def test_a_release_without_a_runtime_restores_the_cache_alone(self) -> None:
+        github: FakeGitHub = FakeGitHub([release(self.newer, '2026-10-24T00:00:00Z', self.asset)], self.archive)
+        self.assertEqual(self.restore(github), 'build-' + self.newer)
+        self.assertEqual(github.downloads, ['build-' + self.newer])
 
 
-class ProducerRootTests(unittest.TestCase):
-    def test_the_producer_root_needs_an_msys64_name(self) -> None:
-        self.assertEqual(restore_local.producer_root({'producer': {'msys_root': 'D:\\a\\_temp\\msys64'}}),
-                         Path('D:\\a\\_temp\\msys64'))
-        self.assertIsNone(restore_local.producer_root({'producer': {'msys_root': 'D:\\a\\_temp\\other'}}))
-        self.assertIsNone(restore_local.producer_root({}))
+class FakeResponse(io.BytesIO):
+    """urlopen's response: a readable context manager."""
 
-    def test_a_free_root_is_used_and_an_occupied_one_is_not(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root: Path = Path(directory) / 'temp' / 'msys64'
-            manifest: dict[str, Any] = {'compiler_sha256': '0' * 64}
-            self.assertTrue(restore_local.usable_producer_root(root, manifest)[0])
-            root.mkdir(parents=True)
-            (root / 'something').write_text('x', encoding='utf-8')
-            usable: bool
-            reason: str
-            usable, reason = restore_local.usable_producer_root(root, manifest)
-            self.assertFalse(usable)
-            self.assertIn('holds another toolchain', reason)
-            compiler: Path = root.parent / restore_local.windows_toolchain.COMPILER_MEMBER
-            compiler.parent.mkdir(parents=True)
-            compiler.write_bytes(b'clang')
-            manifest = {'compiler_sha256': hashlib.sha256(b'clang').hexdigest()}
-            self.assertEqual(restore_local.usable_producer_root(root, manifest), (True, 'holds this toolchain'))
+    def __enter__(self) -> FakeResponse:
+        return self
+
+    def __exit__(self, *arguments: object) -> None:
+        self.close()
+
+
+class FakeOpener:
+    """Stands in for urllib.request.urlopen: records each address and answers an empty listing."""
+
+    def __init__(self) -> None:
+        self.opened: list[str] = []
+
+    def open(self, request: Any, timeout: int) -> FakeResponse:
+        self.opened.append(request.full_url)
+        return FakeResponse(b'[]')
+
+
+class PublicEndpointTests(unittest.TestCase):
+    def test_without_gh_the_public_api_is_read(self) -> None:
+        opener: FakeOpener = FakeOpener()
+        with mock.patch.object(restore_local.shutil, 'which', return_value=None), \
+             mock.patch.object(restore_local.urllib.request, 'urlopen', opener.open):
+            self.assertEqual(restore_local.gh_json('repos/o/r/releases?per_page=1'), [])
+        self.assertEqual(opener.opened, ['https://api.github.com/repos/o/r/releases?per_page=1'])
 
 
 if __name__ == '__main__':

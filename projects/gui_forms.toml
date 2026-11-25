@@ -22,6 +22,14 @@ env_prefix = "GUI_FORMS"
 artifact_prefix = "gui-"
 # gui-forms-cache-<platform>.tar.gz
 cache_asset_prefix = "gui-forms-cache-"
+# Beside each cache in its build-<sha> release (publish_cache.py): the C++
+# runtime the objects were compiled against, gui-forms-runtime-<platform>.tar.gz
+# (Windows: .ci/own-runtime; Linux: .build/toolchain/<static runtime>; macOS
+# keeps its runtime inside the cache archive), and the installed SDK,
+# gui-forms-sdk-<platform>.tar.gz, that an application links instead of
+# compiling GUI.Forms.
+runtime_asset_prefix = "gui-forms-runtime-"
+sdk_asset_prefix = "gui-forms-sdk-"
 native_workflow = ".github/workflows/native.yml"
 native_job = "native"
 pinned_cache_revisions = "packaging/pinned_cache_revisions.json"
@@ -193,16 +201,18 @@ notes_repository = "malkuth-software/notes"
 notes_branch = "gui_forms"
 projects_repository = "malkuth-software/projects"
 smoke = ["{python}", "gui_forms/tools/ci_build.py", "--install-only"]
+# Every platform builds the stx package where CI keeps it: its include
+# directories enter every compile's arguments relative to CCACHE_BASEDIR, so
+# the build tree's default stx-package/ misses every cached object (Windows
+# field test, 2026-11-24).
+environment = { GUI_FORMS_STX_PACKAGE_DIR = "{workspace}/.ci/stx-package" }
 
 # Windows, as native-platform.yml builds it: STXlib's own runtime and libc++
 # (tools/own_runtime.py build prints the three GUI_FORMS_*_PREFIX/SOURCE
-# settings the toolchain reads), and the stx package where CI keeps it: its
-# include directories enter every compile's arguments relative to
-# CCACHE_BASEDIR, so the build tree's default stx-package/ misses every
-# cached object (Windows field test, 2026-11-24).
+# settings the toolchain reads; it reuses the runtime archive the cache step
+# restored when its stamp matches).
 [bootstrap.windows-x64]
 prepare = [["{python}", "gui_forms/tools/own_runtime.py", "build", "--out", ".ci/own-runtime", "--jobs", "4"]]
-environment = { GUI_FORMS_STX_PACKAGE_DIR = "{workspace}/.ci/stx-package" }
 
 [const_restrict]
 # harness/check_const_restrict.py (E3): the recorded restrict decisions,
