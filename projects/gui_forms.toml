@@ -194,6 +194,16 @@ notes_branch = "gui_forms"
 projects_repository = "malkuth-software/projects"
 smoke = ["{python}", "gui_forms/tools/ci_build.py", "--install-only"]
 
+# Windows, as native-platform.yml builds it: STXlib's own runtime and libc++
+# (tools/own_runtime.py build prints the three GUI_FORMS_*_PREFIX/SOURCE
+# settings the toolchain reads), and the stx package where CI keeps it: its
+# include directories enter every compile's arguments relative to
+# CCACHE_BASEDIR, so the build tree's default stx-package/ misses every
+# cached object (Windows field test, 2026-11-24).
+[bootstrap.windows-x64]
+prepare = [["{python}", "gui_forms/tools/own_runtime.py", "build", "--out", ".ci/own-runtime", "--jobs", "4"]]
+environment = { GUI_FORMS_STX_PACKAGE_DIR = "{workspace}/.ci/stx-package" }
+
 [const_restrict]
 # harness/check_const_restrict.py (E3): the recorded restrict decisions,
 # maintained with the restrict changes in the GUI.Forms checkout.

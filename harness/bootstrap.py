@@ -25,7 +25,12 @@ another file). In order:
    says so;
 4. the toolchain and the compiler cache, through harness/restore_local.py
    (skipped with --no-restore; the cache also when the project publishes
-   none, having no ci.cache_asset_prefix);
+   none, having no ci.cache_asset_prefix); then CI's build environment
+   (restore_local.py env: the ccache settings, CI's locale, the project's
+   [bootstrap.<platform>] environment), the platform's prepare commands
+   run in it, and the environment again with the settings they printed;
+   the smoke build runs in it, and .ci/local-build-env.ps1 or .sh loads it
+   for later builds;
 5. the project's [bootstrap] smoke command, run from DIR (skipped with
    --no-smoke, or when the project names none).
 
@@ -53,9 +58,11 @@ HARNESS_WORKSPACE set.
 from __future__ import annotations
 import argparse
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 import platform as host_platform
+import re
 import shlex
 import subprocess
 import sys
@@ -75,8 +82,11 @@ HARNESS_DIRECTORY: str = 'template_harness'
 # restore_local.py's TOOLCHAIN_DIRECTORY and DOWNLOAD_DIRECTORY.
 ROOT_LAYOUT_ENTRIES: tuple[str, ...] = (HARNESS_DIRECTORY + '/', 'notes/', '.build/', '.ccache/', '.ci/',
                                         '.toolchain/', '.bootstrap/')
-# Written by restore_local.py (its TOOLCHAIN_PATH_RECORD).
+# Written by restore_local.py (its TOOLCHAIN_PATH_RECORD and BUILD_ENVIRONMENT_RECORD).
 TOOLCHAIN_PATH_RECORD: str = '.ci/local-toolchain-path.txt'
+BUILD_ENVIRONMENT_RECORD: str = '.ci/local-build-env.json'
+# A prepare command's output line that sets a build variable (project.BootstrapPlatform).
+SETTING_LINE: re.Pattern[str] = re.compile(r'[A-Z][A-Z0-9_]*=.*')
 
 
 class BootstrapError(Exception):
@@ -298,24 +308,87 @@ def pin_harness(plan: Plan) -> PinnedHarness:
 
 
 def step_environment(plan: Plan, harness: PinnedHarness) -> dict[str, str]:
-    """The environment of the steps after the clones: the project and workspace variables, and the
-    restored Windows toolchain (restore_local.TOOLCHAIN_PATH_RECORD) before PATH when there is one."""
+    """The environment of the steps after the clones: the project and workspace variables, the
+    restored Windows toolchain (restore_local.TOOLCHAIN_PATH_RECORD) before PATH when there is one,
+    and the build environment (restore_local.BUILD_ENVIRONMENT_RECORD) when it is written."""
     environment: dict[str, str] = dict(os.environ)
     record: Path = plan.workspace / TOOLCHAIN_PATH_RECORD
     if record.is_file():
         directories: list[str] = record.read_text(encoding='utf-8').splitlines()
         environment['PATH'] = os.pathsep.join(directories + [environment.get('PATH', '')])
+    build_record: Path = plan.workspace / BUILD_ENVIRONMENT_RECORD
+    if build_record.is_file():
+        # restore_local.apply_build_environment's rule, repeated here: restore_local
+        # imports windows_toolchain, which needs the project at import.
+        values: dict[str, str] = json.loads(build_record.read_text(encoding='utf-8'))
+        name: str
+        for name in sorted(values):
+            if name == 'PATH':
+                continue  # the toolchain record above already put it first
+            if values[name] == '':
+                environment.pop(name, None)
+            else:
+                environment[name] = values[name]
     environment[project.PROJECT_VARIABLE] = str(harness.product.path)
     environment[project.WORKSPACE_VARIABLE] = str(plan.workspace)
     return environment
 
 
-def smoke_command(product: project.Project) -> list[str]:
-    command: list[str] = []
+def with_python(command: tuple[str, ...]) -> list[str]:
+    """command with the argument {python} replaced by the running interpreter."""
+    result: list[str] = []
     argument: str
-    for argument in product.bootstrap.smoke if product.bootstrap is not None else ():
-        command.append(sys.executable if argument == PYTHON_ARGUMENT else argument)
+    for argument in command:
+        result.append(sys.executable if argument == PYTHON_ARGUMENT else argument)
+    return result
+
+
+def smoke_command(product: project.Project) -> list[str]:
+    command: list[str] = with_python(product.bootstrap.smoke if product.bootstrap is not None else ())
     return command
+
+
+def prepare_build(plan: Plan, harness: PinnedHarness) -> None:
+    """Writes the build environment (restore_local.py env), runs the platform's prepare commands in it
+    ([bootstrap.<platform>] prepare), and writes it again with the NAME=VALUE lines they printed."""
+    restore: Path = harness.root / 'harness' / 'restore_local.py'
+    env_command: list[str] = [sys.executable, '-B', str(restore), 'env', '--platform', plan.platform]
+    change(plan, env_command, 'writing the build environment', plan.workspace, step_environment(plan, harness))
+    table: project.BootstrapPlatform | None = (None if harness.product.bootstrap is None
+                                                else harness.product.bootstrap.platforms.get(plan.platform))
+    if table is None or not table.prepare:
+        return
+    settings: list[str] = []
+    command: tuple[str, ...]
+    for command in table.prepare:
+        printed: str = change_capturing(plan, with_python(command), 'preparing the build', plan.workspace,
+                                        step_environment(plan, harness))
+        line: str
+        for line in printed.splitlines():
+            match: re.Match[str] | None = SETTING_LINE.fullmatch(line.strip())
+            if match is not None:
+                settings.append(match.group(0))
+    if settings:
+        setting: str
+        rewrite: list[str] = list(env_command)
+        for setting in settings:
+            rewrite.extend(['--set', setting])
+        change(plan, rewrite, 'writing the build environment', plan.workspace, step_environment(plan, harness))
+
+
+def change_capturing(plan: Plan, command: list[str], what: str, cwd: Path,
+                     environment: dict[str, str]) -> str:
+    """change(), returning what the command printed (empty in a dry run)."""
+    say(('would run: ' if plan.dry_run else '+ ') + shlex.join(command))
+    if plan.dry_run:
+        return ''
+    completed: subprocess.CompletedProcess[str] = subprocess.run(
+        command, cwd=str(cwd), env=environment, capture_output=True, text=True, check=False)
+    if completed.stdout.strip():
+        say(completed.stdout.rstrip())
+    if completed.returncode != 0:
+        raise BootstrapError(what + ' failed: ' + completed.stderr.strip())
+    return completed.stdout
 
 
 def bootstrap(plan: Plan) -> None:
@@ -352,6 +425,7 @@ def bootstrap(plan: Plan) -> None:
             command: list[str] = [sys.executable, '-B', str(harness.root / 'harness' / 'restore_local.py'), kind,
                                   '--platform', plan.platform]
             change(plan, command, 'restoring the ' + kind, plan.workspace, environment)
+        prepare_build(plan, harness)
     else:
         say('Toolchain and cache restore skipped (--no-restore)')
     smoke: list[str] = smoke_command(harness.product)
@@ -360,6 +434,9 @@ def bootstrap(plan: Plan) -> None:
         say('Smoke build skipped' + (' (--no-smoke)' if not plan.smoke else ' (the project names none)'))
     else:
         change(plan, smoke, 'the smoke build', plan.workspace, environment)
+    if plan.restore:
+        say('Before building in this workspace, load its build environment: . ' + BUILD_ENVIRONMENT_RECORD[:-len('.json')]
+            + '.ps1 (PowerShell) or . ' + BUILD_ENVIRONMENT_RECORD[:-len('.json')] + '.sh (a shell)')
     say('Bootstrap finished' + (' (dry run: nothing was changed)' if plan.dry_run else ''))
 
 

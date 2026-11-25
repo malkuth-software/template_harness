@@ -92,6 +92,22 @@ class CheckpointTable:
 
 
 @dataclass(frozen=True)
+class BootstrapPlatform:
+    """[bootstrap.<platform>]: the commands that prepare a workspace's build on that platform
+    and the build environment CI gives its build there.
+
+    prepare: commands run from the workspace root after the restore, in order, with the
+    build environment; each NAME=VALUE line one prints (NAME in capitals, digits and
+    underscores) joins the build environment (GUI.Forms' tools/own_runtime.py build prints
+    its three settings that way). environment: NAME = value pairs of that environment,
+    {workspace} becoming the workspace root (forward slashes). restore_local.py env writes
+    the result.
+    """
+    prepare: tuple[tuple[str, ...], ...]
+    environment: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
 class BootstrapTable:
     """[bootstrap], for harness/bootstrap.py: the notes and projects repositories and the smoke build."""
     notes_repository: str
@@ -103,6 +119,8 @@ class BootstrapTable:
     # The [linux_packages] profile a workspace installs on Linux (Project.workspace_linux_profile);
     # None: "toolkit" when the project has it, else its only profile.
     linux_packages: str | None
+    # [bootstrap.<platform>] tables by platform name; a platform without one needs nothing.
+    platforms: dict[str, BootstrapPlatform]
 
 
 @dataclass(frozen=True)
@@ -470,9 +488,40 @@ def checkpoint_table(value: Any) -> CheckpointTable | None:
     return table
 
 
+# The platform names a [bootstrap.<platform>] table may use (harness/bootstrap.py PLATFORMS).
+BOOTSTRAP_PLATFORMS: tuple[str, ...] = ('windows-x64', 'linux-x64', 'linux-arm64', 'macos-arm64')
+
+
+def bootstrap_platform(value: Any, platform: str) -> BootstrapPlatform:
+    where: str = 'bootstrap.' + platform
+    if type(value) is not dict:
+        raise ValueError('[' + where + '] must be a table')
+    unknown: list[str] = sorted(set(value) - {'prepare', 'environment'})
+    if unknown:
+        raise ValueError('[' + where + '] has unknown keys: ' + ', '.join(unknown))
+    commands: Any = value.get('prepare', [])
+    if type(commands) is not list:
+        raise ValueError(where + '.prepare must be a list of commands (lists of strings)')
+    prepare: list[tuple[str, ...]] = []
+    command: Any
+    for command in commands:
+        prepare.append(text_list({'prepare': command}, 'prepare', where))
+    table: Any = value.get('environment', {})
+    if type(table) is not dict:
+        raise ValueError(where + '.environment must be a table of strings')
+    environment: list[tuple[str, str]] = []
+    name: str
+    for name in sorted(table):
+        if type(table[name]) is not str:
+            raise ValueError(where + '.environment.' + name + ' must be a string')
+        environment.append((name, table[name]))
+    result: BootstrapPlatform = BootstrapPlatform(prepare=tuple(prepare), environment=tuple(environment))
+    return result
+
+
 def bootstrap_table(value: Any, name: str, repository: str) -> BootstrapTable | None:
     """Defaults: <owner>/notes, the project name as the notes branch, <owner>/projects, no smoke build,
-    no named Linux package profile."""
+    no named Linux package profile, no platform preparation."""
     if value is None:
         return None
     if type(value) is not dict:
@@ -481,12 +530,18 @@ def bootstrap_table(value: Any, name: str, repository: str) -> BootstrapTable | 
     smoke: tuple[str, ...] = ()
     if 'smoke' in value:
         smoke = text_list(value, 'smoke', 'bootstrap')
+    platforms: dict[str, BootstrapPlatform] = {}
+    platform: str
+    for platform in BOOTSTRAP_PLATFORMS:
+        if platform in value:
+            platforms[platform] = bootstrap_platform(value[platform], platform)
     table: BootstrapTable = BootstrapTable(
         notes_repository=named_text(value, 'notes_repository', 'bootstrap', owner + '/notes'),
         notes_branch=named_text(value, 'notes_branch', 'bootstrap', name),
         projects_repository=named_text(value, 'projects_repository', 'bootstrap', owner + '/projects'),
         smoke=smoke,
-        linux_packages=optional_text(value, 'linux_packages', 'bootstrap'))
+        linux_packages=optional_text(value, 'linux_packages', 'bootstrap'),
+        platforms=platforms)
     return table
 
 
