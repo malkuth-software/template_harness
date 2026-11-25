@@ -246,6 +246,39 @@ class MatrixTests(unittest.TestCase):
         hidden: project.Project = dataclasses.replace(reference, repository='owner/private')
         self.assertEqual(bootstrap_proof.readiness(hidden, ready), 'owner/private cannot be read (missing or private)')
 
+    def test_a_project_waits_for_a_lock_whose_harness_runs_its_smoke_command(self) -> None:
+        reference: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
+        assert reference.bootstrap is not None
+        script: str = 'tools/ci_build.py'
+        old: str = 'a' * 40
+        lock_text: str = '[harness]\nrepository = "malkuth-software/template_harness"\ncommit = "' + old + '"\n'
+        current: str = ', '.join('"' + part + '"' for part in reference.bootstrap.smoke)
+        stale: str = '"{python}", "gui_forms/tools/ci_build.py", "--tests", "^gui_forms_core_tests$"'
+        pinned_file: str = 'malkuth-software/template_harness:' + old + ':projects/gui_forms.toml'
+
+        def github(pinned_project: str | None) -> FakeGitHub:
+            files: dict[str, str] = {reference.repository + ':main:harness.lock': lock_text}
+            if pinned_project is not None:
+                files[pinned_file] = pinned_project
+            result: FakeGitHub = FakeGitHub({reference.repository + ':main:' + script},
+                                            {'malkuth-software/notes:gui_forms'}, files)
+            return result
+
+        self.assertIsNone(bootstrap_proof.readiness(reference, github('[bootstrap]\nsmoke = [' + current + ']\n')))
+        # A pinned harness without the product's project file leaves the bootstrap on this one.
+        self.assertIsNone(bootstrap_proof.readiness(reference, github(None)))
+        self.assertEqual(bootstrap_proof.readiness(reference, github('[bootstrap]\nsmoke = [' + stale + ']\n')),
+                         'its harness.lock pins the harness at aaaaaaaaaaaa, whose projects/gui_forms.toml runs the '
+                         'smoke build {python} gui_forms/tools/ci_build.py --tests ^gui_forms_core_tests$, not this '
+                         'file\'s ' + ' '.join(reference.bootstrap.smoke)
+                         + '; its lock must move to a harness that runs this one')
+        self.assertEqual(bootstrap_proof.readiness(reference, github('[project]\n')),
+                         'its harness.lock pins the harness at aaaaaaaaaaaa, whose projects/gui_forms.toml runs the '
+                         'smoke build (none), not this file\'s ' + ' '.join(reference.bootstrap.smoke)
+                         + '; its lock must move to a harness that runs this one')
+        self.assertTrue(bootstrap_proof.readiness(reference, github('[bootstrap\n')).startswith(
+            "its pinned harness's projects/gui_forms.toml does not parse: "))
+
     def test_smoke_paths_are_read_relative_to_the_product_checkout(self) -> None:
         reference: project.Project = project.load(harness_testing.REFERENCE_PROJECT)
         self.assertEqual(bootstrap_proof.repository_path(reference, 'gui_forms/tools/ci_build.py'), 'tools/ci_build.py')

@@ -257,12 +257,21 @@ jobs:
       # packages: "Then build the static C++ runtime with that compiler:
       # <command>; then set NAME to that prefix", the prefix written as
       # <workspace>/.build/toolchain/<python3 MANIFEST --directory-name>.
+      # A product whose harness.lock pins a harness older than the static
+      # runtime (no harness/build_linux_runtimes.py: file_manager's, before
+      # 0df21ae) builds against the distribution's runtime as its own scripts
+      # do, so it gets no prefix and the runtime steps below are skipped.
       - name: Read the Linux runtime step the first bootstrap named
         id: linux-runtime-step
         if: runner.os == 'Linux'
         run: |
           line=$(sed -n 's/^Then build the static C++ runtime with that compiler: //p' "$PROOF_LOGS/bootstrap-first.log")
           if [ -z "$line" ]; then
+            pinned="$PROOF_WORKSPACE/template_harness"
+            if [ -d "$pinned/harness" ] && [ ! -f "$pinned/harness/build_linux_runtimes.py" ]; then
+              echo "The pinned harness predates the static Linux runtime; the product builds as its own scripts do"
+              exit 0
+            fi
             echo "The first bootstrap named no Linux runtime step" >&2
             exit 1
           fi
@@ -283,13 +292,15 @@ jobs:
           echo "$variable=$prefix"
       - uses: actions/cache/restore@v4
         id: linux-runtime-cache
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.linux-runtime-step.outputs.prefix != ''
         with:
           path: ${{ steps.linux-runtime-step.outputs.prefix }}
           key: bootstrap-linux-runtime-v1-${{ runner.arch }}-${{ steps.linux-image.outputs.image }}-${{ hashFiles('ws/template_harness/harness/build_linux_runtimes.py', 'ws/template_harness/harness/linux_runtime_manifest.py', 'harness/harness/build_linux_runtimes.py', 'harness/harness/linux_runtime_manifest.py') }}
       - name: Build the Linux runtime as the first bootstrap named
         id: linux-runtime-build
-        if: runner.os == 'Linux' && steps.linux-runtime-cache.outputs.cache-hit != 'true'
+        if: >-
+          runner.os == 'Linux' && steps.linux-runtime-step.outputs.prefix != ''
+          && steps.linux-runtime-cache.outputs.cache-hit != 'true'
         env:
           RUNTIME_COMMAND: ${{ steps.linux-runtime-step.outputs.command }}
         run: sh harness/.github/scripts/proof_step.sh linux-runtime sh -c "$RUNTIME_COMMAND"

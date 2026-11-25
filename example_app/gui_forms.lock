@@ -1,5 +1,5 @@
 # The GUI.Forms SDK the example app builds against (owner decision 4: a
-# pinned v0.2.N release). GUI.Forms releases its SDK as source, for any
+# pinned release, of the v1.0.N line built with libc++ 22). GUI.Forms releases its SDK as source, for any
 # target: gui-forms-sdk-<version>-source.tar.gz, holding
 # gui-forms-sdk-<version>/ (the release tree, its pinned third-party sources
 # and SDK_MANIFEST.json), with its digest in the release's SHA256SUMS.txt.

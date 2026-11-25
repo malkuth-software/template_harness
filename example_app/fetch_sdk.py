@@ -28,18 +28,36 @@ refused until cross builds are admitted):
    directory (its build tree is <install>.work/, kept for the next build),
    then writes the build record.
 It prints `prefix=<install>` (the CMAKE_PREFIX_PATH) and, when the install
-carries the macOS LLVM runtime, `llvm_runtime=<path>`; with GITHUB_OUTPUT
-set, the same lines are appended there. prefix prints the same lines for a
-build already recorded, without the network or a build.
+carries the macOS LLVM runtime, `llvm_runtime=<path>`; for a Windows install,
+also `windows_toolchain=<file>` and the own runtime's three settings
+(`GUI_FORMS_OWN_RUNTIME_SOURCE=<dir>` and the others) a consumer configures
+with. With GITHUB_OUTPUT set, the same lines are appended there. prefix
+prints the same lines for a build already recorded, without the network or
+a build.
 
 The toolchain identity is HARNESS_TOOLCHAIN_IDENTITY when set (CI passes
 harness/compiler_identity.py's, so the record matches the Actions cache
 key), else a digest of the clang binary, its version, the host machine, the
 macOS SDK version and harness/cmake/llvm22.cmake.
 
-On macOS, GUI.Forms' own toolchain file reads GUI_FORMS_LLVM_RUNTIME; when
+On macOS and Linux, GUI.Forms' own toolchain file reads
+GUI_FORMS_LLVM_RUNTIME (on Linux it refuses to configure without it); when
 that is unset, the build gets the harness's runtime prefix
-(<HARNESS_ENV_PREFIX>_LLVM_RUNTIME, else HARNESS_LLVM_RUNTIME).
+(<HARNESS_ENV_PREFIX>_LLVM_RUNTIME, else HARNESS_LLVM_RUNTIME), the one the
+native workflow builds or restores.
+
+On Windows, GUI.Forms builds for x86_64-pc-windows-msvc on STXlib's own
+runtime (cmake/llvm22-windows-msvc.cmake with GUI_FORMS_MSVC_RUNTIME=OWN),
+whose three locations GUI_FORMS_OWN_RUNTIME_SOURCE, GUI_FORMS_OWN_RUNTIME_PREFIX
+and GUI_FORMS_LIBCXX_PREFIX its build reads from the environment. When the
+environment sets all three they are used; otherwise the SDK's
+tools/own_runtime.py builds the runtime into <install>.own-runtime/ (it
+fetches STXlib and the LLVM source, so only with --allow-network-inputs, and
+it reuses a build whose stamp matches) and prints them. The install then
+gets the SDK's Windows toolchain files beside its package configuration and
+a record of the three settings, because a consumer must configure with the
+same toolchain and runtime: the harness's llvm22.cmake targets CLANG64,
+whose objects do not link with the MSVC target's.
 
 pin reads a release's asset list and its SHA256SUMS.txt (no archive is
 downloaded) and rewrites the lock's tag and [source] table with the source
@@ -91,6 +109,14 @@ UNPACKED_MARKER: str = '.fetched-sha256'
 # The file that marks a complete build: the archive digest, target and toolchain identity.
 BUILD_RECORD: str = '.harness-build.json'
 IDENTITY_VARIABLE: str = 'HARNESS_TOOLCHAIN_IDENTITY'
+# The Windows own runtime: the SDK's tool that builds it, the three settings
+# its toolchain reads, the toolchain files a consumer configures with, and
+# the install's record of the settings it was built with.
+OWN_RUNTIME_ENTRY: str = 'tools/own_runtime.py'
+OWN_RUNTIME_SETTINGS: tuple[str, ...] = ('GUI_FORMS_OWN_RUNTIME_SOURCE', 'GUI_FORMS_OWN_RUNTIME_PREFIX',
+                                         'GUI_FORMS_LIBCXX_PREFIX')
+WINDOWS_TOOLCHAIN_FILES: tuple[str, ...] = ('cmake/llvm22-windows-msvc.cmake', 'cmake/llvm22-windows-msvc-own.cmake')
+OWN_RUNTIME_RECORD: str = '.harness-own-runtime.json'
 CHUNK_BYTES: int = 1 << 20
 
 
@@ -330,19 +356,147 @@ def toolchain_identity() -> str:
     return result
 
 
-def harness_runtime() -> str:
-    """The macOS runtime prefix harness/cmake/llvm22.cmake reads, or '' when unset."""
-    prefix: str = os.environ.get('HARNESS_ENV_PREFIX', '')
+def harness_runtime(environment: dict[str, str]) -> str:
+    """The macOS or Linux runtime prefix harness/cmake/llvm22.cmake reads, or '' when unset."""
+    prefix: str = environment.get('HARNESS_ENV_PREFIX', '')
     variable: str = prefix + '_LLVM_RUNTIME' if prefix else 'HARNESS_LLVM_RUNTIME'
-    result: str = os.environ.get(variable, '')
+    result: str = environment.get(variable, '')
     return result
 
 
-def report(prefix: Path) -> list[str]:
+def runtime_environment(target: str, environment: dict[str, str]) -> dict[str, str]:
+    """The SDK build's environment: on macOS and Linux GUI_FORMS_LLVM_RUNTIME, when unset, is the harness's
+    runtime prefix (GUI.Forms' cmake/llvm22.cmake reads that name)."""
+    result: dict[str, str] = dict(environment)
+    runtime: str = harness_runtime(environment)
+    if target.startswith(('macos', 'linux')) and runtime and not result.get('GUI_FORMS_LLVM_RUNTIME', ''):
+        result['GUI_FORMS_LLVM_RUNTIME'] = runtime
+    return result
+
+
+def own_runtime_dir(install: Path) -> Path:
+    """Where tools/own_runtime.py builds the Windows runtime for an install (kept beside it, not inside)."""
+    result: Path = install.with_name(install.name + '.own-runtime')
+    return result
+
+
+def named_settings(environment: dict[str, str]) -> dict[str, str] | None:
+    """The three own runtime settings when the environment sets all of them, else None."""
+    values: dict[str, str] = {name: environment.get(name, '') for name in OWN_RUNTIME_SETTINGS}
+    result: dict[str, str] | None = values if all(values.values()) else None
+    return result
+
+
+def printed_settings(lines: list[str]) -> dict[str, str]:
+    """The own runtime settings among `NAME=value` lines (tools/own_runtime.py build prints them last)."""
+    settings: dict[str, str] = {}
+    line: str
+    for line in lines:
+        name: str
+        separator: str
+        value: str
+        name, separator, value = line.strip().partition('=')
+        if separator and name in OWN_RUNTIME_SETTINGS:
+            settings[name] = value
+    return settings
+
+
+def own_runtime(root: Path, install: Path, jobs: int, environment: dict[str, str],
+                allow_network_inputs: bool) -> dict[str, str]:
+    """The Windows build's own runtime settings: the environment's when it names all three, else the ones
+    tools/own_runtime.py prints after building (or reusing) the runtime in own_runtime_dir. An SDK
+    without that tool predates the own runtime and needs none ({})."""
+    named: dict[str, str] | None = named_settings(environment)
+    if named is not None:
+        return named
+    entry: Path = root / OWN_RUNTIME_ENTRY
+    if not entry.is_file():
+        return {}
+    if not allow_network_inputs:
+        raise FetchError('the Windows SDK build links STXlib\'s own runtime, which ' + OWN_RUNTIME_ENTRY
+                         + ' builds from STXlib and the LLVM source it downloads. Rerun with '
+                         '--allow-network-inputs to let it, or set ' + ', '.join(OWN_RUNTIME_SETTINGS))
+    out: Path = own_runtime_dir(install)
+    command: list[str] = [sys.executable, str(entry), 'build', '--out', str(out), '--jobs', str(jobs)]
+    print('+ ' + ' '.join(command), file=sys.stderr, flush=True)
+    lines: list[str] = []
+    with subprocess.Popen(command, cwd=root, env=environment, stdout=subprocess.PIPE, text=True) as process:
+        assert process.stdout is not None
+        line: str
+        for line in process.stdout:
+            sys.stderr.write(line)
+            lines.append(line)
+    if process.returncode != 0:
+        raise FetchError('building the Windows own runtime failed (exit ' + str(process.returncode) + '); '
+                         + OWN_RUNTIME_ENTRY + ' reuses or rebuilds ' + str(out) + ' by its stamp next time')
+    settings: dict[str, str] = printed_settings(lines)
+    missing: list[str] = [name for name in OWN_RUNTIME_SETTINGS if not settings.get(name, '')]
+    if missing:
+        raise FetchError(OWN_RUNTIME_ENTRY + ' build printed no ' + ', '.join(missing))
+    return settings
+
+
+def keep_windows_toolchain(root: Path, install: Path, settings: dict[str, str]) -> None:
+    """Puts the SDK's Windows toolchain files beside the install's package configuration (where the SDK
+    already installs cmake/llvm22.cmake) and records the own runtime settings, so a consumer of a reused
+    install configures as the SDK was built."""
+    package: Path = install / 'lib' / 'cmake' / 'GUIForms'
+    relative: str
+    for relative in WINDOWS_TOOLCHAIN_FILES:
+        source: Path = root / relative
+        kept: Path = package / PurePosixPath(relative).name
+        if source.is_file() and not kept.is_file():
+            shutil.copyfile(source, kept)
+    (install / OWN_RUNTIME_RECORD).write_text(json.dumps(settings, indent=2, sort_keys=True) + '\n',
+                                              encoding='utf-8')
+
+
+def recorded_settings(install: Path) -> dict[str, str]:
+    """The own runtime settings an install recorded ({} when it recorded none or the record is unreadable)."""
+    path: Path = install / OWN_RUNTIME_RECORD
+    if not path.is_file():
+        return {}
+    try:
+        document: Any = json.loads(path.read_text(encoding='utf-8'))
+    except ValueError:
+        return {}
+    settings: dict[str, str] = {}
+    if type(document) is dict:
+        name: str
+        for name in OWN_RUNTIME_SETTINGS:
+            value: Any = document.get(name)
+            if type(value) is str and value:
+                settings[name] = value
+    return settings
+
+
+def settings_present(install: Path) -> bool:
+    """Whether every directory the install's recorded own runtime settings name still exists (an install
+    restored from a cache without its runtime is built again)."""
+    present: bool = all(Path(value).is_dir() for value in recorded_settings(install).values())
+    return present
+
+
+def describe(prefix: Path) -> list[str]:
+    """The lines fetch prints for an install: its prefix, the runtime it carries, and on Windows the
+    toolchain file and own runtime settings a consumer configures with."""
     lines: list[str] = ['prefix=' + prefix.as_posix()]
     runtime: Path = prefix / 'llvm-runtime'
     if runtime.is_dir():
         lines.append('llvm_runtime=' + runtime.as_posix())
+    toolchain: Path = prefix / 'lib' / 'cmake' / 'GUIForms' / PurePosixPath(WINDOWS_TOOLCHAIN_FILES[0]).name
+    if toolchain.is_file():
+        lines.append('windows_toolchain=' + toolchain.as_posix())
+    settings: dict[str, str] = recorded_settings(prefix)
+    name: str
+    for name in OWN_RUNTIME_SETTINGS:
+        if name in settings:
+            lines.append(name + '=' + settings[name])
+    return lines
+
+
+def report(prefix: Path) -> list[str]:
+    lines: list[str] = describe(prefix)
     output: str = os.environ.get('GITHUB_OUTPUT', '')
     if output:
         with open(output, 'a', encoding='utf-8') as stream:
@@ -422,7 +576,7 @@ def fetch_command(lock: Lock, target: str, cache: Path, jobs: int, allow_network
     identity: str = toolchain_identity()
     wanted: dict[str, str] = build_record(source, target, identity)
     install: Path = install_of(cache, lock, target)
-    if recorded(install) == wanted:
+    if recorded(install) == wanted and settings_present(install):
         reused: list[str] = report(install)
         return reused
     root: Path = unpacked_source(lock, source, cache)
@@ -435,10 +589,11 @@ def fetch_command(lock: Lock, target: str, cache: Path, jobs: int, allow_network
     if install.exists():
         shutil.rmtree(install)
     work: Path = install.with_name(install.name + '.work')
-    environment: dict[str, str] = dict(os.environ)
-    runtime: str = harness_runtime()
-    if target.startswith('macos') and runtime and not environment.get('GUI_FORMS_LLVM_RUNTIME', ''):
-        environment['GUI_FORMS_LLVM_RUNTIME'] = runtime
+    environment: dict[str, str] = runtime_environment(target, dict(os.environ))
+    settings: dict[str, str] = {}
+    if target.startswith('windows'):
+        settings = own_runtime(root, install, jobs, environment, allow_network_inputs)
+        environment.update(settings)
     command: list[str] = [sys.executable, str(entry), '--target', target, '--prefix', str(install),
                           '--jobs', str(jobs), '--work', str(work)]
     print('+ ' + ' '.join(command), file=sys.stderr, flush=True)
@@ -448,6 +603,8 @@ def fetch_command(lock: Lock, target: str, cache: Path, jobs: int, allow_network
                          + ' has no build record and is rebuilt next time')
     if not (install / 'lib' / 'cmake' / 'GUIForms' / 'GUIFormsConfig.cmake').is_file():
         raise FetchError('the SDK build installed no lib/cmake/GUIForms/GUIFormsConfig.cmake into ' + str(install))
+    if settings:
+        keep_windows_toolchain(root, install, settings)
     (install / BUILD_RECORD).write_text(json.dumps(wanted, indent=2, sort_keys=True) + '\n', encoding='utf-8')
     built: list[str] = report(install)
     return built

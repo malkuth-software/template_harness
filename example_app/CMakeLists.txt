@@ -1,16 +1,18 @@
 cmake_minimum_required(VERSION 3.25)
 project(GUIFormsExampleApp LANGUAGES CXX)
 
-# GUI.Forms comes from an installed SDK: fetch_sdk.py unpacks the release
-# pinned in gui_forms.lock and prints its prefix, which goes in
-# CMAKE_PREFIX_PATH. Configure with the toolchain file the SDK was built with
-# (the harness's harness/cmake/llvm22.cmake).
+# GUI.Forms comes from an installed SDK: fetch_sdk.py builds the release
+# pinned in gui_forms.lock (the v1.0 line, on libc++ 22) and prints its
+# prefix, which goes in CMAKE_PREFIX_PATH. Configure with the toolchain the
+# SDK was built with: the harness's harness/cmake/llvm22.cmake on macOS and
+# Linux, and on Windows the SDK's llvm22-windows-msvc.cmake on STXlib's own
+# runtime (ci_build.py passes the one fetch_sdk.py names).
 #
 # Controls is the renderer-free toolkit the form's test links. Application is
 # the native host, present when the SDK was built with one; it already holds
 # the retained engine, so no program here links both (the SDK's one linking
 # rule).
-find_package(GUIForms 0.2 CONFIG REQUIRED COMPONENTS Controls OPTIONAL_COMPONENTS Application)
+find_package(GUIForms 1.0 CONFIG REQUIRED COMPONENTS Controls OPTIONAL_COMPONENTS Application)
 
 enable_testing()
 
